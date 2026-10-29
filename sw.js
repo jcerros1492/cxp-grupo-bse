@@ -2,12 +2,13 @@
 // Estrategia: primero la red (para recibir actualizaciones) y, si no hay, la copia guardada.
 // Las consultas a Google Sheets (POST) no pasan por aquí.
 
-const CACHE = 'cxp-1.10.0';
+const CACHE = 'cxp-1.11.0';
 const ARCHIVOS = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest',
   'js/app.js', 'js/store.js', 'js/sync.js', 'js/config.js', 'js/logica.js', 'js/util.js',
   'js/banco.js', 'js/importer.js', 'js/importar-facturas.js', 'js/vendor/xlsx.full.min.js',
-  'img/icono-180.png', 'img/icono-192.png', 'img/icono-512.png',
+  'img/icono-180.png', 'img/icono-192.png', 'img/icono-512.png', 'img/icono-maskable-512.png',
+  'img/emblema-blanco.png', 'img/logo.png', 'img/favicon-64.png',
 ];
 
 self.addEventListener('install', (e) => {

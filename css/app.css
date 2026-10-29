@@ -42,7 +42,9 @@ h3 { font-size: 15px; margin: 18px 0 8px; }
 /* Cabecera */
 .cabecera { background: var(--tinta); color: #fff; padding: env(safe-area-inset-top, 0px) max(24px, env(safe-area-inset-right, 0px)) 0 max(24px, env(safe-area-inset-left, 0px)); position: sticky; top: 0; z-index: 20; }
 .cabecera-interior { max-width: 1280px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 24px; min-height: 60px; }
-.marca { color: #fff; text-decoration: none; font-weight: 700; font-size: 17px; }
+.marca { color: #fff; text-decoration: none; font-weight: 700; font-size: 17px; display: inline-flex; align-items: center; gap: 10px; }
+.marca img { height: 34px; width: auto; display: block; }
+.logo-inicio { display: block; width: 150px; max-width: 45vw; height: auto; margin: 0 auto 18px; }
 #nav { display: flex; flex-wrap: wrap; gap: 2px; flex: 1 1 auto; }
 #nav a { color: #C9D2DC; text-decoration: none; padding: 9px 13px; border-radius: 6px; font-size: 14px; }
 #nav a:hover { color: #fff; background: #223140; }
@@ -385,3 +387,8 @@ pre.txt { font-family: var(--mono); font-size: 12px; background: var(--tinta); c
 }
 @keyframes latir { from { opacity: .35; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .red.sync::before { animation: none; } }
+
+@media (max-width: 760px) {
+  .marca img { height: 28px; }
+  .logo-inicio { width: 120px; margin-bottom: 12px; }
+}

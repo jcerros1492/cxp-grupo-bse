@@ -151,6 +151,7 @@ function vistaLogin() {
   const elegido = lista.find((x) => x.usuario === ui.login);
   if (elegido) return vistaClave(elegido);
   return `<section class="centro">
+    <img class="logo-inicio" src="img/logo.png" alt="Beneficiadora Santa Eduviges">
     <h1>¿Quién está usando la aplicación?</h1>
     <p class="sub">Toque su nombre para entrar.</p>
     <div class="usuarios">${lista.map((u) => `

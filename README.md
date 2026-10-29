@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.11.0 | Logo de Santa Eduviges en el encabezado, en la pantalla de usuarios y como ícono de la aplicación (iPhone, Android y pestaña del navegador). |
 | 1.10.0 | Tablero con colores por sociedad y por tramo, con barras; tocar una sociedad abre sus facturas. Encabezado del celular ordenado (menú en cuadrícula, usuario con color). Importar facturas desde CSV o Excel en Facturas, con reconocimiento de columnas, vista previa, detección de repetidas y creación de proveedores nuevos. |
 | 1.9.0 | Diseño para celular (iPhone y Android): las tablas se ven como tarjetas, sin deslizar de lado; encabezado compacto con zona segura; campos sin zoom en iPhone; ícono para instalar en la pantalla de inicio. |
 | 1.8.1 | Versión de prueba del aviso de actualización (sin cambios visibles). |
