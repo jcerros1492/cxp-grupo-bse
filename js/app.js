@@ -33,19 +33,23 @@ const RUTAS = {
 };
 
 function menuPara(usuario) {
-  if (usuario?.rol === 'aprueba') return ['programar', 'tablero', 'facturas'];
-  return ['aplicar', 'programar', 'facturas', 'proveedores', 'tablero', 'config'];
+  if (usuario?.rol === 'aprueba') return ['tablero', 'programar', 'facturas'];
+  return ['tablero', 'aplicar', 'programar', 'facturas', 'proveedores', 'config'];
 }
 
 function rutaActual() {
   const r = location.hash.replace(/^#\/?/, '').split('?')[0];
   if (RUTAS[r]) return r;
-  return S.esNorman() ? 'programar' : 'aplicar';
+  return 'tablero';
 }
 
 const ROLES = { admin: 'Administra y aplica', aplica: 'Aplica pagos', aprueba: 'Aprueba pagos' };
 
 function indicadorRed() {
+  return (Sync.modoPruebas() ? '<span class="red pruebas" title="Se entra sin PIN. Desactívelo en Apps Script (MODO_PRUEBAS = false).">Modo pruebas</span>' : '') + indicadorConexion();
+}
+
+function indicadorConexion() {
   const e = Sync.estado, n = e.pendientes.length;
   const pend = n ? ` · ${n} ${n === 1 ? 'cambio por enviar' : 'cambios por enviar'}` : '';
   if (e.red === 'offline') return `<span class="red off" title="Los cambios se guardan aquí y se envían al volver la conexión">Sin internet${pend}</span>`;
@@ -70,7 +74,7 @@ function render() {
   if (!Sync.estado.cargado) { $app.innerHTML = '<p class="vacio">Cargando…</p>'; return; }
   if (!u) { $app.innerHTML = vistaLogin(); return; }
   if (u.debeCambiar) { $nav.innerHTML = ''; $app.innerHTML = vistaCrearContrasena(); return; }
-  if (!S.hayDatos() && ruta !== 'config') { $app.innerHTML = vistaBienvenida(); return; }
+  if (!S.hayDatos() && ruta !== 'config') { $app.innerHTML = Sync.estado.desde ? vistaBienvenida() : vistaCargando(); return; }
   $app.innerHTML = RUTAS[ruta].vista();
   despuesDeRender(ruta);
   restaurarFoco(foco);
@@ -127,16 +131,18 @@ const totalesTxt = (t) => [t.CRC ? money(t.CRC, 'CRC') : '', t.USD ? money(t.USD
 
 // ---------------------------------------------------------------- Inicio
 
+const PIN = 'type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off"';
 const iniciales = (n) => esc(n.split(' ').map((p) => p[0]).join('').slice(0, 2));
 
 /** Pantalla de inicio: las personas que usan la aplicación. */
 function vistaLogin() {
-  const elegido = USUARIOS.find((x) => x.usuario === ui.login);
+  const lista = (Sync.usuariosConocidos() || USUARIOS).filter((x) => x.activo !== false);
+  const elegido = lista.find((x) => x.usuario === ui.login);
   if (elegido) return vistaClave(elegido);
   return `<section class="centro">
     <h1>¿Quién está usando la aplicación?</h1>
     <p class="sub">Toque su nombre para entrar.</p>
-    <div class="usuarios">${USUARIOS.map((u) => `
+    <div class="usuarios">${lista.map((u) => `
       <button class="tarjeta-usuario" data-act="elegir" data-v="${esc(u.usuario)}">
         <span class="avatar grande" aria-hidden="true">${iniciales(u.nombre)}</span>
         <strong>${esc(u.nombre)}</strong><small>${esc(ROLES[u.rol] || u.rol)}</small>
@@ -153,8 +159,10 @@ function vistaClave(u) {
     <form class="form-login" data-form="login">
       <input type="hidden" name="usuario" value="${esc(u.usuario)}">
       <input type="text" name="username" value="${esc(u.usuario)}" autocomplete="username" hidden>
-      <label>Contraseña <input name="contrasena" type="password" required autocomplete="current-password" autofocus>
-        <span class="ayuda">Si es la primera vez, use la contraseña temporal que le dio Jonathan.</span></label>
+      ${conectado && Sync.modoPruebasServidor()
+        ? '<p class="aviso-pruebas">Modo de pruebas: se entra sin PIN.</p>'
+        : `<label>PIN <input name="contrasena" class="pin" ${PIN} ${conectado ? 'required' : ''} autofocus placeholder="••••">
+        <span class="ayuda">4 números. Si es la primera vez, use el PIN temporal que le dio el administrador.${Sync.modoPruebas() ? ' En modo de pruebas, después de esta vez entrará solo tocando su nombre en este dispositivo.' : ''}</span></label>`}
       ${conectado ? '' : `
       <div class="primera-vez">
         <strong>Primera vez en este dispositivo</strong>
@@ -198,11 +206,11 @@ function vistaCrearContrasena() {
   const u = S.usuarioActual();
   return `<section class="centro">
     <h1>Hola, ${esc(u.nombre.split(' ')[0])}</h1>
-    <p class="sub">Entró con una contraseña temporal. Cree su propia contraseña para continuar; solo usted la va a conocer.</p>
+    <p class="sub">Entró con un PIN temporal. Cree su propio PIN de 4 números; solo usted lo va a conocer.</p>
     <form class="form-login" data-form="nueva-clave">
-      <label>Nueva contraseña <input name="nueva" type="password" required minlength="8" autocomplete="new-password"><span class="ayuda">Al menos 8 caracteres</span></label>
-      <label>Repítala <input name="repetir" type="password" required minlength="8" autocomplete="new-password"></label>
-      <button class="btn primario grande" type="submit">Guardar contraseña</button>
+      <label>PIN nuevo <input name="nueva" class="pin" ${PIN} required placeholder="••••"><span class="ayuda">4 números, que no sean 1111 ni 1234</span></label>
+      <label>Repítalo <input name="repetir" class="pin" ${PIN} required placeholder="••••"></label>
+      <button class="btn primario grande" type="submit">Guardar PIN</button>
     </form>
     <p class="nota"><button class="btn-link" data-act="salir">Salir</button></p>
   </section>`;
@@ -214,32 +222,38 @@ function dialogoCuenta() {
     <header class="dlg-cab"><div><h2>${esc(u.nombre)}</h2><p class="sub">Usuario <strong>${esc(u.usuario)}</strong> · ${esc(ROLES[u.rol] || u.rol)}</p></div>
       <button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
     <div class="dlg-cuerpo">
-      <h3>Cambiar contraseña</h3>
+      <h3>Cambiar PIN</h3>
       <form class="form-grid" data-form="cambiar-clave">
-        <label>Contraseña actual <input name="actual" type="password" required autocomplete="current-password"></label>
-        <label>Nueva contraseña <input name="nueva" type="password" required minlength="8" autocomplete="new-password"></label>
-        <label>Repítala <input name="repetir" type="password" required minlength="8" autocomplete="new-password"></label>
-        <div class="ancho"><button class="btn primario" type="submit">Cambiar contraseña</button></div>
+        <label>PIN actual <input name="actual" class="pin" ${PIN} placeholder="••••"></label>
+        <label>PIN nuevo <input name="nueva" class="pin" ${PIN} required placeholder="••••"></label>
+        <label>Repítalo <input name="repetir" class="pin" ${PIN} required placeholder="••••"></label>
+        <div class="ancho"><button class="btn primario" type="submit">Cambiar PIN</button></div>
       </form>
       <h3>Sesión</h3>
-      <p class="sub">La sesión queda abierta en esta computadora, también sin internet, hasta que la cierre.</p>
-      <button class="btn" data-act="salir">Cerrar sesión</button>
+      <p class="sub">${Sync.modoPruebas() ? 'Modo de pruebas: puede volver a la pantalla de usuarios y entrar de nuevo tocando su nombre, sin PIN. «Cerrar sesión» hace que este dispositivo vuelva a pedirle el PIN.' : 'La sesión queda abierta en esta computadora, también sin internet, hasta que la cierre.'}</p>
+      <div class="acciones-fila">
+        ${Sync.modoPruebas() ? '<button class="btn primario" data-act="cambiar-usuario">Cambiar de usuario</button>' : ''}
+        <button class="btn" data-act="salir">Cerrar sesión</button>
+      </div>
     </div>`);
 }
 
-function vistaBienvenida() {
-  if (S.esAdmin()) {
-    return `<section class="centro">
-      <h1>Cargar las cuentas por pagar</h1>
-      <p class="sub">La hoja de Google está vacía. Elija el Excel de cuentas por pagar: se convierte aquí y se guarda en Google Sheets. Toma un minuto.</p>
-      <label class="btn primario grande">Elegir archivo de Excel<input type="file" accept=".xlsx,.xls" data-in="importar" hidden></label>
-      <p class="nota" id="progreso-import"></p>
-    </section>`;
-  }
+function vistaCargando() {
+  const e = Sync.estado;
+  const error = e.red === 'error' || e.red === 'offline';
   return `<section class="centro">
-    <h1>Todavía no hay datos</h1>
-    <p class="sub">Jonathan debe cargar el Excel por primera vez. Cuando lo haga, los datos aparecerán aquí solos.</p>
-    <button class="btn" data-act="sync-ahora">Revisar ahora</button>
+    <div class="cargando" aria-hidden="true"></div>
+    <h1>${error ? 'No se pudieron traer los datos' : 'Cargando datos de Google Sheets…'}</h1>
+    <p class="sub">${error ? (e.red === 'offline' ? 'Este dispositivo no tiene internet. La primera carga necesita conexión.' : esc(e.error)) : 'La primera vez en este dispositivo tarda unos segundos.'}</p>
+    ${error ? '<button class="btn" data-act="sync-ahora">Reintentar</button>' : ''}
+  </section>`;
+}
+
+function vistaBienvenida() {
+  return `<section class="centro">
+    <h1>La hoja de Google no tiene facturas</h1>
+    <p class="sub">${S.esAdmin() ? 'Puede cargar el Excel de cuentas por pagar desde Configuración.' : 'Un administrador debe cargar los datos. Cuando lo haga, aparecerán aquí solos.'}</p>
+    ${S.esAdmin() ? '<a class="btn primario" href="#/config">Ir a Configuración</a>' : '<button class="btn" data-act="sync-ahora">Revisar ahora</button>'}
   </section>`;
 }
 
@@ -691,6 +705,52 @@ function vistaTablero() {
 
 // ---------------------------------------------------------------- Configuración
 
+function seccionUsuarios() {
+  if (!Sync.gestionUsuarios()) {
+    return `<section class="bloque">
+      <h2>Usuarios</h2>
+      <p class="sub">Los usuarios se administran en la pestaña <strong>Usuarios</strong> de la hoja de Google:</p>
+      <ul class="lista-pasos">
+        <li><strong>Agregar a alguien:</strong> fila nueva con usuario (en minúsculas), nombre, rol (<span class="mono">admin</span>, <span class="mono">aplica</span> o <span class="mono">aprueba</span>), <span class="mono">TRUE</span> y un PIN temporal de 4 números en <em>contrasenaTemporal</em>. Para que aparezca en la pantalla de inicio, avíseme y lo agrego a la lista de la aplicación.</li>
+        <li><strong>Si alguien olvida su PIN:</strong> escriba un PIN temporal nuevo de 4 números en su fila.</li>
+        <li><strong>Quitar el acceso:</strong> ponga <span class="mono">FALSE</span> en <em>activo</em>.</li>
+      </ul>
+      <p class="sub">Use PIN temporales que no empiecen con 0 (Google puede borrar ese cero).</p>
+    </section>`;
+  }
+  const lista = Sync.usuariosConocidos() || [];
+  return `<section class="bloque">
+    <h2>Usuarios</h2>
+    <p class="sub">Cada persona entra tocando su nombre y escribiendo su PIN de 4 números. Al crear un usuario o pedir un PIN nuevo, la aplicación muestra un PIN temporal para entregarle; la persona lo cambia al entrar.</p>
+    <div class="tabla-scroll"><table class="tabla">
+      <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
+      <tbody>${lista.map((u) => `<tr>
+        <td class="mono">${esc(u.usuario)}</td><td>${esc(u.nombre)}</td><td>${esc(ROLES[u.rol] || u.rol)}</td>
+        <td>${u.activo === false ? '<span class="estado rev">Desactivado</span>' : u.pendiente ? '<span class="estado abon">Con PIN temporal</span>' : '<span class="estado canc">Activo</span>'}</td>
+        <td class="nowrap"><button class="btn chico" data-act="u-pin" data-v="${esc(u.usuario)}">PIN temporal nuevo</button>
+          ${u.usuario === S.usuarioActual()?.usuario ? '' : `<button class="btn chico" data-act="u-activo" data-v="${esc(u.usuario)}" data-activo="${u.activo === false ? '1' : '0'}">${u.activo === false ? 'Activar' : 'Desactivar'}</button>`}</td>
+      </tr>`).join('') || '<tr><td colspan="5" class="sub">Sincronice para ver la lista.</td></tr>'}</tbody>
+    </table></div>
+    <h3>Agregar usuario</h3>
+    <form class="form-grid" data-form="u-crear">
+      <label>Usuario <input name="usuario" required placeholder="Ej. fernando" autocapitalize="none" spellcheck="false" pattern="[a-z][a-z0-9._-]{1,29}"></label>
+      <label>Nombre completo <input name="nombre" required placeholder="Ej. Fernando Pérez"></label>
+      <label>Rol <select name="rol"><option value="admin">Administra y aplica</option><option value="aplica">Aplica pagos</option><option value="aprueba">Aprueba pagos</option></select></label>
+      <div class="ancho"><button class="btn primario" type="submit">Crear usuario</button></div>
+    </form>
+  </section>`;
+}
+
+function mostrarPin(nombre, pin) {
+  abrirDialogo(`
+    <header class="dlg-cab"><div><h2>PIN temporal de ${esc(nombre)}</h2></div><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+    <div class="dlg-cuerpo centro-txt">
+      <p class="pin-grande">${esc(pin)}</p>
+      <p class="sub">Entrégueselo en privado. Al entrar con este PIN, la aplicación le pedirá crear el suyo. También queda anotado en la pestaña Usuarios de la hoja hasta que lo cambie.</p>
+      <button class="btn primario" data-act="cerrar">Listo</button>
+    </div>`);
+}
+
 function vistaConfig() {
   const socs = Object.entries(S.sociedades());
   const e = Sync.estado;
@@ -734,6 +794,8 @@ function vistaConfig() {
       <div class="ancho"><button class="btn" type="submit">Guardar ${esc(s.corto)}</button></div>
     </form>`).join('') : '<p class="sub">Aparecerán al cargar el Excel.</p>'}
   </section>
+
+  ${S.esAdmin() ? seccionUsuarios() : ''}
 
   ${S.esAdmin() ? `<section class="bloque">
     <h2>Volver a cargar el Excel</h2>
@@ -782,8 +844,27 @@ document.addEventListener('keydown', (e) => {
 
 const acciones = {
   'sync-ahora': () => Sync.sincronizar(),
+  'u-pin': (v) => {
+    if (!confirm(`¿Generar un PIN temporal nuevo para ${v}? Su PIN actual dejará de funcionar cuando entre con el nuevo.`)) return;
+    Sync.adminUsuarios({ op: 'pin', usuario: v }).then((r) => mostrarPin(v, r.pin)).catch((e) => avisar(e.message, 'error'));
+  },
+  'u-activo': (v, el) => {
+    const activar = el.dataset.activo === '1';
+    if (!confirm(activar ? `¿Activar a ${v}?` : `¿Desactivar a ${v}? No podrá entrar hasta que se active de nuevo.`)) return;
+    Sync.adminUsuarios({ op: 'activo', usuario: v, activo: activar }).then(() => avisar(activar ? 'Usuario activado' : 'Usuario desactivado')).catch((e) => avisar(e.message, 'error'));
+  },
   conexion: () => dialogoConexion(),
-  elegir: (v) => { ui.login = v; render(); setTimeout(() => document.querySelector('[name=contrasena]')?.focus(), 0); },
+  elegir: (v) => {
+    try {
+      if (v && Sync.entrarGuardado(v)) { ui.login = ''; location.hash = '#/tablero'; render(); return; }
+    } catch (e) { avisar(e.message, 'error'); return; }
+    ui.login = v;
+    render();
+    setTimeout(() => document.querySelector('[name=contrasena]')?.focus(), 0);
+  },
+  'cambiar-usuario': () => {
+    try { Sync.cambiarUsuario(); cerrarDialogo(); ui.login = ''; location.hash = ''; render(); } catch (e) { avisar(e.message, 'error'); }
+  },
   cuenta: () => dialogoCuenta(),
   salir: async () => {
     const n = Sync.estado.pendientes.length;
@@ -924,13 +1005,17 @@ document.addEventListener('submit', (e) => {
     const conectar = Sync.conexion() ? Promise.resolve() : Sync.configurarConexion(d.url || API_URL, d.servicio);
     conectar.then(() => Sync.iniciarSesion(d.usuario, d.contrasena)).then(() => {
       ui.login = '';
-      location.hash = S.esNorman() ? '#/programar' : '#/aplicar';
+      location.hash = '#/tablero';
       render();
     }).catch((err) => {
       avisar(navigator.onLine ? err.message : 'Para entrar la primera vez se necesita internet', 'error');
       btn.disabled = false;
       btn.textContent = 'Entrar';
     });
+  } else if (k === 'u-crear') {
+    Sync.adminUsuarios({ op: 'crear', usuario: d.usuario.trim().toLowerCase(), nombre: d.nombre.trim(), rol: d.rol })
+      .then((r) => { form.reset(); mostrarPin(d.nombre.trim(), r.pin); })
+      .catch((e) => avisar(navigator.onLine ? e.message : 'Para crear usuarios se necesita internet', 'error'));
   } else if (k === 'ver-conexion') {
     if (Sync.verificarClaveServicio(d.clave)) dialogoConexion(true);
     else avisar('La contraseña del servicio no es correcta', 'error');
@@ -948,14 +1033,18 @@ document.addEventListener('submit', (e) => {
       btn.textContent = 'Conectar';
     });
   } else if (k === 'nueva-clave' || k === 'cambiar-clave') {
-    if (d.nueva !== d.repetir) { avisar('Las dos contraseñas nuevas no coinciden', 'error'); return; }
+    if (d.nueva !== d.repetir) { avisar('Los dos PIN nuevos no coinciden', 'error'); return; }
+    if (!/^\d{4}$/.test(d.nueva)) { avisar('El PIN debe tener exactamente 4 números', 'error'); return; }
+    if (/^(\d)\1{3}$/.test(d.nueva) || '0123456789'.includes(d.nueva) || '9876543210'.includes(d.nueva)) {
+      avisar('Elija un PIN menos fácil de adivinar (no 1111, 1234, 4321…)', 'error'); return;
+    }
     const btn = form.querySelector('button[type=submit]');
     btn.disabled = true;
     Sync.cambiarContrasena(d.actual || '', d.nueva).then(() => {
       cerrarDialogo();
-      avisar('Contraseña guardada');
+      avisar('PIN guardado');
       render();
-    }).catch((err) => { avisar(navigator.onLine ? err.message : 'Para cambiar la contraseña se necesita internet', 'error'); btn.disabled = false; });
+    }).catch((err) => { avisar(navigator.onLine ? err.message : 'Para cambiar el PIN se necesita internet', 'error'); btn.disabled = false; });
   } else if (k === 'f-fechas') {
     const f = S.factura(form.dataset.v);
     const cambios = { fechaFactura: d.fechaFactura || '', observaciones: d.observaciones, revision: !!d.revision, fechaVence: d.fechaVence || '' };

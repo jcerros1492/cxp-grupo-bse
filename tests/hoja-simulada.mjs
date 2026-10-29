@@ -1,7 +1,7 @@
 // Simulación local de Google Sheets + Apps Script para probar la aplicación sin Google.
 // Ejecuta el mismo Codigo.gs y Logica.gs que se pegan en Apps Script.
 //
-//   node tests/hoja-simulada.mjs [puerto] [hoja-inicial.xlsx]
+//   [MODO_PRUEBAS=1] node tests/hoja-simulada.mjs [puerto] [hoja-inicial.xlsx]
 //   POST /           → doPost (igual que la aplicación web de Apps Script)
 //   GET  /claves     → usuarios y contraseñas temporales creados por configurarInicio() (solo pruebas)
 //   GET  /hoja/<Pestaña> → contenido de una pestaña
@@ -84,7 +84,7 @@ const contexto = vm.createContext({
 vm.runInContext(readFileSync(raiz + 'js/logica.js', 'utf8'), contexto, { filename: 'Logica.gs' });
 const CLAVE_PRUEBA = 'Prueba-Servicio-2026';
 propiedades.CLAVE_SERVICIO = CLAVE_PRUEBA;
-vm.runInContext(readFileSync(raiz + 'apps-script/Codigo.gs', 'utf8').replace("'ESCRIBA-AQUI-SU-CONTRASEÑA';", `'${CLAVE_PRUEBA}';`), contexto, { filename: 'Codigo.gs' });
+vm.runInContext(readFileSync(process.env.CODIGO_GS || raiz + 'apps-script/Codigo.gs', 'utf8').replace("'ESCRIBA-AQUI-SU-CONTRASEÑA';", `'${CLAVE_PRUEBA}';`).replace('var MODO_PRUEBAS = true;', `var MODO_PRUEBAS = ${process.env.MODO_PRUEBAS === '1'};`), contexto, { filename: 'Codigo.gs' });
 // Con un .xlsx como segundo argumento, la hoja simulada arranca con ese contenido
 // (como si se hubiera subido a Drive y abierto con Google Sheets).
 if (process.argv[3]) {

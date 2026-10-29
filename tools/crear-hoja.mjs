@@ -68,9 +68,10 @@ for (const tabla of L.TABLAS) {
   const filas = Object.values(d[tabla]).map((e) => esq.cols.map(([k, t]) => (t === 'n' ? Number(e[k]) || 0 : t === 'b' ? !!e[k] : e[k] == null ? '' : String(e[k]))));
   pestaña(esq.hoja, cols, filas, esq.cols.map((c) => c[1]));
 }
-const temporal = () => 'Cxp-' + randomBytes(4).toString('hex');
+const temporal = () => String(randomBytes(2).readUInt16BE(0) % 10000).padStart(4, '0');
 const usuarios = [
   ['jonathan', 'Jonathan Cerros', 'admin', 'TRUE', temporal(), '', ''],
+  ['fernando', 'Fernando', 'admin', 'TRUE', temporal(), '', ''],
   ['norman', 'Norman Alpízar', 'aprueba', 'TRUE', temporal(), '', ''],
   ['daniel', 'Daniel Barquero', 'aplica', 'TRUE', temporal(), '', ''],
 ];

@@ -12,6 +12,8 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.6.1 | Funciona con el script de Google ya publicado (1.4), sin cambiarlo: PIN de 4 números, modo de pruebas en la aplicación (`MODO_PRUEBAS` en `js/config.js`: tras la primera vez se entra tocando el nombre) y botón «Cambiar de usuario». |
+| 1.6.0 | PIN de 4 números con bloqueo tras 5 intentos; modo de pruebas sin PIN (`MODO_PRUEBAS` en Apps Script); la aplicación abre en el Tablero; pantalla de carga en lugar de "cargar Excel"; administración de usuarios desde Configuración; usuario Fernando (administrador). |
 | 1.5.1 | Dirección del servicio incluida en la aplicación: en un dispositivo nuevo solo se pide la contraseña del servicio. |
 | 1.5.0 | Pantalla de inicio con las tarjetas de los usuarios. La conexión con Google se ve en Configuración, protegida con la contraseña del servicio; en la entrada solo se pide la primera vez en cada dispositivo. |
 | 1.4.0 | Contraseña del servicio escrita en el código de Apps Script. La dirección del servicio sale de la pantalla de entrada y se configura una vez por computadora. Número de versión visible. |
@@ -78,7 +80,7 @@ La hoja se crea a partir del archivo **CXP Grupo BSE.xlsx**, que ya trae todas l
 | Usuarios | Usuario, nombre, rol (`admin`, `aplica` o `aprueba`) y activo. La contraseña se guarda cifrada (columnas *hash* y *sal*); nunca se ve la real. |
 | Sesiones | Computadoras con sesión abierta. Borrar una fila cierra esa sesión. |
 
-**Administrar usuarios desde la hoja:**
+**Administrar usuarios:** desde la aplicación, en *Configuración → Usuarios* (administradores): crear usuarios, generar un PIN temporal nuevo y activar o desactivar. También se puede desde la hoja:
 
 - **Agregar a alguien:** escriba una fila nueva en *Usuarios* con usuario, nombre, rol, `TRUE` y una contraseña temporal en *contrasenaTemporal*.
 - **Si alguien olvida su contraseña:** escriba una contraseña temporal nueva en su fila. Al entrar con ella, la aplicación le pide crear otra.

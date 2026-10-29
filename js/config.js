@@ -3,16 +3,21 @@
 // servicio, que vive solo en Apps Script, la dirección no da acceso a nada.
 export const API_URL = 'https://script.google.com/macros/s/AKfycbxBud0gvtSXjPFC9YKhSvlTxXSwIRgfENyvxSaW7ZwAYiHdcnRcXKa8PK9HYc4njTi9/exec';
 
-// Personas que aparecen en la pantalla de inicio (solo nombre y rol; las
-// contraseñas viven en la hoja de Google, cifradas).
+// Personas de la pantalla de inicio la primera vez en un dispositivo. Después se usa
+// la lista de la hoja de Google (pestaña Usuarios), que se administra desde Configuración.
 export const USUARIOS = [
   { usuario: 'jonathan', nombre: 'Jonathan Cerros', rol: 'admin' },
+  { usuario: 'fernando', nombre: 'Fernando', rol: 'admin' },
   { usuario: 'norman', nombre: 'Norman Alpízar', rol: 'aprueba' },
   { usuario: 'daniel', nombre: 'Daniel Barquero', rol: 'aplica' },
 ];
 
 // Versión de la aplicación: se muestra abajo en cada pantalla para confirmar qué versión está publicada.
-export const VERSION = '1.5.1';
+export const VERSION = '1.6.1';
+
+// Modo de pruebas: cada persona escribe su PIN la primera vez en este dispositivo y
+// después entra tocando su nombre, sin PIN. Para exigir el PIN siempre, ponga false.
+export const MODO_PRUEBAS = true;
 
 // Cada cuántos segundos se buscan cambios de los demás mientras la página está abierta.
 export const SEGUNDOS_SINCRONIZAR = 20;

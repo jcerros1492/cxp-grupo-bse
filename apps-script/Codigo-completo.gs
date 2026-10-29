@@ -1,6 +1,6 @@
-// ===== Archivo único para Apps Script: reglas (Logica) + servicio (Codigo) =====
+// ===== Archivo único para Apps Script: servicio (Codigo) + reglas (Logica) =====
 // Pegue TODO este contenido en Código.gs. No necesita crear otros archivos.
-// Antes de guardar, busque CLAVE_SERVICIO (Ctrl + F) y escriba su contraseña.
+// Antes de guardar, revise CLAVE_SERVICIO y MODO_PRUEBAS (cerca del inicio).
 
 /**
  * Cuentas por Pagar — servicio en Google Sheets.
@@ -24,6 +24,18 @@ var VERSION_SERVICIO = 1;
 //  Después de cambiarla: guarde (Ctrl + S) e implemente una nueva versión.
 // ================================================================
 var CLAVE_SERVICIO = 'ESCRIBA-AQUI-SU-CONTRASEÑA';
+
+// ================================================================
+//  MODO DE PRUEBAS
+//  true  = se entra tocando el nombre, sin PIN (solo para probar).
+//  false = cada persona entra con su PIN de 4 dígitos.
+//  La contraseña del servicio se sigue pidiendo en ambos casos.
+//  Después de cambiarlo: guarde (Ctrl + S) e implemente una nueva versión.
+// ================================================================
+var MODO_PRUEBAS = true;
+
+// Intentos fallidos de PIN antes de bloquear a la persona por 15 minutos.
+var INTENTOS_PIN = 5;
 
 
 // Pestañas de la hoja. Tipos: t = texto, n = número, b = sí/no.
@@ -84,7 +96,7 @@ function manejar_(p) {
     var libro = SpreadsheetApp.getActive();
     // Sin la contraseña del servicio no se atiende ninguna consulta, aunque se conozca el enlace.
     if (!claveServicioCorrecta_(p.servicio)) return { ok: false, servicio: false, error: 'La contraseña del servicio no es correcta' };
-    if (p.accion === 'ping') return { ok: true };
+    if (p.accion === 'ping') return { ok: true, modoPruebas: !!MODO_PRUEBAS, usuarios: listaPublica_(libro) };
     if (p.accion === 'login') return login_(libro, p);
     var usuario = autenticar_(libro, p.token);
     if (!usuario) return { ok: false, auth: false, error: 'La sesión expiró o el usuario fue desactivado. Inicie sesión de nuevo.' };
@@ -92,6 +104,7 @@ function manejar_(p) {
     if (p.accion === 'salir') { cerrarSesion_(libro, p.token); return { ok: true }; }
     if (usuario.debeCambiar) return { ok: false, debeCambiar: true, error: 'Debe crear su contraseña antes de continuar' };
     if (p.accion === 'quienSoy') return { ok: true, usuario: publico_(usuario), hoja: libro.getUrl() };
+    if (p.accion === 'adminUsuarios') return adminUsuarios_(libro, usuario, p);
 
     var ahora = Date.now();
     var alm = cargarTodo_(libro);
@@ -126,6 +139,7 @@ function manejar_(p) {
     var completo = !p.desde || String(p.epoca || '') !== epoca;
     return {
       ok: true, ahora: ahora, epoca: epoca, completo: completo, usuario: publico_(usuario),
+      modoPruebas: !!MODO_PRUEBAS, usuarios: listaPublica_(libro, usuario.rol === 'admin'),
       resultados: resultados, delta: exportar_(d, completo ? -1 : Number(p.desde)),
     };
   } finally {
@@ -163,12 +177,43 @@ function leerUsuarios_(libro) {
     var a = String(f[3]).toUpperCase();
     return {
       fila: i + 2, usuario: String(f[0]).trim().toLowerCase(), nombre: String(f[1]), rol: String(f[2] || 'aplica').toLowerCase(),
-      activo: f[3] === true || a === 'TRUE' || a === 'SI' || a === 'SÍ', temporal: String(f[4] || ''), hash: String(f[5] || ''), sal: String(f[6] || ''),
+      activo: f[3] === true || a === 'TRUE' || a === 'SI' || a === 'SÍ', temporal: normalizarTemporal_(f[4]), hash: String(f[5] || ''), sal: String(f[6] || ''),
     };
   }) };
 }
 
+function normalizarTemporal_(v) {
+  var t = String(v === null || v === undefined ? '' : v).trim();
+  return /^\d{1,4}$/.test(t) ? ('000' + t).slice(-4) : t;
+}
+
 function publico_(u) { return { usuario: u.usuario, nombre: u.nombre, rol: u.rol, debeCambiar: !!u.debeCambiar }; }
+
+/** Nombres y roles para las tarjetas de inicio (nunca PIN ni cifrados). */
+function listaPublica_(libro, conEstado) {
+  return leerUsuarios_(libro).lista.filter(function (u) { return u.usuario && (conEstado || u.activo); }).map(function (u) {
+    var x = { usuario: u.usuario, nombre: u.nombre, rol: u.rol, activo: u.activo };
+    if (conEstado) x.pendiente = !!u.temporal || !u.hash;
+    return x;
+  });
+}
+
+// Bloqueo temporal por intentos fallidos (guardado en las propiedades del script).
+function fallos_(usuario) {
+  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('fallos:' + usuario) || '{}'); } catch (e) { return {}; }
+}
+function anotarFallo_(usuario) {
+  var f = fallos_(usuario);
+  f.n = (f.n || 0) + 1;
+  if (f.n >= INTENTOS_PIN) { f.hasta = Date.now() + 15 * 60 * 1000; f.n = 0; }
+  PropertiesService.getScriptProperties().setProperty('fallos:' + usuario, JSON.stringify(f));
+}
+function limpiarFallos_(usuario) { PropertiesService.getScriptProperties().setProperty('fallos:' + usuario, '{}'); }
+
+function pinTemporal_() {
+  var n = parseInt(Utilities.getUuid().replace(/[^0-9]/g, '').slice(0, 6) || '0', 10) % 10000;
+  return ('000' + n).slice(-4);
+}
 
 function cifrar_(contrasena, sal) {
   var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, sal + '|' + contrasena, Utilities.Charset.UTF_8);
@@ -188,12 +233,20 @@ function login_(libro, p) {
   var clave = String(p.contrasena || '');
   var us = leerUsuarios_(libro).lista;
   var u = us.filter(function (x) { return x.usuario === nombre; })[0];
-  var error = { ok: false, error: 'Usuario o contraseña incorrectos' };
-  if (!u || !nombre || !clave) return error;
+  var error = { ok: false, error: 'PIN incorrecto' };
+  if (!u || !nombre) return { ok: false, error: 'Usuario desconocido' };
   if (!u.activo) return { ok: false, error: 'Este usuario está desactivado. Hable con el administrador.' };
   var debeCambiar = false;
-  if (u.temporal && clave === u.temporal) debeCambiar = true;
-  else if (!(u.hash && cifrar_(clave, u.sal) === u.hash)) return error;
+  if (!MODO_PRUEBAS) {
+    var f = fallos_(u.usuario);
+    if (f.hasta && f.hasta > Date.now()) {
+      return { ok: false, error: 'Demasiados intentos. Espere ' + Math.ceil((f.hasta - Date.now()) / 60000) + ' minutos o pida a un administrador un PIN nuevo.' };
+    }
+    if (!clave) return error;
+    if (u.temporal && clave === u.temporal) debeCambiar = true;
+    else if (!(u.hash && cifrar_(clave, u.sal) === u.hash)) { anotarFallo_(u.usuario); return error; }
+    limpiarFallos_(u.usuario);
+  }
   var token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
   var ahora = new Date();
   agregarFilas_(hoja_(libro, HOJA_SESIONES, COLS_SESIONES), [[token, u.usuario, ahora, ahora, String(p.equipo || '').slice(0, 120)]]);
@@ -216,24 +269,68 @@ function autenticar_(libro, token) {
   if (!nombre) return null;
   var u = leerUsuarios_(libro).lista.filter(function (x) { return x.usuario === nombre; })[0];
   if (!u || !u.activo) return null;
-  u.debeCambiar = !!u.temporal || !u.hash;
+  u.debeCambiar = !MODO_PRUEBAS && (!!u.temporal || !u.hash);
   sh.getRange(fila, 4).setValue(new Date());
   return u;
 }
 
 function cambiarContrasena_(libro, u, p) {
   var nueva = String(p.nueva || '');
-  if (nueva.length < 8) return { ok: false, error: 'La contraseña debe tener al menos 8 caracteres' };
-  if (nueva === u.temporal) return { ok: false, error: 'La nueva contraseña debe ser distinta de la temporal' };
-  if (!u.debeCambiar && !(u.hash && cifrar_(String(p.actual || ''), u.sal) === u.hash)) {
-    return { ok: false, error: 'La contraseña actual no es correcta' };
+  if (!/^\d{4}$/.test(nueva)) return { ok: false, error: 'El PIN debe tener exactamente 4 números' };
+  if (nueva === u.temporal) return { ok: false, error: 'El PIN nuevo debe ser distinto del temporal' };
+  if (/^(\d)\1{3}$/.test(nueva) || '0123456789'.indexOf(nueva) >= 0 || '9876543210'.indexOf(nueva) >= 0) {
+    return { ok: false, error: 'Elija un PIN menos fácil de adivinar (no 1111, 1234, 4321…)' };
+  }
+  var tieneActual = u.hash && !u.temporal;
+  if (!u.debeCambiar && tieneActual && !MODO_PRUEBAS && !(cifrar_(String(p.actual || ''), u.sal) === u.hash)) {
+    return { ok: false, error: 'El PIN actual no es correcto' };
   }
   var sal = Utilities.getUuid().replace(/-/g, '');
   var us = leerUsuarios_(libro);
   us.sh.getRange(u.fila, 5, 1, 3).setNumberFormat('@').setValues([['', cifrar_(nueva, sal), sal]]);
-  agregarFilas_(hoja_(libro, HOJA_BITACORA, COLS_BITACORA), [['clave-' + Date.now(), new Date(), u.nombre, 'cambiar contraseña', 'ok', '']]);
+  agregarFilas_(hoja_(libro, HOJA_BITACORA, COLS_BITACORA), [['clave-' + Date.now(), new Date(), u.nombre, 'cambiar PIN', 'ok', '']]);
   u.debeCambiar = false;
   return { ok: true, usuario: publico_(u) };
+}
+
+/**
+ * Administración de usuarios desde la aplicación (solo rol admin).
+ * op: crear {usuario, nombre, rol} · pin {usuario} (genera PIN temporal) · activo {usuario, activo}
+ */
+function adminUsuarios_(libro, admin, p) {
+  if (admin.rol !== 'admin') return { ok: false, error: 'Solo un administrador puede administrar usuarios' };
+  var us = leerUsuarios_(libro);
+  var nombreU = String(p.usuario || '').trim().toLowerCase();
+  var u = us.lista.filter(function (x) { return x.usuario === nombreU; })[0];
+  var registro = function (detalle) {
+    agregarFilas_(hoja_(libro, HOJA_BITACORA, COLS_BITACORA), [['usuarios-' + Date.now(), new Date(), admin.nombre, 'usuarios', 'ok', detalle]]);
+  };
+  if (p.op === 'crear') {
+    if (!/^[a-z][a-z0-9._-]{1,29}$/.test(nombreU)) return { ok: false, error: 'El usuario debe empezar con una letra y usar solo minúsculas, números, punto o guion' };
+    if (u) return { ok: false, error: 'Ya existe el usuario ' + nombreU };
+    var rol = ['admin', 'aplica', 'aprueba'].indexOf(p.rol) >= 0 ? p.rol : 'aplica';
+    var nombre = String(p.nombre || '').trim();
+    if (!nombre) return { ok: false, error: 'Falta el nombre' };
+    var pin = pinTemporal_();
+    agregarFilas_(us.sh, [[nombreU, nombre, rol, 'TRUE', pin, '', '']], true);
+    registro('creó a ' + nombreU + ' (' + rol + ')');
+    return { ok: true, pin: pin, usuarios: listaPublica_(libro, true) };
+  }
+  if (!u) return { ok: false, error: 'No existe el usuario ' + nombreU };
+  if (p.op === 'pin') {
+    var nuevo = pinTemporal_();
+    us.sh.getRange(u.fila, 5).setNumberFormat('@').setValue(nuevo);
+    limpiarFallos_(u.usuario);
+    registro('PIN temporal nuevo para ' + u.usuario);
+    return { ok: true, pin: nuevo, usuarios: listaPublica_(libro, true) };
+  }
+  if (p.op === 'activo') {
+    if (u.usuario === admin.usuario && !p.activo) return { ok: false, error: 'No puede desactivarse a sí mismo' };
+    us.sh.getRange(u.fila, 4).setNumberFormat('@').setValue(p.activo ? 'TRUE' : 'FALSE');
+    registro((p.activo ? 'activó a ' : 'desactivó a ') + u.usuario);
+    return { ok: true, usuarios: listaPublica_(libro, true) };
+  }
+  return { ok: false, error: 'Operación desconocida' };
 }
 
 function cerrarSesion_(libro, token) {
@@ -329,9 +426,11 @@ function formatos_(tabla) {
   return ESQUEMA[tabla].cols.map(function (c) { return c[1] === 't' ? '@' : c[1] === 'n' ? (c[0] === 'v' ? '0' : '#,##0.00') : 'General'; });
 }
 
-function agregarFilas_(sh, filas) {
+function agregarFilas_(sh, filas, comoTexto) {
   if (!filas.length) return;
-  sh.getRange(sh.getLastRow() + 1, 1, filas.length, filas[0].length).setValues(filas);
+  var r = sh.getRange(sh.getLastRow() + 1, 1, filas.length, filas[0].length);
+  if (comoTexto) r.setNumberFormat('@'); // así un PIN como 0123 no se convierte en 123
+  r.setValues(filas);
 }
 
 function opsHechas_(libro) {
@@ -421,18 +520,25 @@ function configurarInicio() {
   hoja_(libro, HOJA_BITACORA, COLS_BITACORA);
   hoja_(libro, HOJA_SESIONES, COLS_SESIONES);
   var us = hoja_(libro, HOJA_USUARIOS, COLS_USUARIOS);
+  if (us.getLastRow() >= 2) {
+    var existentes = leerUsuarios_(libro).lista.map(function (x) { return x.usuario; });
+    if (existentes.indexOf('fernando') < 0) {
+      agregarFilas_(us, [['fernando', 'Fernando', 'admin', 'TRUE', pinTemporal_(), '', '']], true);
+      Logger.log('Se agregó el usuario fernando (administrador). Su PIN temporal está en la pestaña Usuarios.');
+    }
+  }
   if (us.getLastRow() < 2) {
-    var temporal = function () { return 'Cxp-' + Utilities.getUuid().replace(/-/g, '').slice(0, 6); };
-    us.getRange(2, 1, 3, COLS_USUARIOS.length).setNumberFormat('@').setValues([
-      ['jonathan', 'Jonathan Cerros', 'admin', 'TRUE', temporal(), '', ''],
-      ['norman', 'Norman Alpízar', 'aprueba', 'TRUE', temporal(), '', ''],
-      ['daniel', 'Daniel Barquero', 'aplica', 'TRUE', temporal(), '', ''],
+    us.getRange(2, 1, 4, COLS_USUARIOS.length).setNumberFormat('@').setValues([
+      ['jonathan', 'Jonathan Cerros', 'admin', 'TRUE', pinTemporal_(), '', ''],
+      ['fernando', 'Fernando', 'admin', 'TRUE', pinTemporal_(), '', ''],
+      ['norman', 'Norman Alpízar', 'aprueba', 'TRUE', pinTemporal_(), '', ''],
+      ['daniel', 'Daniel Barquero', 'aplica', 'TRUE', pinTemporal_(), '', ''],
     ]);
   }
   var hoja1 = libro.getSheetByName('Hoja 1') || libro.getSheetByName('Sheet1');
   if (hoja1 && hoja1.getLastRow() === 0 && libro.getSheets().length > 1) libro.deleteSheet(hoja1);
   SpreadsheetApp.flush();
-  Logger.log('Listo. En la pestaña Usuarios está el usuario y la contraseña temporal de cada persona.');
+  Logger.log('Listo. En la pestaña Usuarios está el usuario y el PIN temporal de cada persona.' + (MODO_PRUEBAS ? ' (MODO_PRUEBAS está activo: se entra sin PIN.)' : ''));
   if (!claveServicio_()) Logger.log('ATENCIÓN: falta escribir la contraseña del servicio en CLAVE_SERVICIO, al inicio del código. Sin ella la aplicación no se puede conectar.');
   else if (claveServicio_().length < 10) Logger.log('Sugerencia: use una contraseña del servicio de al menos 10 caracteres.');
   else Logger.log('Contraseña del servicio configurada.');

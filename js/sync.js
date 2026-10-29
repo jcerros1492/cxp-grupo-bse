@@ -5,7 +5,7 @@
 // - Cuando hay internet, la cola se envía al servicio de Google, que la valida y
 //   devuelve lo que cambiaron los demás. Si no hay internet, se reintenta luego.
 
-import { API_URL, SEGUNDOS_SINCRONIZAR } from './config.js';
+import { API_URL, SEGUNDOS_SINCRONIZAR, MODO_PRUEBAS } from './config.js';
 
 const L = window.Logica;
 
@@ -92,7 +92,7 @@ export async function iniciar() {
   window.addEventListener('offline', () => { estado.red = 'offline'; notificar(); });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') sincronizar(); });
   setInterval(() => { if (document.visibilityState === 'visible') sincronizar(); }, SEGUNDOS_SINCRONIZAR * 1000);
-  sincronizar();
+  if (estado.sesion) sincronizar(); else refrescarInicio();
 }
 
 // ---------------------------------------------------------------- Cambios
@@ -143,9 +143,117 @@ export async function configurarConexion(url, clave) {
   const r = await api({ accion: 'ping' }, c);
   if (!r.ok) throw new Error(r.error || 'No se pudo conectar');
   const anterior = conexion();
+  c.modoPruebas = !!r.modoPruebas;
+  // Los scripts más nuevos responden con estos datos; el script 1.4 solo con { ok }.
+  c.pinNativo = 'modoPruebas' in r;
+  c.gestionUsuarios = Array.isArray(r.usuarios);
   localStorage.setItem(CLAVE_CONEXION, JSON.stringify(c));
+  guardarUsuarios(r.usuarios);
   if (anterior && anterior.url !== c.url) await borrarTodo();
   notificar();
+}
+
+// ---------------------------------------------------------------- Usuarios conocidos
+
+const CLAVE_USUARIOS = 'cxp-usuarios';
+
+function guardarUsuarios(lista) {
+  if (!Array.isArray(lista)) return;
+  try { localStorage.setItem(CLAVE_USUARIOS, JSON.stringify(lista)); } catch { /* sin almacenamiento */ }
+}
+
+/** Personas registradas en la hoja (la última lista recibida en este dispositivo). */
+export function usuariosConocidos() {
+  try { return JSON.parse(localStorage.getItem(CLAVE_USUARIOS) || 'null'); } catch { return null; }
+}
+
+/** Modo de pruebas: el del script (si lo tiene) o el de config.js. */
+export const modoPruebas = () => !!conexion()?.modoPruebas || MODO_PRUEBAS;
+export const modoPruebasServidor = () => !!conexion()?.modoPruebas;
+export const gestionUsuarios = () => !!conexion()?.gestionUsuarios;
+
+/**
+ * El script 1.4 pide contraseñas de al menos 8 caracteres. Para usar un PIN de 4 números
+ * sin cambiar el script, el PIN se envía con un formato fijo más largo.
+ */
+function claveDesdePin(pin) {
+  const x = String(pin || '');
+  if (conexion()?.pinNativo || !/^\d{4}$/.test(x)) return x;
+  return 'pin:' + x + ':cxp-bse';
+}
+
+// ---------------------------------------------------------------- Sesiones guardadas (modo de pruebas)
+
+const CLAVE_SESIONES = 'cxp-sesiones';
+function sesionesGuardadas() {
+  try { return JSON.parse(localStorage.getItem(CLAVE_SESIONES) || '{}'); } catch { return {}; }
+}
+function guardarSesionUsuario(s) {
+  if (!MODO_PRUEBAS || !s?.usuario) return;
+  const g = sesionesGuardadas();
+  g[s.usuario] = s;
+  try { localStorage.setItem(CLAVE_SESIONES, JSON.stringify(g)); } catch { /* sin almacenamiento */ }
+}
+function olvidarSesionUsuario(usuario) {
+  const g = sesionesGuardadas();
+  delete g[usuario];
+  try { localStorage.setItem(CLAVE_SESIONES, JSON.stringify(g)); } catch { /* sin almacenamiento */ }
+}
+
+/** En modo de pruebas: entrar tocando el nombre si esa persona ya entró antes en este dispositivo. */
+export function entrarGuardado(usuario) {
+  if (!MODO_PRUEBAS) return false;
+  const s = sesionesGuardadas()[usuario];
+  if (!s || s.debeCambiar) return false;
+  if (estado.pendientes.length && estado.sesion?.usuario !== usuario) {
+    throw new Error('Hay cambios de ' + (estado.sesion?.nombre || 'otra persona') + ' que aún no llegan a Google. Espere a que se sincronicen.');
+  }
+  estado.sesion = { ...s };
+  guardarLocal();
+  notificar();
+  sincronizar();
+  return true;
+}
+
+/** Vuelve a la pantalla de usuarios sin borrar los datos de este dispositivo. */
+export function cambiarUsuario() {
+  if (estado.pendientes.length) throw new Error('Hay cambios que aún no llegan a Google. Espere a que se sincronicen antes de cambiar de usuario.');
+  estado.sesion = null;
+  guardarLocal();
+  notificar();
+}
+
+function actualizarModo(valor) {
+  const c = conexion();
+  if (!c || valor === undefined || !!valor === !!c.modoPruebas) return;
+  c.modoPruebas = !!valor;
+  localStorage.setItem(CLAVE_CONEXION, JSON.stringify(c));
+}
+
+/** Refresca la lista de personas y el modo de pruebas (para la pantalla de inicio). */
+export async function refrescarInicio() {
+  if (!conexion() || !navigator.onLine) return;
+  try {
+    const r = await api({ accion: 'ping' });
+    if (r.ok) {
+      const c = conexion();
+      if (c) {
+        Object.assign(c, { modoPruebas: !!r.modoPruebas, pinNativo: 'modoPruebas' in r, gestionUsuarios: Array.isArray(r.usuarios) });
+        localStorage.setItem(CLAVE_CONEXION, JSON.stringify(c));
+      }
+      guardarUsuarios(r.usuarios);
+      notificar();
+    }
+  } catch { /* sin conexión: se usa lo guardado */ }
+}
+
+/** Administración de usuarios (solo administradores). */
+export async function adminUsuarios(datos) {
+  const r = await api({ accion: 'adminUsuarios', token: estado.sesion.token, ...datos });
+  if (!r.ok) throw new Error(r.error || 'No se pudo completar');
+  guardarUsuarios(r.usuarios);
+  notificar();
+  return r;
 }
 
 /** Confirma que quien quiere cambiar la conexión conoce la contraseña del servicio. */
@@ -186,7 +294,7 @@ export async function sincronizar() {
   try {
     const r = await api({ accion: 'sync', token: estado.sesion.token, desde: estado.desde, epoca: estado.epoca, ops: enviadas });
     if (!r.ok) {
-      if (r.auth === false) { await borrarTodo(); avisar(r.error, 'error'); return; }
+      if (r.auth === false) { olvidarSesionUsuario(estado.sesion?.usuario); await borrarTodo(); avisar(r.error, 'error'); return; }
       if (r.debeCambiar) { estado.sesion.debeCambiar = true; guardarLocal(); return; }
       throw new Error(r.error || 'Error del servicio');
     }
@@ -220,6 +328,8 @@ function recibir(r) {
   estado.epoca = r.epoca || '';
   estado.ultimoSync = Date.now();
   if (r.usuario) Object.assign(estado.sesion, r.usuario);
+  if (r.usuarios) guardarUsuarios(r.usuarios);
+  actualizarModo(r.modoPruebas);
   recomputar();
   guardarLocal();
   mensajes.forEach(([m, t]) => avisar(m, t));
@@ -235,20 +345,30 @@ function nombreEquipo() {
 }
 
 export async function iniciarSesion(usuario, contrasena) {
-  const r = await api({ accion: 'login', usuario: usuario.trim(), contrasena, equipo: nombreEquipo() });
-  if (!r.ok) throw new Error(r.error || 'No se pudo iniciar sesión');
+  // Se prueba el PIN (ya convertido) y, si no coincide, tal cual: así funciona también el PIN
+  // temporal escrito en la hoja, aunque Google lo haya guardado sin el cero inicial.
+  const raw = String(contrasena || '');
+  const candidatos = [...new Set([claveDesdePin(raw), raw, /^\d+$/.test(raw) ? String(Number(raw)) : raw])];
+  let r;
+  for (const c of candidatos) {
+    r = await api({ accion: 'login', usuario: usuario.trim(), contrasena: c, equipo: nombreEquipo() });
+    if (r.ok || /desactivado|intentos/i.test(r.error || '')) break;
+  }
+  if (!r.ok) throw new Error(/incorrect/i.test(r.error || '') ? 'PIN incorrecto' : (r.error || 'No se pudo iniciar sesión'));
   if (estado.sesion?.usuario && estado.sesion.usuario !== r.usuario.usuario) estado.pendientes = [];
   estado.sesion = { token: r.token, ...r.usuario };
   estado.hoja = r.hoja || '';
+  guardarSesionUsuario(estado.sesion);
   guardarLocal();
   notificar();
   await sincronizar();
 }
 
 export async function cambiarContrasena(actual, nueva) {
-  const r = await api({ accion: 'cambiarContrasena', token: estado.sesion.token, actual, nueva });
-  if (!r.ok) throw new Error(r.error || 'No se pudo cambiar la contraseña');
+  const r = await api({ accion: 'cambiarContrasena', token: estado.sesion.token, actual: claveDesdePin(actual), nueva: claveDesdePin(nueva) });
+  if (!r.ok) throw new Error(/contraseña actual/i.test(r.error || '') ? 'El PIN actual no es correcto' : (r.error || 'No se pudo cambiar el PIN'));
   Object.assign(estado.sesion, r.usuario, { debeCambiar: false });
+  guardarSesionUsuario(estado.sesion);
   guardarLocal();
   notificar();
   sincronizar();
@@ -256,6 +376,7 @@ export async function cambiarContrasena(actual, nueva) {
 
 export async function cerrarSesion() {
   const token = estado.sesion?.token;
+  olvidarSesionUsuario(estado.sesion?.usuario);
   if (token && navigator.onLine) api({ accion: 'salir', token }).catch(() => {});
   await borrarTodo();
 }

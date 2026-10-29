@@ -70,6 +70,14 @@ h3 { font-size: 15px; margin: 18px 0 8px; }
 .primera-vez { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px dashed var(--borde-fuerte); border-radius: 8px; background: var(--superficie); }
 .primera-vez strong { font-size: 13px; }
 .caja-url { word-break: break-all; background: #F8F9FB; border: 1px solid var(--borde); border-radius: 6px; padding: 10px; }
+.pin { font-size: 22px !important; letter-spacing: .5em; text-align: center; font-family: var(--mono); }
+.pin-grande { font-family: var(--mono); font-size: 44px; font-weight: 700; letter-spacing: .3em; margin: 6px 0 10px; }
+.aviso-pruebas { background: var(--ambar-fondo); color: var(--ambar); border-radius: 8px; padding: 10px 12px; font-size: 14px; font-weight: 600; margin: 0; }
+.red.pruebas { color: #F0C27A; cursor: default; }
+.cargando { width: 36px; height: 36px; border-radius: 50%; border: 4px solid var(--borde); border-top-color: var(--azul); animation: girar 1s linear infinite; }
+@keyframes girar { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .cargando { animation: none; } }
+.lista-pasos { margin: 6px 0 10px; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
 .form-login { display: flex; flex-direction: column; gap: 14px; width: min(420px, 100%); text-align: left; }
 
 /* Botones y campos */
