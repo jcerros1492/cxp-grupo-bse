@@ -57,6 +57,18 @@ h3 { font-size: 15px; margin: 18px 0 8px; }
 .titulo-vista { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 18px; }
 .acciones, .acciones-fila { display: flex; flex-wrap: wrap; gap: 8px; }
 
+#usuario { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.usuario-info { display: flex; align-items: center; gap: 10px; font: inherit; font-size: 13px; text-align: left; color: #fff; background: none; border: 0; padding: 6px; border-radius: 8px; cursor: pointer; }
+.usuario-info:hover { background: #223140; }
+.usuario-info small { display: block; color: #C9D2DC; }
+.red { font: inherit; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 5px 11px; border: 1px solid transparent; background: #223140; color: #C9D2DC; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.red::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.red.ok { color: #8FD3A8; }
+.red.sync { color: #9CC3EA; cursor: default; }
+.red.off { color: #F0C27A; cursor: default; }
+.red.err { color: #F2A196; border-color: #F2A196; }
+.form-login { display: flex; flex-direction: column; gap: 14px; width: min(420px, 100%); text-align: left; }
+
 /* Botones y campos */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -73,7 +85,7 @@ h3 { font-size: 15px; margin: 18px 0 8px; }
 .btn-link { background: none; border: 0; color: var(--azul); font: inherit; font-size: 12px; cursor: pointer; padding: 2px 4px; text-decoration: underline; }
 .enlace { color: var(--azul); text-decoration: underline; cursor: pointer; }
 
-input[type=text], input[type=search], input[type=date], input[type=number], input:not([type]), select {
+input[type=text], input[type=search], input[type=date], input[type=number], input[type=password], input[type=url], input:not([type]), select {
   font: inherit; font-size: 14px; color: var(--tinta); background: var(--superficie);
   border: 1px solid var(--borde-fuerte); border-radius: 7px; padding: 9px 11px; min-height: 42px; width: 100%;
 }

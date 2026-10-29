@@ -121,3 +121,10 @@ export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().to
 export function ascii(texto) {
   return String(texto ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\x20-\x7E]/g, '');
 }
+
+/** Hora corta para "Sincronizado 10:42" (o fecha si no es de hoy) */
+export function fechaHora(ms) {
+  const d = new Date(ms), hoy = new Date();
+  const hora = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  return d.toDateString() === hoy.toDateString() ? hora : `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)} ${hora}`;
+}

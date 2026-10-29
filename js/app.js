@@ -1,9 +1,11 @@
 // Pantallas y eventos de la aplicación.
 import * as S from './store.js';
+import * as Sync from './sync.js';
+import { API_URL } from './config.js';
 import { importarExcel } from './importer.js';
 import { construirArchivo } from './banco.js';
 import {
-  money, fmtNum, parseNum, fmtFecha, hoyISO, esc, errorIBAN, fmtIBAN, sumarDias, round2, MONEDAS,
+  money, fmtNum, parseNum, fechaHora, fmtFecha, hoyISO, esc, errorIBAN, fmtIBAN, sumarDias, round2, MONEDAS,
 } from './util.js';
 
 const $app = document.getElementById('app');
@@ -30,32 +32,69 @@ const RUTAS = {
 };
 
 function menuPara(usuario) {
-  if (usuario?.id === 'norman') return ['programar', 'tablero', 'facturas'];
+  if (usuario?.rol === 'aprueba') return ['programar', 'tablero', 'facturas'];
   return ['aplicar', 'programar', 'facturas', 'proveedores', 'tablero', 'config'];
 }
 
 function rutaActual() {
   const r = location.hash.replace(/^#\/?/, '').split('?')[0];
   if (RUTAS[r]) return r;
-  return S.usuarioActual()?.id === 'norman' ? 'programar' : 'aplicar';
+  return S.esNorman() ? 'programar' : 'aplicar';
+}
+
+const ROLES = { admin: 'Administra y aplica', aplica: 'Aplica pagos', aprueba: 'Aprueba pagos' };
+
+function indicadorRed() {
+  const e = Sync.estado, n = e.pendientes.length;
+  const pend = n ? ` · ${n} ${n === 1 ? 'cambio por enviar' : 'cambios por enviar'}` : '';
+  if (e.red === 'offline') return `<span class="red off" title="Los cambios se guardan aquí y se envían al volver la conexión">Sin internet${pend}</span>`;
+  if (e.red === 'sync') return `<span class="red sync">Sincronizando…${pend}</span>`;
+  if (e.red === 'error') return `<button class="red err" data-act="sync-ahora" title="${esc(e.error)}">No se pudo sincronizar${pend} · reintentar</button>`;
+  return `<button class="red ok" data-act="sync-ahora" title="Sincronizar ahora">Sincronizado${e.ultimoSync ? ' ' + fechaHora(e.ultimoSync) : ''}${pend}</button>`;
 }
 
 function render() {
   const u = S.usuarioActual();
   const ruta = rutaActual();
-  const nAplicar = S.datos.programaciones.filter((p) => p.estado === 'programado').length;
-  $nav.innerHTML = menuPara(u).map((r) => `
-    <a href="#/${r}" class="${r === ruta ? 'activo' : ''}" ${r === ruta ? 'aria-current="page"' : ''}>${RUTAS[r].titulo}${r === 'aplicar' && nAplicar ? ` <span class="burbuja">${nAplicar}</span>` : ''}</a>`).join('');
+  const foco = guardarFoco();
+  $nav.innerHTML = u ? menuPara(u).map((r) => {
+    const n = r === 'aplicar' ? S.programacionesPendientes().length : 0;
+    return `<a href="#/${r}" class="${r === ruta ? 'activo' : ''}" ${r === ruta ? 'aria-current="page"' : ''}>${RUTAS[r].titulo}${n ? ` <span class="burbuja">${n}</span>` : ''}</a>`;
+  }).join('') : '';
   $user.innerHTML = u
-    ? `<button class="btn-usuario" data-act="elegir-usuario" title="Cambiar de usuario"><span class="avatar" aria-hidden="true">${u.nombre.split(' ').map((p) => p[0]).join('').slice(0, 2)}</span><span><strong>${esc(u.nombre)}</strong><small>${esc(u.rol)}</small></span></button>`
+    ? `${indicadorRed()}<button class="usuario-info" data-act="cuenta" title="Mi cuenta"><span class="avatar" aria-hidden="true">${esc(u.nombre.split(' ').map((p) => p[0]).join('').slice(0, 2))}</span><span><strong>${esc(u.nombre)}</strong><small>${esc(ROLES[u.rol] || u.rol)}</small></span></button>`
     : '';
   document.title = `${RUTAS[ruta].titulo} · Cuentas por Pagar`;
 
-  if (!u) { $app.innerHTML = vistaElegirUsuario(); return; }
-  if (!S.datos.importado && ruta !== 'config') { $app.innerHTML = vistaBienvenida(); return; }
+  if (!Sync.estado.cargado) { $app.innerHTML = '<p class="vacio">Cargando…</p>'; return; }
+  if (!u) { $app.innerHTML = vistaLogin(); return; }
+  if (u.debeCambiar) { $nav.innerHTML = ''; $app.innerHTML = vistaCrearContrasena(); return; }
+  if (!S.hayDatos() && ruta !== 'config') { $app.innerHTML = vistaBienvenida(); return; }
   $app.innerHTML = RUTAS[ruta].vista();
   despuesDeRender(ruta);
+  restaurarFoco(foco);
 }
+
+/** Al llegar cambios de otra persona se redibuja la pantalla: se conserva el campo donde se escribe. */
+function guardarFoco() {
+  const el = document.activeElement;
+  if (!el || !$app.contains(el) || !el.matches('input, select, textarea')) return null;
+  let sel = null;
+  if (el.id) sel = '#' + CSS.escape(el.id);
+  else if (el.dataset.in) sel = `[data-in="${el.dataset.in}"]` + (el.dataset.v ? `[data-v="${CSS.escape(el.dataset.v)}"]` : '');
+  else if (el.name && el.form?.dataset.form) sel = `[data-form="${el.form.dataset.form}"] [name="${el.name}"]`;
+  return { sel, valor: el.value, ini: el.selectionStart, fin: el.selectionEnd };
+}
+function restaurarFoco(f) {
+  if (!f?.sel) return;
+  const el = $app.querySelector(f.sel);
+  if (!el) return;
+  if (el.type !== 'checkbox' && el.value !== f.valor) el.value = f.valor;
+  el.focus();
+  try { if (f.ini != null) el.setSelectionRange(f.ini, f.fin); } catch { /* campo sin selección */ }
+}
+
+const nLineas = (l) => { try { return JSON.parse(l.detalle || '[]').length; } catch { return ''; } };
 
 window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
 S.suscribir(render);
@@ -66,7 +105,7 @@ const chip = (act, valor, actual, texto) =>
   `<button type="button" class="chip ${valor === actual ? 'on' : ''}" data-act="${act}" data-v="${esc(valor)}" aria-pressed="${valor === actual}">${texto}</button>`;
 
 function chipsSociedad(act, actual) {
-  return chip(act, '', actual, 'Todas') + Object.keys(S.datos.sociedades).map((s) => chip(act, s, actual, esc(S.nombreSociedad(s)))).join('');
+  return chip(act, '', actual, 'Todas') + Object.keys(S.sociedades()).map((s) => chip(act, s, actual, esc(S.nombreSociedad(s)))).join('');
 }
 
 function etiquetaDias(f) {
@@ -87,24 +126,67 @@ const totalesTxt = (t) => [t.CRC ? money(t.CRC, 'CRC') : '', t.USD ? money(t.USD
 
 // ---------------------------------------------------------------- Inicio
 
-function vistaElegirUsuario() {
+function vistaLogin() {
+  const pideUrl = !API_URL;
   return `<section class="centro">
-    <h1>¿Quién está usando la aplicación?</h1>
-    <p class="sub">Se recuerda en esta computadora. Puede cambiarlo arriba a la derecha.</p>
-    <div class="usuarios">${S.USUARIOS.map((u) => `
-      <button class="tarjeta-usuario" data-act="usuario" data-v="${u.id}">
-        <span class="avatar grande" aria-hidden="true">${u.nombre.split(' ').map((p) => p[0]).join('').slice(0, 2)}</span>
-        <strong>${esc(u.nombre)}</strong><small>${esc(u.rol)}</small>
-      </button>`).join('')}</div>
+    <h1>Cuentas por Pagar</h1>
+    <p class="sub">Entre con su usuario y contraseña. Si es la primera vez, use la contraseña temporal que le dio Jonathan.</p>
+    <form class="form-login" data-form="login">
+      ${pideUrl ? `<label>Dirección del servicio de Google Sheets <input name="url" type="url" required placeholder="https://script.google.com/macros/s/…/exec" value="${esc(localStorage.getItem('cxp-url') || '')}"></label>` : ''}
+      <label>Usuario <input name="usuario" required autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Ej. norman"></label>
+      <label>Contraseña <input name="contrasena" type="password" required autocomplete="current-password"></label>
+      <button class="btn primario grande" type="submit">Entrar</button>
+    </form>
+    <p class="nota">Después de entrar la primera vez, la aplicación funciona también sin internet en esta computadora.</p>
   </section>`;
 }
 
-function vistaBienvenida() {
+function vistaCrearContrasena() {
+  const u = S.usuarioActual();
   return `<section class="centro">
-    <h1>Cargar las cuentas por pagar</h1>
-    <p class="sub">Seleccione el archivo de Excel (por ejemplo <em>CUENTAS POR PAGAR 25 OCTUBRE 2026.xlsx</em>). Se lee aquí mismo en su navegador; el archivo no se sube a ningún servidor.</p>
-    <label class="btn primario grande">Elegir archivo de Excel<input type="file" accept=".xlsx,.xls" data-in="importar" hidden></label>
-    <p class="nota">¿Tiene un respaldo de la aplicación (.json)? <label class="enlace">Restaurarlo<input type="file" accept=".json" data-in="restaurar" hidden></label></p>
+    <h1>Hola, ${esc(u.nombre.split(' ')[0])}</h1>
+    <p class="sub">Entró con una contraseña temporal. Cree su propia contraseña para continuar; solo usted la va a conocer.</p>
+    <form class="form-login" data-form="nueva-clave">
+      <label>Nueva contraseña <input name="nueva" type="password" required minlength="8" autocomplete="new-password"><span class="ayuda">Al menos 8 caracteres</span></label>
+      <label>Repítala <input name="repetir" type="password" required minlength="8" autocomplete="new-password"></label>
+      <button class="btn primario grande" type="submit">Guardar contraseña</button>
+    </form>
+    <p class="nota"><button class="btn-link" data-act="salir">Salir</button></p>
+  </section>`;
+}
+
+function dialogoCuenta() {
+  const u = S.usuarioActual();
+  abrirDialogo(`
+    <header class="dlg-cab"><div><h2>${esc(u.nombre)}</h2><p class="sub">Usuario <strong>${esc(u.usuario)}</strong> · ${esc(ROLES[u.rol] || u.rol)}</p></div>
+      <button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+    <div class="dlg-cuerpo">
+      <h3>Cambiar contraseña</h3>
+      <form class="form-grid" data-form="cambiar-clave">
+        <label>Contraseña actual <input name="actual" type="password" required autocomplete="current-password"></label>
+        <label>Nueva contraseña <input name="nueva" type="password" required minlength="8" autocomplete="new-password"></label>
+        <label>Repítala <input name="repetir" type="password" required minlength="8" autocomplete="new-password"></label>
+        <div class="ancho"><button class="btn primario" type="submit">Cambiar contraseña</button></div>
+      </form>
+      <h3>Sesión</h3>
+      <p class="sub">La sesión queda abierta en esta computadora, también sin internet, hasta que la cierre.</p>
+      <button class="btn" data-act="salir">Cerrar sesión</button>
+    </div>`);
+}
+
+function vistaBienvenida() {
+  if (S.esAdmin()) {
+    return `<section class="centro">
+      <h1>Cargar las cuentas por pagar</h1>
+      <p class="sub">La hoja de Google está vacía. Elija el Excel de cuentas por pagar: se convierte aquí y se guarda en Google Sheets. Toma un minuto.</p>
+      <label class="btn primario grande">Elegir archivo de Excel<input type="file" accept=".xlsx,.xls" data-in="importar" hidden></label>
+      <p class="nota" id="progreso-import"></p>
+    </section>`;
+  }
+  return `<section class="centro">
+    <h1>Todavía no hay datos</h1>
+    <p class="sub">Jonathan debe cargar el Excel por primera vez. Cuando lo haga, los datos aparecerán aquí solos.</p>
+    <button class="btn" data-act="sync-ahora">Revisar ahora</button>
   </section>`;
 }
 
@@ -139,7 +221,7 @@ function vistaProgramar() {
     .map((fs) => fs.sort((a, b) => (a.fechaVence || '').localeCompare(b.fechaVence || '')))
     .sort((a, b) => S.proveedor(a[0].codigo).nombre.localeCompare(S.proveedor(b[0].codigo).nombre));
 
-  const programado = S.datos.programaciones.filter((p) => p.estado === 'programado')
+  const programado = S.programacionesPendientes()
     .map((p) => ({ p, f: S.factura(p.facturaId) })).filter((x) => x.f)
     .sort((a, b) => a.p.fechaPago.localeCompare(b.p.fechaPago));
 
@@ -217,7 +299,7 @@ function filaProgramar(f) {
   }
   return `<div class="fila-fact ${sel ? 'marcada' : ''}" data-fila="${f.id}">
     <label class="ck"><input type="checkbox" data-in="p-sel" data-v="${f.id}" ${sel ? 'checked' : ''}><span class="vh">Pagar factura ${esc(f.documento)}</span></label>
-    <span class="doc">Fact. ${esc(f.documento)}${f.revision ? ' <span class="estado rev">Revisión</span>' : ''}${f.movimientos.length ? ` <span class="tag-abono" title="Ya tiene abonos">abonada</span>` : ''}</span>
+    <span class="doc">Fact. ${esc(f.documento)}${f.revision ? ' <span class="estado rev">Revisión</span>' : ''}${S.movimientosDe(f).length ? ` <span class="tag-abono" title="Ya tiene abonos">abonada</span>` : ''}</span>
     <span class="venc">${f.fechaVence ? fmtFecha(f.fechaVence) : ''} ${etiquetaDias(f)}</span>
     <span class="saldo">${money(s, f.moneda)}</span>
     <span class="apagar">${sel ? `<label><span class="vh">Monto a pagar de la factura ${esc(f.documento)}</span>
@@ -259,7 +341,7 @@ function actualizarBarra() {
 
 function vistaAplicar() {
   const lotes = S.lotesPendientes();
-  const hechos = [...S.datos.lotes].reverse().slice(0, 15);
+  const hechos = S.lotesAplicados().slice(0, 15);
   return `
   <div class="titulo-vista">
     <div>
@@ -274,7 +356,7 @@ function vistaAplicar() {
     <div class="tabla-scroll"><table class="tabla">
       <thead><tr><th>Fecha</th><th>Sociedad</th><th>Comprobante</th><th class="num">Total</th><th>Proveedores</th><th>Aplicó</th></tr></thead>
       <tbody>${hechos.map((l) => `<tr><td>${fmtFecha(l.fecha)}</td><td>${esc(S.nombreSociedad(l.sociedad))}</td><td>${esc(l.comprobante)}</td>
-        <td class="num">${money(l.total, l.moneda)}</td><td>${l.lineas.length}</td><td>${esc(l.aplicadoPor)}</td></tr>`).join('')}</tbody>
+        <td class="num">${money(l.total, l.moneda)}</td><td>${nLineas(l)}</td><td>${esc(l.aplicadoPor)}</td></tr>`).join('')}</tbody>
     </table></div>
   </section>` : ''}`;
 }
@@ -326,11 +408,11 @@ function loteDe(idCodificado) {
 }
 
 function textoArchivo(l) {
-  const soc = S.datos.sociedades[l.sociedad];
+  const soc = S.sociedades()[l.sociedad];
   return construirArchivo({
-    cliente: S.datos.config.clienteBanco,
+    cliente: S.cfg('clienteBanco'),
     fecha: l.fecha,
-    control: S.datos.config.controlEncabezado,
+    control: S.cfg('controlEncabezado'),
     debito: { iban: l.cuentaDebito, descripcion: soc?.descripcionBanco || ('PROVEE ' + S.nombreSociedad(l.sociedad)).toUpperCase() },
     creditos: l.lineas.map((ln) => ({ iban: ln.iban, monto: ln.total, descripcion: ln.descripcion })),
   });
@@ -351,13 +433,13 @@ function descargar(nombre, contenido, tipo) {
 function vistaFacturas() {
   const F = ui.fact;
   const texto = F.q.trim().toLowerCase();
-  let lista = S.datos.facturas.filter((f) => {
+  let lista = S.listaFacturas().filter((f) => {
     if (F.soc && f.sociedad !== F.soc) return false;
     if (F.mon && f.moneda !== F.mon) return false;
     const e = S.estado(f);
     if (F.est === 'saldo' && e === 'Cancelada') return false;
     if (F.est && F.est !== 'saldo' && e !== F.est) return false;
-    if (texto && !(`${S.proveedor(f.codigo).nombre} ${f.documento} ${f.movimientos.map((m) => m.comprobante).join(' ')}`.toLowerCase().includes(texto))) return false;
+    if (texto && !(`${S.proveedor(f.codigo).nombre} ${f.documento} ${S.movimientosDe(f).map((m) => m.comprobante).join(' ')}`.toLowerCase().includes(texto))) return false;
     return true;
   });
   lista.sort((a, b) => (b.fechaFactura || '').localeCompare(a.fechaFactura || ''));
@@ -366,7 +448,7 @@ function vistaFacturas() {
   lista = lista.slice(0, F.limite);
   return `
   <div class="titulo-vista">
-    <div><h1>Facturas</h1><p class="sub">${S.datos.facturas.length} facturas en total</p></div>
+    <div><h1>Facturas</h1><p class="sub">${S.listaFacturas().length} facturas en total</p></div>
     <div class="acciones"><button class="btn primario" data-act="f-nueva">+ Nueva factura</button></div>
   </div>
   <div class="filtros">
@@ -419,9 +501,9 @@ function dialogoFactura(id) {
         <div class="ancho"><button class="btn" type="submit">Guardar cambios</button></div>
       </form>
       <h3>Movimientos</h3>
-      ${f.movimientos.length ? `<div class="tabla-scroll"><table class="tabla">
+      ${S.movimientosDe(f).length ? `<div class="tabla-scroll"><table class="tabla">
         <thead><tr><th>Fecha</th><th>Tipo</th><th>Comprobante</th><th class="num">Monto</th><th class="num">Saldo después</th><th>Registró</th></tr></thead>
-        <tbody>${f.movimientos.map((m) => {
+        <tbody>${S.movimientosDe(f).map((m) => {
           if (m.tipo !== 'cargo') acumulado = round2(acumulado - m.monto);
           return `<tr><td>${fmtFecha(m.fecha) || '<span class="sub">sin fecha</span>'}</td><td>${tipos[m.tipo] || m.tipo}</td><td>${esc(m.comprobante)}</td>
             <td class="num">${money(m.monto, f.moneda)}</td><td class="num">${m.tipo === 'cargo' ? '' : money(acumulado, f.moneda)}</td><td>${esc(m.por)}</td></tr>`;
@@ -439,8 +521,8 @@ function dialogoFactura(id) {
 }
 
 function dialogoNuevaFactura() {
-  const socs = Object.keys(S.datos.sociedades);
-  const provs = Object.values(S.datos.proveedores).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const socs = Object.keys(S.sociedades());
+  const provs = Object.values(S.datos().proveedores).sort((a, b) => a.nombre.localeCompare(b.nombre));
   abrirDialogo(`
     <header class="dlg-cab"><h2>Nueva factura</h2><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
     <form class="dlg-cuerpo form-grid" data-form="f-crear">
@@ -469,16 +551,16 @@ function vistaProveedores() {
     t[f.moneda] = round2(t[f.moneda] + S.saldo(f)); t.n++;
     saldoPorProv.set(f.codigo, t);
   }
-  let lista = Object.values(S.datos.proveedores).filter((p) => {
+  let lista = Object.values(S.datos().proveedores).filter((p) => {
     if (texto && !(`${p.nombre} ${p.alias} ${p.codigo}`.toLowerCase().includes(texto))) return false;
     if (P.filtro === 'sin-iban' && (p.ibanCRC || p.ibanUSD)) return false;
     if (P.filtro === 'con-saldo' && !saldoPorProv.has(p.codigo)) return false;
     return true;
   }).sort((a, b) => a.nombre.localeCompare(b.nombre));
-  const conIban = Object.values(S.datos.proveedores).filter((p) => p.ibanCRC || p.ibanUSD).length;
+  const conIban = Object.values(S.datos().proveedores).filter((p) => p.ibanCRC || p.ibanUSD).length;
   return `
   <div class="titulo-vista">
-    <div><h1>Proveedores</h1><p class="sub">${Object.keys(S.datos.proveedores).length} proveedores · ${conIban} con cuenta IBAN</p></div>
+    <div><h1>Proveedores</h1><p class="sub">${Object.keys(S.datos().proveedores).length} proveedores · ${conIban} con cuenta IBAN</p></div>
     <div class="acciones"><button class="btn primario" data-act="pv-nuevo">+ Nuevo proveedor</button></div>
   </div>
   <div class="filtros">
@@ -533,7 +615,7 @@ function vistaTablero() {
   const venc = pend.filter((f) => S.diasVencida(f) > 0);
   const semana = pend.filter((f) => { const d = S.diasVencida(f); return d != null && d <= 0 && d > -7; });
   const tramos = [['Por vencer', (d) => d <= 0], ['1–30 días', (d) => d >= 1 && d <= 30], ['31–60 días', (d) => d > 30 && d <= 60], ['61–90 días', (d) => d > 60 && d <= 90], ['Más de 90', (d) => d > 90]];
-  const socs = Object.keys(S.datos.sociedades);
+  const socs = Object.keys(S.sociedades());
   return `
   <div class="titulo-vista"><div><h1>Tablero</h1><p class="sub">Al ${fmtFecha(hoyISO())}</p></div></div>
   <div class="kpis">
@@ -557,16 +639,28 @@ function vistaTablero() {
 // ---------------------------------------------------------------- Configuración
 
 function vistaConfig() {
-  const c = S.datos.config;
-  const socs = Object.entries(S.datos.sociedades);
+  const socs = Object.entries(S.sociedades());
+  const e = Sync.estado;
+  const imp = S.cfg('importado');
   return `
-  <div class="titulo-vista"><div><h1>Configuración</h1><p class="sub">${S.datos.importado ? 'Datos cargados el ' + new Date(S.datos.importado).toLocaleString('es-CR') : 'Aún no se han cargado datos'}</p></div></div>
+  <div class="titulo-vista"><div><h1>Configuración</h1><p class="sub">${imp ? 'Excel cargado: ' + esc(imp) : 'Aún no se ha cargado el Excel'}</p></div></div>
+
+  <section class="bloque">
+    <h2>Google Sheets</h2>
+    <p class="sub">Toda la información se guarda en la hoja de Google. Cada computadora tiene además una copia para trabajar sin internet.</p>
+    <div class="acciones-fila">
+      ${e.hoja ? `<a class="btn" href="${esc(e.hoja)}" target="_blank" rel="noopener">Abrir la hoja de Google</a>` : ''}
+      <button class="btn" data-act="sync-ahora">Sincronizar ahora</button>
+      <button class="btn" data-act="cfg-excel" ${S.hayDatos() ? '' : 'disabled'}>Exportar facturas a Excel</button>
+    </div>
+    <p class="sub">${e.pendientes.length ? `${e.pendientes.length} cambios esperando conexión para enviarse.` : 'No hay cambios pendientes de enviar.'}${e.error ? ' Último error: ' + esc(e.error) : ''}</p>
+  </section>
 
   <section class="bloque">
     <h2>Banco</h2>
     <form class="form-grid" data-form="cfg-banco">
-      <label>Código de cliente en el banco <input name="clienteBanco" value="${esc(c.clienteBanco)}" placeholder="Ej. 1234"></label>
-      <label>Campo de control del encabezado (posiciones 27-38) <input name="controlEncabezado" value="${esc(c.controlEncabezado)}" placeholder="12 dígitos, por confirmar con el banco"></label>
+      <label>Código de cliente en el banco <input name="clienteBanco" value="${esc(S.cfg('clienteBanco'))}" placeholder="Ej. 1234"></label>
+      <label>Campo de control del encabezado (posiciones 27-38) <input name="controlEncabezado" value="${esc(S.cfg('controlEncabezado'))}" placeholder="12 dígitos, por confirmar con el banco"></label>
       <p class="ancho sub">El campo de control aún no está confirmado: pregunte al banco qué valor lleva. Si se deja vacío, se llena con ceros.</p>
       <div class="ancho"><button class="btn primario" type="submit">Guardar</button></div>
     </form>
@@ -585,17 +679,12 @@ function vistaConfig() {
     </form>`).join('') : '<p class="sub">Aparecerán al cargar el Excel.</p>'}
   </section>
 
-  <section class="bloque">
-    <h2>Datos</h2>
-    <p class="sub">Por ahora los datos se guardan solo en este navegador. Descargue un respaldo con frecuencia.</p>
-    <div class="acciones-fila">
-      <button class="btn" data-act="cfg-respaldo">Descargar respaldo (.json)</button>
-      <label class="btn">Restaurar respaldo<input type="file" accept=".json" data-in="restaurar" hidden></label>
-      <button class="btn" data-act="cfg-excel" ${S.datos.importado ? '' : 'disabled'}>Exportar facturas a Excel</button>
-      <label class="btn">Volver a cargar el Excel<input type="file" accept=".xlsx,.xls" data-in="importar" hidden></label>
-    </div>
-    <p class="sub">Volver a cargar el Excel reemplaza facturas, pagos y programaciones; conserva IBAN, alias y cuentas.</p>
-  </section>`;
+  ${S.esAdmin() ? `<section class="bloque">
+    <h2>Volver a cargar el Excel</h2>
+    <p class="sub">Reemplaza en Google Sheets todas las facturas, pagos y programaciones por los del Excel. Se conservan IBAN, alias y cuentas. Úselo solo para empezar de nuevo.</p>
+    <label class="btn">Elegir archivo de Excel<input type="file" accept=".xlsx,.xls" data-in="importar" hidden></label>
+    <p class="nota" id="progreso-import"></p>
+  </section>` : ''}`;
 }
 
 // ---------------------------------------------------------------- Diálogo
@@ -636,23 +725,31 @@ document.addEventListener('keydown', (e) => {
 });
 
 const acciones = {
-  usuario: (v) => { S.cambiarUsuario(v); location.hash = v === 'norman' ? '#/programar' : '#/aplicar'; },
-  'elegir-usuario': () => { localStorage.removeItem('cxp-usuario'); render(); },
+  'sync-ahora': () => Sync.sincronizar(),
+  cuenta: () => dialogoCuenta(),
+  salir: async () => {
+    const n = Sync.estado.pendientes.length;
+    if (!confirm(n ? `Hay ${n} cambios que aún no llegan a Google Sheets y se perderán. ¿Cerrar sesión de todos modos?` : '¿Cerrar sesión en esta computadora?')) return;
+    cerrarDialogo();
+    await Sync.cerrarSesion();
+    location.hash = '';
+  },
   cerrar: cerrarDialogo,
 
   'p-soc': (v) => { ui.prog.soc = v; render(); },
   'p-mon': (v) => { ui.prog.mon = v; render(); },
   'p-todas': (v) => { for (const id of v.split(',')) { const f = S.factura(id); if (!S.programacionDe(f) && !ui.prog.sel.has(id)) ui.prog.sel.set(id, fmtNum(S.saldo(f))); } render(); },
-  'p-quitar': (v) => { if (confirm('¿Quitar este pago de lo programado?')) S.quitarProgramacion(v, 'Quitado por Norman'); },
+  'p-quitar': (v) => { if (confirm('¿Quitar este pago de lo programado?')) resultado(S.quitarProgramacion(v, 'Quitado por Norman'), 'Pago quitado'); },
   'p-enviar': () => {
     const items = [...ui.prog.sel].map(([facturaId, txt]) => ({ facturaId, monto: parseNum(txt) }));
-    const errores = S.programarPagos(items, ui.prog.fecha);
-    if (errores.length) { avisar(errores.join(' · '), 'error'); return; }
+    const r = S.programarPagos(items, ui.prog.fecha);
+    if (r.error) { avisar(r.error, 'error'); return; }
     ui.prog.sel.clear();
-    avisar(`${items.length} ${items.length === 1 ? 'pago programado' : 'pagos programados'} para el ${fmtFecha(ui.prog.fecha)}`);
+    render();
+    avisar(`${items.length} ${items.length === 1 ? 'pago programado' : 'pagos programados'} para el ${fmtFecha(ui.prog.fecha)}` + (r.avisos.length ? ' · ' + r.avisos.join(' · ') : ''));
   },
 
-  'a-devolver': (v) => { if (confirm('¿Devolver esta factura a Norman? Saldrá de este lote.')) S.quitarProgramacion(v, 'Devuelto'); },
+  'a-devolver': (v) => { if (confirm('¿Devolver esta factura a Norman? Saldrá de este lote.')) resultado(S.quitarProgramacion(v, 'Devuelto'), 'Devuelta a Norman'); },
   'a-txt': (v) => {
     const l = loteDe(v);
     try {
@@ -674,8 +771,7 @@ const acciones = {
     const comp = document.getElementById('comp-' + v).value.trim();
     const fecha = document.getElementById('fecha-' + v).value;
     if (!confirm(`¿Aplicar el pago de ${money(l.total, l.moneda)} con el comprobante ${comp || '(vacío)'}?`)) return;
-    const err = S.aplicarLote(l, { comprobante: comp, fecha });
-    if (err) avisar(err, 'error'); else avisar('Pago aplicado');
+    resultado(S.aplicarLote(l, { comprobante: comp, fecha }), 'Pago aplicado');
   },
   'ir-prov': (v) => { location.hash = '#/proveedores'; setTimeout(() => dialogoProveedor(v), 0); },
 
@@ -688,7 +784,6 @@ const acciones = {
   'pv-abrir': (v) => dialogoProveedor(v),
   'pv-nuevo': () => dialogoProveedor(null),
 
-  'cfg-respaldo': () => descargar(`respaldo-cuentas-por-pagar-${hoyISO()}.json`, JSON.stringify(S.datos, null, 1), 'application/json'),
   'cfg-excel': () => exportarExcel(),
 };
 
@@ -738,32 +833,24 @@ document.addEventListener('change', async (e) => {
       if (!(n >= 0)) { avisar('Monto de intereses inválido', 'error'); return; }
       S.guardarBorrador(clave, el.dataset.v, { extra: round2(n), descripcion: undefined });
     } else S.guardarBorrador(clave, el.dataset.v, { descripcion: el.value });
+    render();
     return;
   }
   if (k === 'importar') {
     const file = el.files[0];
+    el.value = '';
     if (!file) return;
-    if (S.datos.importado && !confirm('Esto reemplaza las facturas, pagos y programaciones registrados en la aplicación por los del Excel. Se conservan IBAN, alias y cuentas. ¿Continuar?')) { el.value = ''; return; }
+    if (S.hayDatos() && !confirm('Esto reemplaza en Google Sheets todas las facturas, pagos y programaciones por los del Excel. Se conservan IBAN, alias y cuentas. ¿Continuar?')) return;
+    const $p = document.getElementById('progreso-import');
+    const paso = (t) => { if ($p) $p.textContent = t; };
     try {
+      paso('Leyendo el Excel…');
       const res = importarExcel(await file.arrayBuffer(), window.XLSX);
-      S.cargarImportacion(res);
-      avisar(`Se cargaron ${res.facturas.length} facturas` + (res.avisos.length ? ` (${res.avisos.length} avisos)` : ''));
-      if (res.avisos.length) console.warn(res.avisos);
-    } catch (err) { avisar('No se pudo leer el Excel: ' + err.message, 'error'); }
-    el.value = '';
-    return;
-  }
-  if (k === 'restaurar') {
-    const file = el.files[0];
-    if (!file) return;
-    try {
-      const d = JSON.parse(await file.text());
-      if (!Array.isArray(d.facturas)) throw new Error('no es un respaldo de esta aplicación');
-      if (S.datos.importado && !confirm('Esto reemplaza todos los datos de este navegador por los del respaldo. ¿Continuar?')) return;
-      S.reemplazarDatos(d);
-      avisar('Respaldo restaurado');
-    } catch (err) { avisar('No se pudo restaurar: ' + err.message, 'error'); }
-    el.value = '';
+      paso(`Enviando ${res.facturas.length} facturas a Google Sheets… (puede tardar un minuto)`);
+      await Sync.importar(S.paqueteImportacion(res));
+      paso('');
+      avisar(`Se cargaron ${res.facturas.length} facturas en Google Sheets` + (res.avisos.length ? ` (${res.avisos.length} avisos)` : ''));
+    } catch (err) { paso(''); avisar('No se pudo cargar el Excel: ' + err.message, 'error'); }
   }
 });
 
@@ -772,45 +859,54 @@ document.addEventListener('submit', (e) => {
   if (!k) return;
   e.preventDefault();
   const d = Object.fromEntries(new FormData(form));
-  if (k === 'f-fechas') {
+  if (k === 'login') {
+    const btn = form.querySelector('button[type=submit]');
+    btn.disabled = true;
+    btn.textContent = 'Entrando…';
+    if (d.url) localStorage.setItem('cxp-url', d.url.trim());
+    Sync.iniciarSesion(d.usuario, d.contrasena, d.url).then(() => {
+      location.hash = S.esNorman() ? '#/programar' : '#/aplicar';
+      render();
+    }).catch((err) => {
+      avisar(navigator.onLine ? err.message : 'Para entrar la primera vez se necesita internet', 'error');
+      btn.disabled = false;
+      btn.textContent = 'Entrar';
+    });
+  } else if (k === 'nueva-clave' || k === 'cambiar-clave') {
+    if (d.nueva !== d.repetir) { avisar('Las dos contraseñas nuevas no coinciden', 'error'); return; }
+    const btn = form.querySelector('button[type=submit]');
+    btn.disabled = true;
+    Sync.cambiarContrasena(d.actual || '', d.nueva).then(() => {
+      cerrarDialogo();
+      avisar('Contraseña guardada');
+      render();
+    }).catch((err) => { avisar(navigator.onLine ? err.message : 'Para cambiar la contraseña se necesita internet', 'error'); btn.disabled = false; });
+  } else if (k === 'f-fechas') {
     const f = S.factura(form.dataset.v);
-    const cambios = { fechaFactura: d.fechaFactura || null, observaciones: d.observaciones, revision: !!d.revision };
-    if ((d.fechaVence || null) !== f.fechaVence) Object.assign(cambios, { fechaVence: d.fechaVence || null, venceEstimado: false });
-    S.actualizarFactura(f.id, cambios);
-    avisar('Cambios guardados');
-    dialogoFactura(f.id);
+    const cambios = { fechaFactura: d.fechaFactura || '', observaciones: d.observaciones, revision: !!d.revision, fechaVence: d.fechaVence || '' };
+    if (resultado(S.actualizarFactura(f.id, cambios), 'Cambios guardados')) dialogoFactura(f.id);
   } else if (k === 'f-mov') {
-    const err = S.registrarMovimiento(form.dataset.v, { tipo: d.tipo, monto: parseNum(d.monto), fecha: d.fecha, comprobante: d.comprobante });
-    if (err) avisar(err, 'error'); else { avisar('Movimiento registrado'); dialogoFactura(form.dataset.v); }
+    if (resultado(S.registrarMovimiento(form.dataset.v, { tipo: d.tipo, monto: parseNum(d.monto), fecha: d.fecha, comprobante: d.comprobante }), 'Movimiento registrado')) dialogoFactura(form.dataset.v);
   } else if (k === 'f-crear') {
     const codigo = (d.proveedor.match(/·\s*(\S+)$/) || [])[1];
-    if (!codigo || !S.datos.proveedores[codigo]) { avisar('Elija el proveedor de la lista (o créelo en Proveedores)', 'error'); return; }
+    if (!codigo || !S.datos().proveedores[codigo]) { avisar('Elija el proveedor de la lista (o créelo en Proveedores)', 'error'); return; }
     const monto = parseNum(d.monto);
     if (!(monto > 0)) { avisar('Monto inválido', 'error'); return; }
-    const err = S.nuevaFactura({ sociedad: d.sociedad, codigo, documento: d.documento.trim(), moneda: d.moneda, fechaFactura: d.fechaFactura, fechaVence: d.fechaVence || sumarDias(d.fechaFactura, 30), monto, observaciones: d.observaciones });
-    if (err) avisar(err, 'error'); else { cerrarDialogo(); avisar('Factura guardada'); }
+    const r = S.nuevaFactura({ sociedad: d.sociedad, codigo, documento: d.documento.trim(), moneda: d.moneda, fechaFactura: d.fechaFactura, fechaVence: d.fechaVence || sumarDias(d.fechaFactura, 30), monto, observaciones: d.observaciones });
+    if (resultado(r, 'Factura guardada')) cerrarDialogo();
   } else if (k === 'pv-guardar') {
-    for (const c of ['ibanCRC', 'ibanUSD']) if (d[c].trim() && errorIBAN(d[c])) { avisar(`El IBAN en ${c === 'ibanCRC' ? 'colones' : 'dólares'} no es válido`, 'error'); return; }
-    const codigo = d.codigo.trim();
-    if (!form.querySelector('[name=codigo]').readOnly && S.datos.proveedores[codigo]) { avisar('Ya existe un proveedor con ese código', 'error'); return; }
-    S.actualizarProveedor(codigo, { codigo, nombre: d.nombre.trim(), alias: d.alias.trim(), ibanCRC: d.ibanCRC, ibanUSD: d.ibanUSD, plazo: Number(d.plazo) || 30 });
-    cerrarDialogo();
-    avisar('Proveedor guardado');
+    const nuevo = !form.querySelector('[name=codigo]').readOnly;
+    if (resultado(S.guardarProveedor(d.codigo.trim(), { nombre: d.nombre, alias: d.alias, ibanCRC: d.ibanCRC, ibanUSD: d.ibanUSD, plazo: d.plazo }, nuevo), 'Proveedor guardado')) cerrarDialogo();
   } else if (k === 'cfg-banco') {
-    if (d.controlEncabezado.trim() && !/^\d{1,12}$/.test(d.controlEncabezado.trim())) { avisar('El campo de control debe tener hasta 12 dígitos', 'error'); return; }
-    if (d.clienteBanco.trim() && !/^\d{1,15}$/.test(d.clienteBanco.trim())) { avisar('El código de cliente debe tener solo dígitos', 'error'); return; }
-    S.actualizarConfig({ clienteBanco: d.clienteBanco.trim(), controlEncabezado: d.controlEncabezado.trim() });
-    avisar('Configuración guardada');
+    resultado(S.guardarConfig({ clienteBanco: d.clienteBanco.trim(), controlEncabezado: d.controlEncabezado.trim() }), 'Configuración guardada');
   } else if (k === 'cfg-soc') {
-    for (const c of ['cuentaCRC', 'cuentaUSD']) if (d[c].trim() && errorIBAN(d[c])) { avisar('Hay un IBAN inválido', 'error'); return; }
-    S.actualizarSociedad(form.dataset.v, d);
-    avisar('Sociedad guardada');
+    resultado(S.guardarSociedad(form.dataset.v, d), 'Sociedad guardada');
   }
 });
 
 function exportarExcel() {
-  const filas = S.datos.facturas.map((f) => {
-    const ultimo = [...f.movimientos].reverse().find((m) => m.tipo !== 'cargo');
+  const filas = S.listaFacturas().map((f) => {
+    const ultimo = [...S.movimientosDe(f)].reverse().find((m) => m.tipo !== 'cargo');
     return {
       'Origen de la Factura': f.sociedad, 'Código': f.codigo, 'Nombre del Proveedor': S.proveedor(f.codigo).nombre,
       'Fec/Factura': fmtFecha(f.fechaFactura), 'Fec/Vence': fmtFecha(f.fechaVence), 'Vence estimado': f.venceEstimado ? 'Sí' : '',
@@ -824,4 +920,17 @@ function exportarExcel() {
   XLSX.writeFile(wb, `cuentas-por-pagar-${hoyISO()}.xlsx`);
 }
 
+/** Muestra el resultado de un cambio. Devuelve true si se aplicó. */
+function resultado(r, okMsg) {
+  if (r.error) { avisar(r.error, 'error'); return false; }
+  avisar(okMsg + (r.avisos?.length ? ' · ' + r.avisos.join(' · ') : ''));
+  return true;
+}
+
+Sync.alAvisar((msg, tipo) => avisar(msg, tipo === 'aviso' ? 'ok' : tipo));
+Sync.iniciar();
 render();
+
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Sin modo sin internet:', e));
+}
