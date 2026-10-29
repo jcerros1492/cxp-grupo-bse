@@ -21,6 +21,7 @@
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
+html, body { max-width: 100%; overflow-x: hidden; }
 body {
   margin: 0; background: var(--fondo); color: var(--tinta);
   font: 15px/1.45 Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -39,7 +40,7 @@ h3 { font-size: 15px; margin: 18px 0 8px; }
 .bien { color: var(--verde); font-weight: 600; }
 
 /* Cabecera */
-.cabecera { background: var(--tinta); color: #fff; padding: 0 24px; position: sticky; top: 0; z-index: 20; }
+.cabecera { background: var(--tinta); color: #fff; padding: env(safe-area-inset-top, 0px) max(24px, env(safe-area-inset-right, 0px)) 0 max(24px, env(safe-area-inset-left, 0px)); position: sticky; top: 0; z-index: 20; }
 .cabecera-interior { max-width: 1280px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 24px; min-height: 60px; }
 .marca { color: #fff; text-decoration: none; font-weight: 700; font-size: 17px; }
 #nav { display: flex; flex-wrap: wrap; gap: 2px; flex: 1 1 auto; }
@@ -154,7 +155,7 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--azul); mar
 .est { display: inline-block; border: 1px dashed #8A949F; border-radius: 4px; padding: 0 5px; font-size: 10px; font-weight: 700; color: #4E5864; margin-left: 4px; vertical-align: middle; }
 .tag-abono { display: inline-block; background: var(--ambar-fondo); color: var(--ambar); border-radius: 4px; padding: 0 6px; font-size: 11px; font-weight: 600; }
 
-.barra-envio { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; background: var(--superficie); border-top: 1px solid var(--borde); box-shadow: 0 -6px 18px rgba(21, 32, 43, .08); padding: 10px 24px; }
+.barra-envio { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; background: var(--superficie); border-top: 1px solid var(--borde); box-shadow: 0 -6px 18px rgba(21, 32, 43, .08); padding: 10px 24px calc(10px + env(safe-area-inset-bottom, 0px)); }
 .barra-envio.activa { border-top: 3px solid var(--azul); }
 .barra-interior { max-width: 1280px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
 .resumen-sel { flex: 1 1 260px; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; font-size: 15px; }
@@ -251,4 +252,77 @@ pre.txt { font-family: var(--mono); font-size: 12px; background: var(--tinta); c
   .fila-fact .saldo { grid-area: saldo; } .fila-fact .apagar { grid-area: apagar; }
   .barra-envio { padding: 10px 12px; }
   .cifras { grid-template-columns: 1fr; }
+}
+
+
+/* ================================================================
+   Celular (iPhone y Android): nada se desliza de lado.
+   Las tablas se convierten en tarjetas: una por fila, con el nombre
+   de cada dato a la izquierda (etiquetarTablas en app.js).
+   ================================================================ */
+@media (max-width: 760px) {
+  body { font-size: 15px; }
+  .cabecera { position: static; padding: env(safe-area-inset-top, 0px) max(12px, env(safe-area-inset-right, 0px)) 6px max(12px, env(safe-area-inset-left, 0px)); }
+  .cabecera-interior { gap: 6px 12px; min-height: 0; padding-top: 8px; }
+  .marca { font-size: 16px; flex: 1 1 auto; }
+  #usuario { order: 2; gap: 6px; }
+  #nav { order: 3; flex: 1 1 100%; gap: 4px; }
+  #nav a { padding: 7px 11px; font-size: 13px; background: #223140; border-radius: 999px; }
+  #nav a.activo { background: #3A5068; }
+  .usuario-info small { display: none; }
+  .usuario-info .avatar { width: 28px; height: 28px; font-size: 11px; }
+  .red { font-size: 11px; padding: 4px 9px; }
+  .contenido { padding: 16px max(12px, env(safe-area-inset-right, 0px)) 160px max(12px, env(safe-area-inset-left, 0px)); }
+  h1 { font-size: 23px; }
+  .titulo-vista { margin-bottom: 12px; }
+  .titulo-vista .acciones, .titulo-vista .acciones .btn { width: 100%; }
+
+  /* Campos de 16 px: el iPhone no hace zoom al tocarlos */
+  input[type=text], input[type=search], input[type=date], input[type=number], input[type=password], input[type=url], input:not([type]), select, textarea { font-size: 16px; }
+  .fila-busqueda > label:not(.buscar):not(.check) { flex: 1 1 140px; }
+  .chip { padding: 7px 12px; }
+
+  /* Tablas → tarjetas */
+  .tabla-scroll { overflow: visible; border: 0; background: transparent; }
+  .tabla, .tabla tbody, .tabla tr, .tabla td { display: block; width: 100%; }
+  .tabla thead { display: none; }
+  .tabla tr { background: var(--superficie); border: 1px solid var(--borde); border-radius: 10px; padding: 8px 14px; margin: 0 0 10px; }
+  .tabla td { display: flow-root; border: 0; padding: 7px 0; text-align: right; white-space: normal; overflow-wrap: anywhere; }
+  .tabla td + td { border-top: 1px solid var(--linea); }
+  .tabla td::before { content: attr(data-label); float: left; max-width: 42%; margin: 2px 14px 0 0; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--tenue); }
+  .tabla td[data-label=""]::before { content: none; }
+  .tabla .num, .tabla .nowrap { white-space: normal; }
+  .tabla.clic tbody tr:hover { background: var(--superficie); }
+  .bloque { padding: 14px; }
+  .bloque .tabla tr, .lote .tabla tr, dialog .tabla tr { border-color: var(--linea); }
+  .lote .tabla-scroll { padding: 10px 10px 0; }
+
+  /* Por aplicar */
+  .lote-cab { padding: 14px; }
+  .lote-total { font-size: 20px; }
+  .lote-tabla input, .lote-tabla input.mini { min-width: 0; width: 60%; text-align: left; }
+  .lote-tabla .facts { display: block; text-align: left; }
+  .lote-tabla .facts::before { display: block; margin-bottom: 4px; }
+  .lote-tabla .facts div { white-space: normal; }
+  .lote-acciones { padding: 14px; gap: 14px; }
+  .paso { width: 100%; }
+  .paso .btn { flex: 1 1 auto; }
+  .paso label { flex: 1 1 140px; }
+  .paso label input { width: 100%; }
+  .aviso { margin: 12px 14px 0; }
+
+  /* Tablero y diálogos */
+  .kpi strong { font-size: 20px; }
+  .dos-col > .bloque { flex-basis: 100%; }
+  dialog { width: 100vw; max-width: 100vw; max-height: 100dvh; height: 100dvh; margin: 0; border-radius: 0; }
+  .dlg-cab { padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 14px; }
+  .dlg-cuerpo { padding: 14px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
+  .form-grid { grid-template-columns: 1fr; }
+  .grupo-cab { padding: 10px 12px; }
+  .barra-interior { gap: 8px; }
+  .barra-interior .btn { flex: 1 1 auto; }
+  .fecha-envio { flex: 1 1 auto; }
+  .fecha-envio input { flex: 1; }
+  .aviso-version { font-size: 13px; }
+  .toast { bottom: calc(110px + env(safe-area-inset-bottom, 0px)); }
 }

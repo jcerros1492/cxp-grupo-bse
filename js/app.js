@@ -848,6 +848,7 @@ function vistaConfig() {
 
 function abrirDialogo(html) {
   $dialog.innerHTML = html;
+  etiquetarTablas($dialog);
   if (!$dialog.open) $dialog.showModal();
 }
 function cerrarDialogo() { if ($dialog.open) $dialog.close(); }
@@ -864,7 +865,22 @@ function avisar(msg, tipo = 'ok') {
 
 // ---------------------------------------------------------------- Eventos
 
+/** Copia el título de cada columna a sus celdas: en el celular cada fila se ve como tarjeta. */
+function etiquetarTablas(raiz = document) {
+  raiz.querySelectorAll('table.tabla').forEach((t) => {
+    const titulos = [...t.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+    t.querySelectorAll('tbody tr').forEach((tr) => {
+      let col = 0;
+      [...tr.children].forEach((td) => {
+        if (!td.hasAttribute('data-label')) td.setAttribute('data-label', titulos[col] || '');
+        col += Number(td.getAttribute('colspan') || 1);
+      });
+    });
+  });
+}
+
 function despuesDeRender(ruta) {
+  etiquetarTablas($app);
   if (ruta === 'programar') actualizarBarra();
   if (ruta === 'config') document.querySelectorAll('[data-in="iban"]').forEach(validarCampoIBAN);
 }
