@@ -123,17 +123,52 @@ function programarSync(ms) {
 
 // ---------------------------------------------------------------- Servicio de Google
 
-const urlServicio = () => estado.sesion?.url || API_URL;
+// Conexión de esta computadora: dirección del servicio y su contraseña.
+// Se guarda solo en este navegador; no está en el código publicado en GitHub.
+const CLAVE_CONEXION = 'cxp-conexion';
 
-async function api(payload, url = urlServicio()) {
-  if (!url) throw new Error('Falta la dirección del servicio de Google Sheets');
+export function conexion() {
+  try {
+    const c = JSON.parse(localStorage.getItem(CLAVE_CONEXION) || 'null');
+    if (c?.url && c?.clave) return c;
+  } catch { /* sin almacenamiento */ }
+  return null;
+}
+
+/** Prueba la dirección y la contraseña del servicio; si funcionan, las guarda en esta computadora. */
+export async function configurarConexion(url, clave) {
+  const c = { url: String(url || API_URL).trim(), clave: String(clave || '').trim() };
+  if (!/^(https:\/\/script\.google(usercontent)?\.com\/|http:\/\/localhost[:/])/.test(c.url)) throw new Error('La dirección debe ser la del servicio de Google (https://script.google.com/macros/s/…/exec)');
+  if (!c.clave) throw new Error('Falta la contraseña del servicio');
+  const r = await api({ accion: 'ping' }, c);
+  if (!r.ok) throw new Error(r.error || 'No se pudo conectar');
+  const anterior = conexion();
+  localStorage.setItem(CLAVE_CONEXION, JSON.stringify(c));
+  if (anterior && anterior.url !== c.url) await borrarTodo();
+  notificar();
+}
+
+/** Confirma que quien quiere cambiar la conexión conoce la contraseña del servicio. */
+export const verificarClaveServicio = (clave) => conexion()?.clave === String(clave || '').trim();
+
+async function api(payload, c = conexion()) {
+  if (!c) throw new Error('Esta computadora no tiene configurada la conexión con Google Sheets');
+  payload = { ...payload, servicio: c.clave };
+  const url = c.url;
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 120000);
   try {
     // Sin encabezados personalizados: así el navegador no hace una consulta previa (CORS).
     const resp = await fetch(url, { method: 'POST', body: JSON.stringify(payload), signal: ctrl.signal, redirect: 'follow' });
     if (!resp.ok) throw new Error('El servicio respondió ' + resp.status);
-    return await resp.json();
+    const r = await resp.json();
+    // Si cambiaron la contraseña del servicio, esta computadora debe configurarse de nuevo.
+    const guardada = conexion();
+    if (r.servicio === false && guardada && guardada.clave === c.clave) {
+      localStorage.removeItem(CLAVE_CONEXION);
+      notificar();
+    }
+    return r;
   } finally {
     clearTimeout(t);
   }
@@ -199,13 +234,11 @@ function nombreEquipo() {
   return nav + ' en ' + so;
 }
 
-export async function iniciarSesion(usuario, contrasena, url) {
-  url = (url || API_URL || '').trim();
-  const r = await api({ accion: 'login', usuario: usuario.trim(), contrasena, equipo: nombreEquipo() }, url);
+export async function iniciarSesion(usuario, contrasena) {
+  const r = await api({ accion: 'login', usuario: usuario.trim(), contrasena, equipo: nombreEquipo() });
   if (!r.ok) throw new Error(r.error || 'No se pudo iniciar sesión');
-  if (estado.sesion?.url && estado.sesion.url !== url) await borrarTodo();
   if (estado.sesion?.usuario && estado.sesion.usuario !== r.usuario.usuario) estado.pendientes = [];
-  estado.sesion = { token: r.token, url, ...r.usuario };
+  estado.sesion = { token: r.token, ...r.usuario };
   estado.hoja = r.hoja || '';
   guardarLocal();
   notificar();

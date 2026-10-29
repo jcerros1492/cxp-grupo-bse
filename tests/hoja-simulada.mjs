@@ -62,9 +62,11 @@ const libro = {
   getSpreadsheetTimeZone() { return 'America/Costa_Rica'; },
 };
 
+const propiedades = {};
 const contexto = vm.createContext({
   SpreadsheetApp: { getActive: () => libro, flush() {} },
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+  PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => propiedades[k] ?? null, setProperty: (k, v) => { propiedades[k] = v; } }) },
   ContentService: {
     MimeType: { JSON: 'json' },
     createTextOutput: (t) => ({ texto: t, setMimeType() { return this; } }),
@@ -100,6 +102,10 @@ let cola = Promise.resolve();
 
 http.createServer((req, res) => {
   const cors = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };
+  if (req.method === 'GET' && req.url === '/servicio') {
+    res.writeHead(200, cors).end(JSON.stringify(propiedades.CLAVE_SERVICIO));
+    return;
+  }
   if (req.method === 'GET' && req.url === '/claves') {
     const filas = libro.getSheetByName('Usuarios').datos.slice(1);
     res.writeHead(200, cors).end(JSON.stringify(filas));

@@ -69,6 +69,9 @@ function manejar_(p) {
   lock.waitLock(30000);
   try {
     var libro = SpreadsheetApp.getActive();
+    // Sin la contraseña del servicio no se atiende ninguna consulta, aunque se conozca el enlace.
+    if (!claveServicioCorrecta_(p.servicio)) return { ok: false, servicio: false, error: 'La contraseña del servicio no es correcta' };
+    if (p.accion === 'ping') return { ok: true };
     if (p.accion === 'login') return login_(libro, p);
     var usuario = autenticar_(libro, p.token);
     if (!usuario) return { ok: false, auth: false, error: 'La sesión expiró o el usuario fue desactivado. Inicie sesión de nuevo.' };
@@ -115,6 +118,29 @@ function manejar_(p) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// ---------------------------------------------------------------- Contraseña del servicio
+
+/**
+ * La contraseña del servicio se guarda en las propiedades del script (no en la hoja).
+ * configurarInicio() crea una al azar; para verla ejecute mostrarClaveServicio().
+ * Para poner una propia: Configuración del proyecto (engranaje) → Propiedades de la
+ * secuencia de comandos → CLAVE_SERVICIO.
+ */
+function claveServicio_() {
+  return String(PropertiesService.getScriptProperties().getProperty('CLAVE_SERVICIO') || '');
+}
+
+function claveServicioCorrecta_(clave) {
+  var real = claveServicio_();
+  return !!real && String(clave || '') === real;
+}
+
+/** Muestra en el registro de ejecución la contraseña del servicio. */
+function mostrarClaveServicio() {
+  var c = claveServicio_();
+  Logger.log(c ? 'Contraseña del servicio: ' + c : 'Aún no hay contraseña del servicio: ejecute configurarInicio.');
 }
 
 // ---------------------------------------------------------------- Usuarios y sesiones
@@ -395,6 +421,11 @@ function configurarInicio() {
   }
   var hoja1 = libro.getSheetByName('Hoja 1') || libro.getSheetByName('Sheet1');
   if (hoja1 && hoja1.getLastRow() === 0 && libro.getSheets().length > 1) libro.deleteSheet(hoja1);
+  var props = PropertiesService.getScriptProperties();
+  if (!props.getProperty('CLAVE_SERVICIO')) {
+    props.setProperty('CLAVE_SERVICIO', 'Srv-' + Utilities.getUuid().replace(/-/g, '').slice(0, 12));
+  }
   SpreadsheetApp.flush();
   Logger.log('Listo. En la pestaña Usuarios está el usuario y la contraseña temporal de cada persona.');
+  Logger.log('Contraseña del servicio (para "Configurar conexión" en cada computadora): ' + claveServicio_());
 }

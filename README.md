@@ -28,7 +28,8 @@ La hoja se crea a partir del archivo **CXP Grupo BSE.xlsx**, que ya trae todas l
 6. Guarde con el ícono del disquete.
 7. Arriba, elija la función **configurarInicio** y haga clic en **Ejecutar**. No borra nada: solo revisa que estén todas las pestañas.
 8. Google pide permisos. Haga clic en *Revisar permisos* y elija su cuenta. Si aparece "Google no verificó esta app", entre a *Configuración avanzada → Ir a … (no seguro)* y después a *Permitir*.
-9. En la pestaña **Usuarios** está el usuario (`jonathan`, `norman`, `daniel`) y la **contraseña temporal** de cada persona. Entréguesela a cada uno en privado. La primera vez que entren, la aplicación les pide crear su propia contraseña.
+9. En el **registro de ejecución**, abajo, aparece la **contraseña del servicio** (empieza con `Srv-`). Guárdela: se necesita para conectar cada computadora. Para verla de nuevo, ejecute la función `mostrarClaveServicio`.
+10. En la pestaña **Usuarios** está el usuario (`jonathan`, `norman`, `daniel`) y la **contraseña temporal** de cada persona. Entréguesela a cada uno en privado. La primera vez que entren, la aplicación les pide crear su propia contraseña.
 
 > Si se empieza con una hoja vacía en lugar del archivo, `configurarInicio` crea las pestañas y los usuarios, y Jonathan carga el Excel desde la aplicación.
 
@@ -39,13 +40,16 @@ La hoja se crea a partir del archivo **CXP Grupo BSE.xlsx**, que ya trae todas l
 3. En *Ejecutar como*, elija **Yo**. En *Quién tiene acceso*, elija **Cualquier usuario**. Esta opción solo permite llamar al servicio: para leer o escribir datos hay que iniciar sesión con usuario y contraseña.
 4. Haga clic en **Implementar** y copie la **URL de la aplicación web**. Termina en `/exec`.
 
+> Para cambiar la contraseña del servicio: engranaje *Configuración del proyecto* → *Propiedades de la secuencia de comandos* → `CLAVE_SERVICIO`. Después hay que volver a conectar cada computadora.
+
 > Si más adelante cambia el script, entre a **Implementar → Gestionar implementaciones → editar (lápiz) → Versión: Nueva versión**. Así se conserva la misma URL.
 
 ### 3. Primer ingreso
 
 1. Abra la aplicación: <https://jcerros1492.github.io/cxp-grupo-bse/>.
-2. Pegue la URL del servicio y entre con su usuario y la contraseña temporal. La aplicación le pide crear su contraseña. La URL se recuerda en esa computadora; si se escribe en `js/config.js`, ya no se pide.
-3. Revise en *Configuración* el código de cliente del banco y el IBAN de cada sociedad. En *Proveedores*, complete el IBAN de los proveedores que falten.
+2. La primera vez en cada computadora aparece **Configurar esta computadora**: pegue la URL del servicio y la contraseña del servicio. Quedan guardadas solo en esa computadora (no en GitHub). Sin la contraseña del servicio, el enlace no sirve para nada.
+3. Entre con su usuario y la contraseña temporal. La aplicación le pide crear su contraseña.
+4. Revise en *Configuración* el código de cliente del banco y el IBAN de cada sociedad. En *Proveedores*, complete el IBAN de los proveedores que falten.
 
 ## La hoja de Google
 

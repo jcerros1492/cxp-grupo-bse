@@ -1,7 +1,6 @@
 // Pantallas y eventos de la aplicación.
 import * as S from './store.js';
 import * as Sync from './sync.js';
-import { API_URL } from './config.js';
 import { importarExcel } from './importer.js';
 import { construirArchivo } from './banco.js';
 import {
@@ -67,6 +66,7 @@ function render() {
   document.title = `${RUTAS[ruta].titulo} · Cuentas por Pagar`;
 
   if (!Sync.estado.cargado) { $app.innerHTML = '<p class="vacio">Cargando…</p>'; return; }
+  if (!Sync.conexion()) { $app.innerHTML = vistaConexion(); return; }
   if (!u) { $app.innerHTML = vistaLogin(); return; }
   if (u.debeCambiar) { $nav.innerHTML = ''; $app.innerHTML = vistaCrearContrasena(); return; }
   if (!S.hayDatos() && ruta !== 'config') { $app.innerHTML = vistaBienvenida(); return; }
@@ -127,18 +127,43 @@ const totalesTxt = (t) => [t.CRC ? money(t.CRC, 'CRC') : '', t.USD ? money(t.USD
 // ---------------------------------------------------------------- Inicio
 
 function vistaLogin() {
-  const pideUrl = !API_URL;
   return `<section class="centro">
     <h1>Cuentas por Pagar</h1>
     <p class="sub">Entre con su usuario y contraseña. Si es la primera vez, use la contraseña temporal que le dio Jonathan.</p>
     <form class="form-login" data-form="login">
-      ${pideUrl ? `<label>Dirección del servicio de Google Sheets <input name="url" type="url" required placeholder="https://script.google.com/macros/s/…/exec" value="${esc(localStorage.getItem('cxp-url') || '')}"></label>` : ''}
       <label>Usuario <input name="usuario" required autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Ej. norman"></label>
       <label>Contraseña <input name="contrasena" type="password" required autocomplete="current-password"></label>
       <button class="btn primario grande" type="submit">Entrar</button>
     </form>
     <p class="nota">Después de entrar la primera vez, la aplicación funciona también sin internet en esta computadora.</p>
+    <p class="nota"><button class="btn-link" data-act="conexion">Configuración de la conexión</button></p>
   </section>`;
+}
+
+/** Primera vez en esta computadora: dirección del servicio y su contraseña. */
+function vistaConexion() {
+  return `<section class="centro">
+    <h1>Configurar esta computadora</h1>
+    <p class="sub">Para conectar esta computadora con la hoja de Google se necesita la dirección del servicio y la contraseña del servicio. Las tiene Jonathan.</p>
+    ${formConexion()}
+  </section>`;
+}
+
+function formConexion() {
+  return `<form class="form-login" data-form="conexion">
+      <label>Dirección del servicio <input name="url" type="url" required placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
+      <label>Contraseña del servicio <input name="clave" type="password" required autocomplete="off"></label>
+      <button class="btn primario grande" type="submit">Conectar</button>
+    </form>`;
+}
+
+function dialogoConexion() {
+  const c = Sync.conexion();
+  abrirDialogo(`
+    <header class="dlg-cab"><div><h2>Conexión con Google Sheets</h2>
+      <p class="sub">${c ? 'Esta computadora está conectada. Para cambiar la conexión escriba la nueva dirección y la contraseña del servicio.' : 'Esta computadora no está conectada.'}</p></div>
+      <button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+    <div class="dlg-cuerpo">${formConexion()}</div>`);
 }
 
 function vistaCrearContrasena() {
@@ -652,6 +677,7 @@ function vistaConfig() {
       ${e.hoja ? `<a class="btn" href="${esc(e.hoja)}" target="_blank" rel="noopener">Abrir la hoja de Google</a>` : ''}
       <button class="btn" data-act="sync-ahora">Sincronizar ahora</button>
       <button class="btn" data-act="cfg-excel" ${S.hayDatos() ? '' : 'disabled'}>Exportar facturas a Excel</button>
+      ${S.esAdmin() ? '<button class="btn" data-act="conexion">Cambiar conexión</button>' : ''}
     </div>
     <p class="sub">${e.pendientes.length ? `${e.pendientes.length} cambios esperando conexión para enviarse.` : 'No hay cambios pendientes de enviar.'}${e.error ? ' Último error: ' + esc(e.error) : ''}</p>
   </section>
@@ -726,6 +752,7 @@ document.addEventListener('keydown', (e) => {
 
 const acciones = {
   'sync-ahora': () => Sync.sincronizar(),
+  conexion: () => dialogoConexion(),
   cuenta: () => dialogoCuenta(),
   salir: async () => {
     const n = Sync.estado.pendientes.length;
@@ -863,14 +890,26 @@ document.addEventListener('submit', (e) => {
     const btn = form.querySelector('button[type=submit]');
     btn.disabled = true;
     btn.textContent = 'Entrando…';
-    if (d.url) localStorage.setItem('cxp-url', d.url.trim());
-    Sync.iniciarSesion(d.usuario, d.contrasena, d.url).then(() => {
+    Sync.iniciarSesion(d.usuario, d.contrasena).then(() => {
       location.hash = S.esNorman() ? '#/programar' : '#/aplicar';
       render();
     }).catch((err) => {
       avisar(navigator.onLine ? err.message : 'Para entrar la primera vez se necesita internet', 'error');
       btn.disabled = false;
       btn.textContent = 'Entrar';
+    });
+  } else if (k === 'conexion') {
+    const btn = form.querySelector('button[type=submit]');
+    btn.disabled = true;
+    btn.textContent = 'Conectando…';
+    Sync.configurarConexion(d.url, d.clave).then(() => {
+      cerrarDialogo();
+      avisar('Computadora conectada con Google Sheets');
+      render();
+    }).catch((err) => {
+      avisar(navigator.onLine ? err.message : 'Para conectar la computadora se necesita internet', 'error');
+      btn.disabled = false;
+      btn.textContent = 'Conectar';
     });
   } else if (k === 'nueva-clave' || k === 'cambiar-clave') {
     if (d.nueva !== d.repetir) { avisar('Las dos contraseñas nuevas no coinciden', 'error'); return; }

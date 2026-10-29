@@ -1,6 +1,6 @@
-// Dirección del servicio de Google Sheets.
-// Se obtiene en Apps Script: Implementar → Nueva implementación → Aplicación web → URL.
-// Si se deja vacía, la aplicación la pide al iniciar sesión y la recuerda en cada computadora.
+// La dirección del servicio de Google Sheets y su contraseña NO van aquí:
+// se configuran en cada computadora desde la aplicación (Configurar conexión),
+// porque este archivo es público en GitHub.
 export const API_URL = '';
 
 // Cada cuántos segundos se buscan cambios de los demás mientras la página está abierta.
