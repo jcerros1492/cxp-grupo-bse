@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.12.1 | «Grupo BSE» en grande en el encabezado, con «Cuentas por Pagar» debajo. |
 | 1.12.0 | Importación del reporte de GTI (CSV sin encabezado con punto y coma, o el Excel tal como se descarga): número de factura tomado del consecutivo, sociedad por cédula, proveedor por cédula o nombre con confirmación, notas de crédito fuera, y doble control de repetidas. La cédula queda en las observaciones para reconocer al proveedor la próxima vez. |
 | 1.11.0 | Logo de Santa Eduviges en el encabezado, en la pantalla de usuarios y como ícono de la aplicación (iPhone, Android y pestaña del navegador). |
 | 1.10.0 | Tablero con colores por sociedad y por tramo, con barras; tocar una sociedad abre sus facturas. Encabezado del celular ordenado (menú en cuadrícula, usuario con color). Importar facturas desde CSV o Excel en Facturas, con reconocimiento de columnas, vista previa, detección de repetidas y creación de proveedores nuevos. |
