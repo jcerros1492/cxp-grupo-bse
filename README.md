@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.8.1 | Versión de prueba del aviso de actualización (sin cambios visibles). |
 | 1.8.0 | Aviso «Hay una versión nueva · Actualizar» (lee `version.json`). Norman pide revisión desde Programar pagos; Jonathan, Fernando y Daniel la ven y la marcan como revisada en Por aplicar. Menú «Canceladas» con búsqueda. Se quita la casilla «En revisión» de la ventana de la factura. |
 | 1.7.0 | Sin PIN: se entra tocando el nombre (la contraseña del servicio protege cada dispositivo). Tocar el nombre arriba vuelve a la pantalla de usuarios. Fernando con rol *aplica*. Funciona con el script 1.4: en la pestaña Usuarios, la columna *contrasenaTemporal* de cada persona debe decir `acceso` la primera vez. |
 | 1.6.1 | Funciona con el script de Google ya publicado (1.4), sin cambiarlo: PIN de 4 números, modo de pruebas en la aplicación (`MODO_PRUEBAS` en `js/config.js`: tras la primera vez se entra tocando el nombre) y botón «Cambiar de usuario». |
