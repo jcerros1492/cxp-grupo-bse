@@ -78,6 +78,10 @@ h3 { font-size: 15px; margin: 18px 0 8px; }
 @keyframes girar { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .cargando { animation: none; } }
 .lista-pasos { margin: 6px 0 10px; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.btn-revision { font: inherit; font-size: 12px; font-weight: 600; margin-left: 8px; padding: 4px 10px; min-height: 30px; border-radius: 999px; border: 1px dashed #B98B4E; background: transparent; color: var(--ambar); cursor: pointer; }
+.btn-revision.on { border-style: solid; background: #F6E3E1; border-color: #D9A39C; color: #7E1F18; }
+.lote.revisar { border-color: #E6C9A0; }
+.aviso-version { position: sticky; top: 0; z-index: 30; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 16px; padding: 10px max(16px, env(safe-area-inset-left, 0px)); background: #FFF4D6; color: #5E3A00; font-size: 14px; font-weight: 600; border-bottom: 1px solid #E6C9A0; }
 .form-login { display: flex; flex-direction: column; gap: 14px; width: min(420px, 100%); text-align: left; }
 
 /* Botones y campos */

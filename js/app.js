@@ -18,6 +18,7 @@ const ui = {
   login: '',
   prog: { soc: '', mon: '', q: '', vencidas: false, sel: new Map(), fecha: '', verProgramado: true },
   fact: { soc: '', mon: '', est: 'saldo', q: '', limite: 150 },
+  canc: { soc: '', mon: '', q: '', limite: 100 },
   prov: { q: '', filtro: '', abierto: null },
 };
 
@@ -27,14 +28,15 @@ const RUTAS = {
   programar: { titulo: 'Programar pagos', vista: vistaProgramar },
   aplicar: { titulo: 'Por aplicar', vista: vistaAplicar },
   facturas: { titulo: 'Facturas', vista: vistaFacturas },
+  canceladas: { titulo: 'Canceladas', vista: vistaCanceladas },
   proveedores: { titulo: 'Proveedores', vista: vistaProveedores },
   tablero: { titulo: 'Tablero', vista: vistaTablero },
   config: { titulo: 'Configuración', vista: vistaConfig },
 };
 
 function menuPara(usuario) {
-  if (usuario?.rol === 'aprueba') return ['tablero', 'programar', 'facturas'];
-  return ['tablero', 'aplicar', 'programar', 'facturas', 'proveedores', 'config'];
+  if (usuario?.rol === 'aprueba') return ['tablero', 'programar', 'facturas', 'canceladas'];
+  return ['tablero', 'aplicar', 'programar', 'facturas', 'canceladas', 'proveedores', 'config'];
 }
 
 function rutaActual() {
@@ -63,7 +65,7 @@ function render() {
   const ruta = rutaActual();
   const foco = guardarFoco();
   $nav.innerHTML = u ? menuPara(u).map((r) => {
-    const n = r === 'aplicar' ? S.programacionesPendientes().length : 0;
+    const n = r === 'aplicar' ? S.programacionesPendientes().length + porRevisar().length : 0;
     return `<a href="#/${r}" class="${r === ruta ? 'activo' : ''}" ${r === ruta ? 'aria-current="page"' : ''}>${RUTAS[r].titulo}${n ? ` <span class="burbuja">${n}</span>` : ''}</a>`;
   }).join('') : '';
   $user.innerHTML = u
@@ -321,7 +323,10 @@ function filaProgramar(f) {
   }
   return `<div class="fila-fact ${sel ? 'marcada' : ''}" data-fila="${f.id}">
     <label class="ck"><input type="checkbox" data-in="p-sel" data-v="${f.id}" ${sel ? 'checked' : ''}><span class="vh">Pagar factura ${esc(f.documento)}</span></label>
-    <span class="doc">Fact. ${esc(f.documento)}${f.revision ? ' <span class="estado rev">Revisión</span>' : ''}${S.movimientosDe(f).length ? ` <span class="tag-abono" title="Ya tiene abonos">abonada</span>` : ''}</span>
+    <span class="doc">Fact. ${esc(f.documento)}${S.movimientosDe(f).length ? ` <span class="tag-abono" title="Ya tiene abonos">abonada</span>` : ''}
+      ${f.revision
+        ? `<button class="btn-revision on" data-act="p-revisar" data-v="${f.id}" title="${esc(f.observaciones || 'Pidió revisar')}">En revisión · quitar</button>`
+        : `<button class="btn-revision" data-act="p-revisar" data-v="${f.id}">Pedir revisión</button>`}</span>
     <span class="venc">${f.fechaVence ? fmtFecha(f.fechaVence) : ''} ${etiquetaDias(f)}</span>
     <span class="saldo">${money(s, f.moneda)}</span>
     <span class="apagar">${sel ? `<label><span class="vh">Monto a pagar de la factura ${esc(f.documento)}</span>
@@ -361,6 +366,42 @@ function actualizarBarra() {
 
 // ---------------------------------------------------------------- Por aplicar (Jonathan y Daniel)
 
+const porRevisar = () => S.conSaldo().filter((f) => f.revision);
+
+function seccionRevisar() {
+  const lista = porRevisar().sort((a, b) => (a.fechaVence || '').localeCompare(b.fechaVence || ''));
+  if (!lista.length) return '';
+  return `<section class="lote revisar">
+    <header class="lote-cab">
+      <div><span class="eyebrow">Pedido por Norman</span><h2>Facturas para revisar</h2>
+        <span class="sub">${lista.length} ${lista.length === 1 ? 'factura' : 'facturas'} · cuando estén revisadas, márquelas para que Norman pueda programarlas</span></div>
+    </header>
+    <div class="tabla-scroll"><table class="tabla">
+      <thead><tr><th>Sociedad</th><th>Proveedor</th><th>Factura</th><th>Vence</th><th class="num">Saldo</th><th>Nota</th><th></th></tr></thead>
+      <tbody>${lista.map((f) => `<tr>
+        <td>${esc(S.nombreSociedad(f.sociedad))}</td><td>${esc(S.proveedor(f.codigo).nombre)}</td>
+        <td><a href="#/aplicar" data-act="f-abrir" data-v="${f.id}">${esc(f.documento)}</a></td>
+        <td class="nowrap">${fmtFecha(f.fechaVence)} ${etiquetaDias(f)}</td>
+        <td class="num">${money(S.saldo(f), f.moneda)}</td>
+        <td>${esc(f.observaciones)}</td>
+        <td><button class="btn chico" data-act="revisado" data-v="${f.id}">Revisado</button></td></tr>`).join('')}</tbody>
+    </table></div>
+  </section>`;
+}
+
+function dialogoPedirRevision(id) {
+  const f = S.factura(id);
+  abrirDialogo(`
+    <header class="dlg-cab"><div><h2>Pedir revisión · Factura ${esc(f.documento)}</h2>
+      <p class="sub">${esc(S.proveedor(f.codigo).nombre)} · ${esc(S.nombreSociedad(f.sociedad))} · saldo ${money(S.saldo(f), f.moneda)}</p></div>
+      <button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+    <form class="dlg-cuerpo form-grid" data-form="pedir-revision" data-v="${f.id}">
+      <label class="ancho">¿Qué hay que revisar? (opcional) <input name="nota" value="${esc(f.observaciones)}" placeholder="Ej. confirmar el monto con el proveedor"></label>
+      <p class="ancho sub">Jonathan, Fernando y Daniel la verán en «Por aplicar».</p>
+      <div class="ancho"><button class="btn primario" type="submit">Pedir revisión</button></div>
+    </form>`);
+}
+
 function vistaAplicar() {
   const lotes = S.lotesPendientes();
   const hechos = S.lotesAplicados().slice(0, 15);
@@ -371,6 +412,7 @@ function vistaAplicar() {
       <p class="sub">Lo que Norman programó, agrupado por sociedad, moneda y fecha. Cada grupo genera un archivo para el banco.</p>
     </div>
   </div>
+  ${seccionRevisar()}
   ${lotes.length ? lotes.map(tarjetaLote).join('') : `<p class="vacio grande">No hay pagos programados pendientes. Cuando Norman programe pagos, aparecerán aquí.</p>`}
 
   ${hechos.length ? `<section class="bloque">
@@ -497,6 +539,48 @@ function vistaFacturas() {
   ${total > lista.length ? `<p class="centro-txt"><button class="btn" data-act="f-mas">Mostrar más (${total - lista.length} restantes)</button></p>` : ''}`;
 }
 
+function ultimoPago(f) {
+  return [...S.movimientosDe(f)].reverse().find((m) => m.tipo !== 'cargo') || null;
+}
+
+function vistaCanceladas() {
+  const C = ui.canc;
+  const texto = C.q.trim().toLowerCase();
+  let lista = S.listaFacturas().filter((f) => S.saldo(f) <= 0.004 && f.monto > 0).filter((f) => {
+    if (C.soc && f.sociedad !== C.soc) return false;
+    if (C.mon && f.moneda !== C.mon) return false;
+    if (texto) {
+      const pagos = S.movimientosDe(f).map((m) => m.comprobante).join(' ');
+      if (!(`${S.proveedor(f.codigo).nombre} ${f.documento} ${pagos}`.toLowerCase().includes(texto))) return false;
+    }
+    return true;
+  }).map((f) => ({ f, pago: ultimoPago(f) }));
+  lista.sort((a, b) => String(b.pago?.fecha || '').localeCompare(String(a.pago?.fecha || '')) || String(b.f.fechaFactura || '').localeCompare(String(a.f.fechaFactura || '')));
+  const total = lista.length;
+  const t = { CRC: 0, USD: 0 };
+  for (const x of lista) t[x.f.moneda] = round2(t[x.f.moneda] + x.f.monto);
+  lista = lista.slice(0, C.limite);
+  return `
+  <div class="titulo-vista"><div><h1>Facturas canceladas</h1><p class="sub">Todas las facturas pagadas por completo, incluidas las que venían en el Excel</p></div></div>
+  <div class="filtros">
+    <div class="fila-chips" role="group" aria-label="Sociedad">${chipsSociedad('c-soc', C.soc)}</div>
+    <div class="fila-busqueda">
+      <label class="buscar"><span class="vh">Buscar</span><input type="search" placeholder="Proveedor, número de factura o comprobante" value="${esc(C.q)}" data-in="c-q"></label>
+      <label>Moneda <select data-in="c-mon"><option value="">Ambas</option><option value="CRC" ${C.mon === 'CRC' ? 'selected' : ''}>Colones</option><option value="USD" ${C.mon === 'USD' ? 'selected' : ''}>Dólares</option></select></label>
+    </div>
+  </div>
+  <p class="resumen-lista">${total} facturas canceladas · ${totalesTxt(t)}</p>
+  <div class="tabla-scroll"><table class="tabla clic">
+    <thead><tr><th>Sociedad</th><th>Proveedor</th><th>Factura</th><th>Fecha factura</th><th class="num">Monto</th><th>Pagada el</th><th>Comprobante</th></tr></thead>
+    <tbody>${lista.map(({ f, pago }) => `<tr data-act="f-abrir" data-v="${f.id}" tabindex="0">
+      <td>${esc(S.nombreSociedad(f.sociedad))}</td><td>${esc(S.proveedor(f.codigo).nombre)}</td>
+      <td><a href="#/canceladas" data-act="f-abrir" data-v="${f.id}">${esc(f.documento)}</a></td>
+      <td>${fmtFecha(f.fechaFactura)}</td><td class="num">${money(f.monto, f.moneda)}</td>
+      <td>${pago?.fecha ? fmtFecha(pago.fecha) : '<span class="sub">sin fecha</span>'}</td><td>${esc(pago?.comprobante || '')}</td></tr>`).join('') || '<tr><td colspan="7" class="sub">No hay facturas canceladas con esos filtros.</td></tr>'}</tbody>
+  </table></div>
+  ${total > lista.length ? `<p class="centro-txt"><button class="btn" data-act="c-mas">Mostrar más (${total - lista.length} restantes)</button></p>` : ''}`;
+}
+
 function dialogoFactura(id) {
   const f = S.factura(id);
   const prov = S.proveedor(f.codigo);
@@ -519,8 +603,8 @@ function dialogoFactura(id) {
         <label>Fecha de factura <input type="date" name="fechaFactura" value="${f.fechaFactura || ''}"></label>
         <label>Vencimiento ${f.venceEstimado ? '<span class="est">EST</span>' : ''}<input type="date" name="fechaVence" value="${f.fechaVence || ''}"></label>
         <label class="ancho">Observaciones <input type="text" name="observaciones" value="${esc(f.observaciones)}"></label>
-        <label class="check ancho"><input type="checkbox" name="revision" ${f.revision ? 'checked' : ''}> En revisión</label>
-        <div class="ancho"><button class="btn" type="submit">Guardar cambios</button></div>
+${f.revision ? `        <p class="ancho aviso-pruebas">Norman pidió revisar esta factura. Se marca como revisada en «Por aplicar».</p>
+` : ''}        <div class="ancho"><button class="btn" type="submit">Guardar cambios</button></div>
       </form>
       <h3>Movimientos</h3>
       ${S.movimientosDe(f).length ? `<div class="tabla-scroll"><table class="tabla">
@@ -799,6 +883,15 @@ document.addEventListener('keydown', (e) => {
 
 const acciones = {
   'sync-ahora': () => Sync.sincronizar(),
+  'p-revisar': (v) => {
+    const f = S.factura(v);
+    if (f.revision) resultado(S.actualizarFactura(v, { revision: false }), 'Se quitó la revisión');
+    else dialogoPedirRevision(v);
+  },
+  revisado: (v) => resultado(S.actualizarFactura(v, { revision: false }), 'Factura revisada: Norman ya la puede programar'),
+  'c-soc': (v) => { ui.canc.soc = v; ui.canc.limite = 100; render(); },
+  'c-mas': () => { ui.canc.limite += 300; render(); },
+  actualizar: () => actualizarApp(),
   'u-pin': (v) => {
     if (!confirm(`¿Generar un PIN temporal nuevo para ${v}? Su PIN actual dejará de funcionar cuando entre con el nuevo.`)) return;
     Sync.adminUsuarios({ op: 'pin', usuario: v }).then((r) => mostrarPin(v, r.pin)).catch((e) => avisar(e.message, 'error'));
@@ -890,7 +983,7 @@ document.addEventListener('input', (e) => {
     if (ff) form.fechaVence.value = sumarDias(ff, pl);
     return;
   }
-  const busquedas = { 'p-q': (x) => { ui.prog.q = x; }, 'f-q': (x) => { ui.fact.q = x; ui.fact.limite = 150; }, 'pv-q': (x) => { ui.prov.q = x; } };
+  const busquedas = { 'c-q': (x) => { ui.canc.q = x; ui.canc.limite = 100; }, 'p-q': (x) => { ui.prog.q = x; }, 'f-q': (x) => { ui.fact.q = x; ui.fact.limite = 150; }, 'pv-q': (x) => { ui.prov.q = x; } };
   if (busquedas[k]) {
     busquedas[k](el.value);
     clearTimeout(tBusqueda);
@@ -917,6 +1010,7 @@ document.addEventListener('change', async (e) => {
   if (k === 'p-fecha') { ui.prog.fecha = el.value; return; }
   if (k === 'f-est') { ui.fact.est = el.value; ui.fact.limite = 150; render(); return; }
   if (k === 'f-mon') { ui.fact.mon = el.value; render(); return; }
+  if (k === 'c-mon') { ui.canc.mon = el.value; ui.canc.limite = 100; render(); return; }
   if (k === 'a-extra' || k === 'a-desc') {
     const clave = decodeURIComponent(el.dataset.lote);
     if (k === 'a-extra') {
@@ -959,6 +1053,9 @@ document.addEventListener('submit', (e) => {
       btn.disabled = false;
       btn.textContent = 'Entrar';
     });
+  } else if (k === 'pedir-revision') {
+    const nota = d.nota.trim();
+    if (resultado(S.actualizarFactura(form.dataset.v, { revision: true, observaciones: nota }), 'Revisión pedida')) cerrarDialogo();
   } else if (k === 'u-crear') {
     Sync.adminUsuarios({ op: 'crear', usuario: d.usuario.trim().toLowerCase(), nombre: d.nombre.trim(), rol: d.rol })
       .then((r) => { form.reset(); mostrarPin(d.nombre.trim(), r.pin); })
@@ -994,7 +1091,7 @@ document.addEventListener('submit', (e) => {
     }).catch((err) => { avisar(navigator.onLine ? err.message : 'Para cambiar el PIN se necesita internet', 'error'); btn.disabled = false; });
   } else if (k === 'f-fechas') {
     const f = S.factura(form.dataset.v);
-    const cambios = { fechaFactura: d.fechaFactura || '', observaciones: d.observaciones, revision: !!d.revision, fechaVence: d.fechaVence || '' };
+    const cambios = { fechaFactura: d.fechaFactura || '', observaciones: d.observaciones, fechaVence: d.fechaVence || '' };
     if (resultado(S.actualizarFactura(f.id, cambios), 'Cambios guardados')) dialogoFactura(f.id);
   } else if (k === 'f-mov') {
     if (resultado(S.registrarMovimiento(form.dataset.v, { tipo: d.tipo, monto: parseNum(d.monto), fecha: d.fecha, comprobante: d.comprobante }), 'Movimiento registrado')) dialogoFactura(form.dataset.v);
@@ -1061,6 +1158,43 @@ function resultado(r, okMsg) {
 }
 
 document.getElementById('pie').textContent = `Cuentas por Pagar · Grupo BSE · Versión ${VERSION}`;
+
+// ---------------------------------------------------------------- Aviso de versión nueva
+
+let avisoVersion = false;
+async function revisarVersion() {
+  if (avisoVersion || !navigator.onLine) return;
+  try {
+    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const { version } = await r.json();
+    if (version && version !== VERSION) mostrarAvisoVersion(version);
+  } catch { /* sin conexión */ }
+}
+
+function mostrarAvisoVersion(version) {
+  avisoVersion = true;
+  const b = document.createElement('div');
+  b.className = 'aviso-version';
+  b.setAttribute('role', 'status');
+  b.innerHTML = `<span>Hay una versión nueva de la aplicación (${esc(version)}).</span><button class="btn primario chico" data-act="actualizar">Actualizar</button>`;
+  document.body.prepend(b);
+}
+
+async function actualizarApp() {
+  if (Sync.estado.pendientes.length && navigator.onLine) await Sync.sincronizar();
+  try {
+    const ks = await caches.keys();
+    await Promise.all(ks.map((k) => caches.delete(k)));
+    const reg = await navigator.serviceWorker?.getRegistration();
+    await reg?.update();
+  } catch { /* sin caché */ }
+  location.reload();
+}
+
+setTimeout(revisarVersion, 4000);
+setInterval(revisarVersion, 5 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') revisarVersion(); });
 
 Sync.alAvisar((msg, tipo) => avisar(msg, tipo === 'aviso' ? 'ok' : tipo));
 Sync.iniciar();

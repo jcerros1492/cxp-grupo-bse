@@ -2,7 +2,7 @@
 // Estrategia: primero la red (para recibir actualizaciones) y, si no hay, la copia guardada.
 // Las consultas a Google Sheets (POST) no pasan por aquí.
 
-const CACHE = 'cxp-1.7.0';
+const CACHE = 'cxp-1.8.0';
 const ARCHIVOS = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest',
   'js/app.js', 'js/store.js', 'js/sync.js', 'js/config.js', 'js/logica.js', 'js/util.js',

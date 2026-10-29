@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.8.0 | Aviso «Hay una versión nueva · Actualizar» (lee `version.json`). Norman pide revisión desde Programar pagos; Jonathan, Fernando y Daniel la ven y la marcan como revisada en Por aplicar. Menú «Canceladas» con búsqueda. Se quita la casilla «En revisión» de la ventana de la factura. |
 | 1.7.0 | Sin PIN: se entra tocando el nombre (la contraseña del servicio protege cada dispositivo). Tocar el nombre arriba vuelve a la pantalla de usuarios. Fernando con rol *aplica*. Funciona con el script 1.4: en la pestaña Usuarios, la columna *contrasenaTemporal* de cada persona debe decir `acceso` la primera vez. |
 | 1.6.1 | Funciona con el script de Google ya publicado (1.4), sin cambiarlo: PIN de 4 números, modo de pruebas en la aplicación (`MODO_PRUEBAS` en `js/config.js`: tras la primera vez se entra tocando el nombre) y botón «Cambiar de usuario». |
 | 1.6.0 | PIN de 4 números con bloqueo tras 5 intentos; modo de pruebas sin PIN (`MODO_PRUEBAS` en Apps Script); la aplicación abre en el Tablero; pantalla de carga en lugar de "cargar Excel"; administración de usuarios desde Configuración; usuario Fernando (administrador). |
@@ -22,6 +23,8 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 | 1.2.0 | Usuario y contraseña propios para cada persona; contraseñas cifradas; sesiones. |
 | 1.1.0 | Google Sheets como base de datos, sincronización y trabajo sin internet. |
 | 1.0.0 | Primera versión: programar pagos, aplicar y archivo para el banco. |
+
+> Al publicar una versión, `VERSION` en `js/config.js` y `version.json` deben decir lo mismo: así las computadoras con la versión anterior ven el aviso para actualizar.
 
 ## Flujo de trabajo
 
