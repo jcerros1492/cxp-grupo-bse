@@ -3,6 +3,7 @@ import * as S from './store.js';
 import * as Sync from './sync.js';
 import { VERSION, USUARIOS, API_URL } from './config.js';
 import { importarExcel } from './importer.js';
+import { CAMPOS as CAMPOS_IMP, leerFilas, filaEncabezado, sugerirMapeo, prepararFacturas } from './importar-facturas.js';
 import { construirArchivo } from './banco.js';
 import {
   money, fmtNum, parseNum, fechaHora, fmtFecha, hoyISO, esc, errorIBAN, fmtIBAN, sumarDias, round2, MONEDAS,
@@ -45,6 +46,14 @@ function rutaActual() {
   return 'tablero';
 }
 
+const COLORES_USUARIO = ['u-1', 'u-2', 'u-3', 'u-4', 'u-5', 'u-6'];
+function colorUsuario(usuario) {
+  const lista = (Sync.usuariosConocidos() || USUARIOS).map((x) => x.usuario);
+  let i = lista.indexOf(usuario);
+  if (i < 0) i = [...String(usuario)].reduce((a, c) => a + c.charCodeAt(0), 0);
+  return COLORES_USUARIO[i % COLORES_USUARIO.length];
+}
+
 const ROLES = { admin: 'Administra y aplica', aplica: 'Aplica pagos', aprueba: 'Aprueba pagos' };
 
 function indicadorRed() {
@@ -69,7 +78,7 @@ function render() {
     return `<a href="#/${r}" class="${r === ruta ? 'activo' : ''}" ${r === ruta ? 'aria-current="page"' : ''}>${RUTAS[r].titulo}${n ? ` <span class="burbuja">${n}</span>` : ''}</a>`;
   }).join('') : '';
   $user.innerHTML = u
-    ? `${indicadorRed()}<button class="usuario-info" data-act="cambiar-usuario" title="Cambiar de usuario"><span class="avatar" aria-hidden="true">${esc(u.nombre.split(' ').map((p) => p[0]).join('').slice(0, 2))}</span><span><strong>${esc(u.nombre)}</strong><small>${esc(ROLES[u.rol] || u.rol)}</small></span></button>`
+    ? `${indicadorRed()}<button class="usuario-info" data-act="cambiar-usuario" title="Cambiar de usuario"><span class="avatar ${colorUsuario(u.usuario)}" aria-hidden="true">${esc(u.nombre.split(' ').map((p) => p[0]).join('').slice(0, 2))}</span><span><strong>${esc(u.nombre)}</strong><small>${esc(ROLES[u.rol] || u.rol)}</small></span></button>`
     : '';
   document.title = `${RUTAS[ruta].titulo} · Cuentas por Pagar`;
 
@@ -146,7 +155,7 @@ function vistaLogin() {
     <p class="sub">Toque su nombre para entrar.</p>
     <div class="usuarios">${lista.map((u) => `
       <button class="tarjeta-usuario" data-act="elegir" data-v="${esc(u.usuario)}">
-        <span class="avatar grande" aria-hidden="true">${iniciales(u.nombre)}</span>
+        <span class="avatar grande ${colorUsuario(u.usuario)}" aria-hidden="true">${iniciales(u.nombre)}</span>
         <strong>${esc(u.nombre)}</strong><small>${esc(ROLES[u.rol] || u.rol)}</small>
       </button>`).join('')}</div>
   </section>`;
@@ -155,7 +164,7 @@ function vistaLogin() {
 /** Solo la primera vez en un dispositivo: la contraseña del servicio. */
 function vistaClave(u) {
   return `<section class="centro">
-    <span class="avatar grande" aria-hidden="true">${iniciales(u.nombre)}</span>
+    <span class="avatar grande ${colorUsuario(u.usuario)}" aria-hidden="true">${iniciales(u.nombre)}</span>
     <h1>${esc(u.nombre)}</h1>
     <p class="sub">Primera vez en este dispositivo: escriba la contraseña del servicio. Solo se pide una vez; después se entra tocando el nombre.</p>
     <form class="form-login" data-form="login">
@@ -513,7 +522,10 @@ function vistaFacturas() {
   return `
   <div class="titulo-vista">
     <div><h1>Facturas</h1><p class="sub">${S.listaFacturas().length} facturas en total</p></div>
-    <div class="acciones"><button class="btn primario" data-act="f-nueva">+ Nueva factura</button></div>
+    <div class="acciones">
+      ${S.esNorman() ? '' : '<label class="btn">Importar facturas (CSV o Excel)<input type="file" accept=".csv,.txt,.xlsx,.xls" data-in="imp-archivo" hidden></label>'}
+      <button class="btn primario" data-act="f-nueva">+ Nueva factura</button>
+    </div>
   </div>
   <div class="filtros">
     <div class="fila-chips" role="group" aria-label="Sociedad">${chipsSociedad('f-soc', F.soc)}</div>
@@ -626,6 +638,106 @@ ${f.revision ? `        <p class="ancho aviso-pruebas">Norman pidió revisar est
     </div>`);
 }
 
+// ---------------------------------------------------------------- Importar facturas
+
+const letraCol = (i) => { let s = ''; i += 1; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+const firmaEncabezado = (enc) => 'cxp-mapeo:' + enc.map((h) => String(h).trim().toLowerCase()).join('|');
+
+async function cargarArchivoImportar(file) {
+  const esTexto = /\.(csv|txt)$/i.test(file.name);
+  const contenido = esTexto ? await leerTexto(file) : await file.arrayBuffer();
+  const filas = leerFilas(contenido, window.XLSX, esTexto);
+  if (filas.length < 2) throw new Error('El archivo no tiene filas de facturas');
+  const inicio = filaEncabezado(filas);
+  const enc = filas[inicio].map((h) => String(h).trim());
+  let guardado = null;
+  try { guardado = JSON.parse(localStorage.getItem(firmaEncabezado(enc)) || 'null'); } catch { /* sin almacenamiento */ }
+  ui.imp = { nombre: file.name, filas, inicio, enc, mapeo: guardado?.mapeo || sugerirMapeo(enc), fijos: guardado?.fijos || { sociedad: '', moneda: '' } };
+  dialogoImportar();
+}
+
+/** Lee un CSV respetando tildes: prueba UTF-8 y, si hay caracteres dañados, Windows-1252 (Excel). */
+async function leerTexto(file) {
+  const buf = await file.arrayBuffer();
+  const utf8 = new TextDecoder('utf-8').decode(buf);
+  return utf8.includes('\uFFFD') ? new TextDecoder('windows-1252').decode(buf) : utf8;
+}
+
+function dialogoImportar() {
+  const I = ui.imp;
+  const d = S.datos();
+  const res = prepararFacturas(I.filas, I.inicio, I.mapeo, I.fijos, d);
+  I.res = res;
+  const opcionesCol = (k, opcional) => `<option value="">${opcional ? '— no viene en el archivo —' : '— elegir columna —'}</option>` +
+    I.enc.map((h, i) => `<option value="${i}" ${String(I.mapeo[k]) === String(i) ? 'selected' : ''}>${letraCol(i)} · ${esc(h || '(sin título)')}</option>`).join('');
+  const socs = Object.keys(S.sociedades());
+  const campo = (c) => {
+    const sinCol = I.mapeo[c.k] == null || I.mapeo[c.k] === '';
+    let extra = '';
+    if (c.k === 'sociedad' && sinCol) extra = `<select data-in="imp-fijo" data-v="sociedad" aria-label="Sociedad para todas las facturas"><option value="">— elegir sociedad —</option>${socs.map((x) => `<option value="${esc(x)}" ${I.fijos.sociedad === x ? 'selected' : ''}>${esc(S.nombreSociedad(x))}</option>`).join('')}</select>`;
+    if (c.k === 'moneda' && sinCol) extra = `<select data-in="imp-fijo" data-v="moneda" aria-label="Moneda para todas las facturas"><option value="">— elegir moneda —</option><option value="CRC" ${I.fijos.moneda === 'CRC' ? 'selected' : ''}>Colones</option><option value="USD" ${I.fijos.moneda === 'USD' ? 'selected' : ''}>Dólares</option></select>`;
+    return `<label>${esc(c.n)}${c.opcional ? ' <span class="sub-inline">opcional</span>' : ''}
+      <select data-in="imp-col" data-v="${c.k}">${opcionesCol(c.k, c.opcional || c.fijo)}</select>
+      ${extra ? `<span class="sub">${c.k === 'sociedad' ? 'Para todas las facturas del archivo:' : 'Para todas las facturas del archivo:'}</span>${extra}` : ''}</label>`;
+  };
+  const r = res.resumen;
+  const muestra = res.filas.slice(0, 60);
+  const etiqueta = { nueva: '<span class="estado canc">Nueva</span>', existe: '<span class="estado pend">Ya existe</span>', error: '<span class="estado rev">Revisar</span>' };
+  abrirDialogo(`
+    <header class="dlg-cab"><div><h2>Importar facturas</h2><p class="sub">${esc(I.nombre)} · ${I.filas.length - I.inicio - 1} filas</p></div>
+      <button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+    <div class="dlg-cuerpo">
+      <h3>1 · ¿Qué columna es cada dato?</h3>
+      <p class="sub">La aplicación propone las columnas por su título. Corrija las que no correspondan; se recordarán para la próxima vez.</p>
+      <div class="form-grid imp-mapeo">${CAMPOS_IMP.map(campo).join('')}</div>
+
+      <h3>2 · Revise</h3>
+      <div class="imp-resumen">
+        <span class="estado canc">${r.nuevas} nuevas</span>
+        <span class="estado pend">${r.existentes} ya existen</span>
+        <span class="estado rev">${r.errores} con datos por revisar</span>
+        ${r.proveedoresNuevos.length ? `<span class="estado prog">${r.proveedoresNuevos.length} proveedores nuevos</span>` : ''}
+      </div>
+      ${r.proveedoresNuevos.length ? `<p class="sub">Se crearán estos proveedores: ${r.proveedoresNuevos.map((p) => esc(p.nombre)).join(' · ')}. Después puede agregarles el IBAN en Proveedores.</p>` : ''}
+      <div class="tabla-scroll"><table class="tabla">
+        <thead><tr><th>Fila</th><th>Estado</th><th>Sociedad</th><th>Proveedor</th><th>Factura</th><th>Fecha</th><th>Vence</th><th class="num">Monto</th></tr></thead>
+        <tbody>${muestra.map((x) => `<tr>
+          <td>${x.n}</td><td>${etiqueta[x.estado]}${x.mensaje ? `<div class="sub">${esc(x.mensaje)}</div>` : ''}</td>
+          <td>${esc(x.factura.sociedad ? S.nombreSociedad(x.factura.sociedad) : '')}</td>
+          <td>${esc(x.proveedor?.nombre || x.nombreProv || '')}${x.proveedorNuevo ? ' <span class="tag-abono">nuevo</span>' : ''}</td>
+          <td>${esc(x.factura.documento)}</td><td>${fmtFecha(x.factura.fechaFactura)}</td><td>${fmtFecha(x.factura.fechaVence)}</td>
+          <td class="num">${x.factura.moneda ? money(x.factura.monto, x.factura.moneda) : fmtNum(x.factura.monto || 0)}</td></tr>`).join('')}</tbody>
+      </table></div>
+      ${res.filas.length > muestra.length ? `<p class="sub">Se muestran las primeras ${muestra.length} de ${res.filas.length} filas.</p>` : ''}
+
+      <div class="acciones-fila imp-acciones">
+        <button class="btn primario" data-act="imp-confirmar" ${r.nuevas ? '' : 'disabled'}>Agregar ${r.nuevas} ${r.nuevas === 1 ? 'factura' : 'facturas'}</button>
+        <button class="btn" data-act="cerrar">Cancelar</button>
+      </div>
+      <p class="sub">Las filas «Ya existe» y «Revisar» no se agregan.</p>
+    </div>`);
+}
+
+function confirmarImportacion() {
+  const I = ui.imp;
+  const nuevas = I.res.filas.filter((x) => x.estado === 'nueva');
+  if (!nuevas.length) return;
+  try { localStorage.setItem(firmaEncabezado(I.enc), JSON.stringify({ mapeo: I.mapeo, fijos: I.fijos })); } catch { /* sin almacenamiento */ }
+  const errores = [];
+  for (const p of I.res.resumen.proveedoresNuevos) {
+    const r = S.guardarProveedor(p.codigo, { nombre: p.nombre, alias: '', ibanCRC: '', ibanUSD: '', plazo: 30 }, true);
+    if (r.error) errores.push(p.nombre + ': ' + r.error);
+  }
+  let ok = 0;
+  for (const x of nuevas) {
+    const r = S.nuevaFactura(x.factura);
+    if (r.error) errores.push(`Fila ${x.n}: ${r.error}`); else ok++;
+  }
+  cerrarDialogo();
+  ui.imp = null;
+  avisar(`Se agregaron ${ok} facturas` + (errores.length ? ` · ${errores.length} con problemas: ${errores.slice(0, 3).join(' · ')}` : ''), errores.length ? 'error' : 'ok');
+}
+
 function dialogoNuevaFactura() {
   const socs = Object.keys(S.sociedades());
   const provs = Object.values(S.datos().proveedores).sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -716,27 +828,48 @@ function validarCampoIBAN(input) {
 
 // ---------------------------------------------------------------- Tablero
 
+// Color de cada sociedad (en el orden en que aparecen) y de cada tramo de antigüedad.
+const COLORES_SOC = ['soc-1', 'soc-2', 'soc-3', 'soc-4', 'soc-5', 'soc-6'];
+const colorSociedad = (s) => COLORES_SOC[Object.keys(S.sociedades()).indexOf(s) % COLORES_SOC.length] || 'soc-1';
+
+function barra(valor, max, clase) {
+  const pct = max > 0 ? Math.max(valor > 0 ? 2 : 0, Math.round((valor / max) * 100)) : 0;
+  return `<span class="barra ${clase}" aria-hidden="true"><span style="width:${pct}%"></span></span>`;
+}
+
 function vistaTablero() {
   const pend = S.conSaldo();
   const venc = pend.filter((f) => S.diasVencida(f) > 0);
   const semana = pend.filter((f) => { const d = S.diasVencida(f); return d != null && d <= 0 && d > -7; });
-  const tramos = [['Por vencer', (d) => d <= 0], ['1–30 días', (d) => d >= 1 && d <= 30], ['31–60 días', (d) => d > 30 && d <= 60], ['61–90 días', (d) => d > 60 && d <= 90], ['Más de 90', (d) => d > 90]];
+  const tramos = [['Por vencer', (d) => d <= 0, 't-0'], ['1–30 días', (d) => d >= 1 && d <= 30, 't-1'], ['31–60 días', (d) => d > 30 && d <= 60, 't-2'], ['61–90 días', (d) => d > 60 && d <= 90, 't-3'], ['Más de 90', (d) => d > 90, 't-4']];
   const socs = Object.keys(S.sociedades());
+  const porSoc = socs.map((s) => ({ s, t: S.totales(pend.filter((f) => f.sociedad === s)) }));
+  const maxCRC = Math.max(0, ...porSoc.map((x) => x.t.CRC)), maxUSD = Math.max(0, ...porSoc.map((x) => x.t.USD));
+  const porTramo = tramos.map(([n, fn, c]) => ({ n, c, t: S.totales(pend.filter((f) => { const d = S.diasVencida(f); return d != null && fn(d); })) }));
+  const maxTC = Math.max(0, ...porTramo.map((x) => x.t.CRC)), maxTU = Math.max(0, ...porTramo.map((x) => x.t.USD));
   return `
   <div class="titulo-vista"><div><h1>Tablero</h1><p class="sub">Al ${fmtFecha(hoyISO())}</p></div></div>
   <div class="kpis">
-    <div class="kpi"><span>Total por pagar</span><strong>${money(S.totales(pend).CRC, 'CRC')}</strong><strong class="usd">${money(S.totales(pend).USD, 'USD')}</strong><small>${pend.length} facturas</small></div>
+    <div class="kpi k-total"><span>Total por pagar</span><strong>${money(S.totales(pend).CRC, 'CRC')}</strong><strong class="usd">${money(S.totales(pend).USD, 'USD')}</strong><small>${pend.length} facturas</small></div>
     <div class="kpi alerta"><span>Vencido</span><strong>${money(S.totales(venc).CRC, 'CRC')}</strong><strong class="usd">${money(S.totales(venc).USD, 'USD')}</strong><small>${venc.length} facturas</small></div>
-    <div class="kpi"><span>Vence en 7 días</span><strong>${money(S.totales(semana).CRC, 'CRC')}</strong><strong class="usd">${money(S.totales(semana).USD, 'USD')}</strong><small>${semana.length} facturas</small></div>
+    <div class="kpi k-semana"><span>Vence en 7 días</span><strong>${money(S.totales(semana).CRC, 'CRC')}</strong><strong class="usd">${money(S.totales(semana).USD, 'USD')}</strong><small>${semana.length} facturas</small></div>
   </div>
   <div class="dos-col">
     <section class="bloque"><h2>Saldo por sociedad</h2>
-      <table class="tabla"><thead><tr><th>Sociedad</th><th class="num">Facturas</th><th class="num">Colones</th><th class="num">Dólares</th></tr></thead>
-      <tbody>${socs.map((s) => { const t = S.totales(pend.filter((f) => f.sociedad === s)); return `<tr><td>${esc(S.nombreSociedad(s))}</td><td class="num">${t.n}</td><td class="num">${money(t.CRC, 'CRC')}</td><td class="num">${money(t.USD, 'USD')}</td></tr>`; }).join('')}</tbody></table>
+      <div class="tarjetas-soc">${porSoc.map(({ s, t }) => `
+        <a class="tarjeta-soc ${colorSociedad(s)}" href="#/facturas" data-act="ir-sociedad" data-v="${esc(s)}">
+          <span class="soc-cab"><span class="soc-punto" aria-hidden="true"></span><strong>${esc(S.nombreSociedad(s))}</strong><span class="soc-n">${t.n} ${t.n === 1 ? 'factura' : 'facturas'}</span></span>
+          <span class="soc-fila"><span class="soc-et">Colones</span><span class="soc-monto">${money(t.CRC, 'CRC')}</span></span>${barra(t.CRC, maxCRC, 'b-soc')}
+          <span class="soc-fila"><span class="soc-et">Dólares</span><span class="soc-monto">${money(t.USD, 'USD')}</span></span>${barra(t.USD, maxUSD, 'b-soc b-claro')}
+        </a>`).join('')}</div>
     </section>
     <section class="bloque"><h2>Antigüedad de saldos</h2>
-      <table class="tabla"><thead><tr><th>Tramo</th><th class="num">Facturas</th><th class="num">Colones</th><th class="num">Dólares</th></tr></thead>
-      <tbody>${tramos.map(([n, fn]) => { const t = S.totales(pend.filter((f) => { const d = S.diasVencida(f); return d != null && fn(d); })); return `<tr><td>${n}</td><td class="num">${t.n}</td><td class="num">${money(t.CRC, 'CRC')}</td><td class="num">${money(t.USD, 'USD')}</td></tr>`; }).join('')}</tbody></table>
+      <div class="tramos">${porTramo.map(({ n, c, t }) => `
+        <div class="tramo ${c}">
+          <span class="soc-cab"><span class="soc-punto" aria-hidden="true"></span><strong>${n}</strong><span class="soc-n">${t.n} ${t.n === 1 ? 'factura' : 'facturas'}</span></span>
+          <span class="soc-fila"><span class="soc-et">Colones</span><span class="soc-monto">${money(t.CRC, 'CRC')}</span></span>${barra(t.CRC, maxTC, 'b-tramo')}
+          <span class="soc-fila"><span class="soc-et">Dólares</span><span class="soc-monto">${money(t.USD, 'USD')}</span></span>${barra(t.USD, maxTU, 'b-tramo b-claro')}
+        </div>`).join('')}</div>
       <p class="sub">EST: ${pend.filter((f) => f.venceEstimado).length} facturas con saldo usan vencimiento estimado (factura + 30 días).</p>
     </section>
   </div>`;
@@ -979,6 +1112,8 @@ const acciones = {
   'f-mas': () => { ui.fact.limite += 300; render(); },
   'f-abrir': (v) => dialogoFactura(v),
   'f-nueva': () => dialogoNuevaFactura(),
+  'imp-confirmar': () => confirmarImportacion(),
+  'ir-sociedad': (v) => { ui.fact.soc = v; ui.fact.est = 'saldo'; ui.fact.limite = 150; location.hash = '#/facturas'; },
 
   'pv-filtro': (v) => { ui.prov.filtro = v; render(); },
   'pv-abrir': (v) => dialogoProveedor(v),
@@ -1027,6 +1162,15 @@ document.addEventListener('change', async (e) => {
   if (k === 'f-est') { ui.fact.est = el.value; ui.fact.limite = 150; render(); return; }
   if (k === 'f-mon') { ui.fact.mon = el.value; render(); return; }
   if (k === 'c-mon') { ui.canc.mon = el.value; ui.canc.limite = 100; render(); return; }
+  if (k === 'imp-col') { ui.imp.mapeo[el.dataset.v] = el.value === '' ? '' : Number(el.value); dialogoImportar(); return; }
+  if (k === 'imp-fijo') { ui.imp.fijos[el.dataset.v] = el.value; dialogoImportar(); return; }
+  if (k === 'imp-archivo') {
+    const file = el.files[0];
+    el.value = '';
+    if (!file) return;
+    try { await cargarArchivoImportar(file); } catch (err) { avisar('No se pudo leer el archivo: ' + err.message, 'error'); }
+    return;
+  }
   if (k === 'a-extra' || k === 'a-desc') {
     const clave = decodeURIComponent(el.dataset.lote);
     if (k === 'a-extra') {
