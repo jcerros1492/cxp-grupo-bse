@@ -3,7 +3,7 @@ import * as S from './store.js';
 import * as Sync from './sync.js';
 import { VERSION, USUARIOS, API_URL } from './config.js';
 import { importarExcel } from './importer.js';
-import { CAMPOS as CAMPOS_IMP, leerFilas, filaEncabezado, sugerirMapeo, prepararFacturas } from './importar-facturas.js';
+import { CAMPOS as CAMPOS_IMP, leerFilas, filaEncabezado, sugerirMapeo, prepararFacturas, detectarGTI } from './importar-facturas.js';
 import { construirArchivo } from './banco.js';
 import {
   money, fmtNum, parseNum, fechaHora, fmtFecha, hoyISO, esc, errorIBAN, fmtIBAN, sumarDias, round2, MONEDAS,
@@ -647,13 +647,18 @@ const firmaEncabezado = (enc) => 'cxp-mapeo:' + enc.map((h) => String(h).trim().
 async function cargarArchivoImportar(file) {
   const esTexto = /\.(csv|txt)$/i.test(file.name);
   const contenido = esTexto ? await leerTexto(file) : await file.arrayBuffer();
-  const filas = leerFilas(contenido, window.XLSX, esTexto);
-  if (filas.length < 2) throw new Error('El archivo no tiene filas de facturas');
-  const inicio = filaEncabezado(filas);
+  const leidas = leerFilas(contenido, window.XLSX, esTexto);
+  if (!leidas.length) throw new Error('El archivo no tiene filas de facturas');
+  const gti = detectarGTI(leidas);
+  const filas = gti ? gti.filas : leidas;
+  const inicio = gti ? gti.inicio : filaEncabezado(filas);
   const enc = filas[inicio].map((h) => String(h).trim());
   let guardado = null;
   try { guardado = JSON.parse(localStorage.getItem(firmaEncabezado(enc)) || 'null'); } catch { /* sin almacenamiento */ }
-  ui.imp = { nombre: file.name, filas, inicio, enc, mapeo: guardado?.mapeo || sugerirMapeo(enc), fijos: guardado?.fijos || { sociedad: '', moneda: '' } };
+  ui.imp = {
+    nombre: file.name, filas, inicio, enc, gti: !!gti, asignados: {},
+    mapeo: gti ? gti.mapeo : (guardado?.mapeo || sugerirMapeo(enc)), fijos: guardado?.fijos || { sociedad: '', moneda: '' },
+  };
   dialogoImportar();
 }
 
@@ -667,7 +672,7 @@ async function leerTexto(file) {
 function dialogoImportar() {
   const I = ui.imp;
   const d = S.datos();
-  const res = prepararFacturas(I.filas, I.inicio, I.mapeo, I.fijos, d);
+  const res = prepararFacturas(I.filas, I.inicio, I.mapeo, I.fijos, d, { asignados: I.asignados, memoria: memoriaCedulas() });
   I.res = res;
   const opcionesCol = (k, opcional) => `<option value="">${opcional ? '— no viene en el archivo —' : '— elegir columna —'}</option>` +
     I.enc.map((h, i) => `<option value="${i}" ${String(I.mapeo[k]) === String(i) ? 'selected' : ''}>${letraCol(i)} · ${esc(h || '(sin título)')}</option>`).join('');
@@ -683,23 +688,27 @@ function dialogoImportar() {
   };
   const r = res.resumen;
   const muestra = res.filas.slice(0, 60);
-  const etiqueta = { nueva: '<span class="estado canc">Nueva</span>', existe: '<span class="estado pend">Ya existe</span>', error: '<span class="estado rev">Revisar</span>' };
+  const etiqueta = { nueva: '<span class="estado canc">Nueva</span>', existe: '<span class="estado pend">Ya existe</span>', omitida: '<span class="estado">No se agrega</span>', error: '<span class="estado rev">Revisar</span>' };
   abrirDialogo(`
     <header class="dlg-cab"><div><h2>Importar facturas</h2><p class="sub">${esc(I.nombre)} · ${I.filas.length - I.inicio - 1} filas</p></div>
       <button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
     <div class="dlg-cuerpo">
-      <h3>1 · ¿Qué columna es cada dato?</h3>
+      ${I.gti ? `<p class="imp-gti">✓ Reporte de GTI reconocido. Se toma el <strong>TotalComprobante</strong>, la moneda, la fecha de emisión y el número del consecutivo (por ejemplo, 00100001010000107091 → 107091).</p>
+      <details class="imp-detalles"><summary>Ver columnas</summary>` : '<h3>1 · ¿Qué columna es cada dato?</h3>'}
       <p class="sub">La aplicación propone las columnas por su título. Corrija las que no correspondan; se recordarán para la próxima vez.</p>
       <div class="form-grid imp-mapeo">${CAMPOS_IMP.map(campo).join('')}</div>
+      ${I.gti ? '</details>' : ''}
 
-      <h3>2 · Revise</h3>
+      ${seccionEmisores(res.emisores)}
+
+      <h3>${I.gti ? '' : '2 · '}Revise las facturas</h3>
       <div class="imp-resumen">
         <span class="estado canc">${r.nuevas} nuevas</span>
-        <span class="estado pend">${r.existentes} ya existen</span>
-        <span class="estado rev">${r.errores} con datos por revisar</span>
+        ${r.existentes ? `<span class="estado pend">${r.existentes} ya existen</span>` : ''}
+        ${r.omitidas ? `<span class="estado">${r.omitidas} notas de crédito (no se agregan)</span>` : ''}
+        ${r.errores ? `<span class="estado rev">${r.errores} con datos por revisar</span>` : ''}
         ${r.proveedoresNuevos.length ? `<span class="estado prog">${r.proveedoresNuevos.length} proveedores nuevos</span>` : ''}
       </div>
-      ${r.proveedoresNuevos.length ? `<p class="sub">Se crearán estos proveedores: ${r.proveedoresNuevos.map((p) => esc(p.nombre)).join(' · ')}. Después puede agregarles el IBAN en Proveedores.</p>` : ''}
       <div class="tabla-scroll"><table class="tabla">
         <thead><tr><th>Fila</th><th>Estado</th><th>Sociedad</th><th>Proveedor</th><th>Factura</th><th>Fecha</th><th>Vence</th><th class="num">Monto</th></tr></thead>
         <tbody>${muestra.map((x) => `<tr>
@@ -715,15 +724,42 @@ function dialogoImportar() {
         <button class="btn primario" data-act="imp-confirmar" ${r.nuevas ? '' : 'disabled'}>Agregar ${r.nuevas} ${r.nuevas === 1 ? 'factura' : 'facturas'}</button>
         <button class="btn" data-act="cerrar">Cancelar</button>
       </div>
-      <p class="sub">Las filas «Ya existe» y «Revisar» no se agregan.</p>
+      <p class="sub">Solo se agregan las filas «Nueva». Las que ya existen, las notas de crédito y las que hay que revisar se quedan fuera.</p>
     </div>`);
+}
+
+/** Cédula → código de proveedor elegido antes en este dispositivo. */
+function memoriaCedulas() {
+  try { return JSON.parse(localStorage.getItem('cxp-cedulas') || '{}'); } catch { return {}; }
+}
+
+function seccionEmisores(emisores) {
+  const lista = emisores.filter((e) => e.filas > 0 || e.clave in ui.imp.asignados);
+  if (!lista.length) return '';
+  const provs = Object.values(S.datos().proveedores).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const como = { cedula: 'reconocido por la cédula', nombre: 'reconocido por el nombre', codigo: 'por el código', elegido: 'elegido por usted', nuevo: 'no se encontró: se creará' };
+  return `<h3>Proveedores del archivo</h3>
+    <p class="sub">El archivo trae la cédula, no su código contable. Confirme cada proveedor o elija el correcto; la aplicación lo recordará.</p>
+    <div class="imp-emisores">${lista.map((e) => `
+      <div class="imp-emisor ${e.codigo ? '' : 'es-nuevo'}">
+        <div><strong>${esc(e.nombre)}</strong><span class="sub">${e.cedula ? `Céd. ${esc(e.cedula)} · ` : ''}${e.filas} ${e.filas === 1 ? 'factura' : 'facturas'} · ${como[e.como]}</span></div>
+        <select data-in="imp-prov" data-v="${esc(e.clave)}" aria-label="Proveedor para ${esc(e.nombre)}">
+          <option value="" ${e.codigo ? '' : 'selected'}>➕ Crear proveedor nuevo${e.nuevo ? ` (código ${esc(e.nuevo.codigo)})` : ''}</option>
+          ${provs.map((p) => `<option value="${esc(p.codigo)}" ${p.codigo === e.codigo ? 'selected' : ''}>${esc(p.codigo)} · ${esc(p.nombre)}</option>`).join('')}
+        </select>
+      </div>`).join('')}</div>`;
 }
 
 function confirmarImportacion() {
   const I = ui.imp;
   const nuevas = I.res.filas.filter((x) => x.estado === 'nueva');
   if (!nuevas.length) return;
-  try { localStorage.setItem(firmaEncabezado(I.enc), JSON.stringify({ mapeo: I.mapeo, fijos: I.fijos })); } catch { /* sin almacenamiento */ }
+  try {
+    if (!I.gti) localStorage.setItem(firmaEncabezado(I.enc), JSON.stringify({ mapeo: I.mapeo, fijos: I.fijos }));
+    const mem = memoriaCedulas();
+    for (const e of I.res.emisores) if (e.cedula && e.codigo) mem[e.cedula] = e.codigo;
+    localStorage.setItem('cxp-cedulas', JSON.stringify(mem));
+  } catch { /* sin almacenamiento */ }
   const errores = [];
   for (const p of I.res.resumen.proveedoresNuevos) {
     const r = S.guardarProveedor(p.codigo, { nombre: p.nombre, alias: '', ibanCRC: '', ibanUSD: '', plazo: 30 }, true);
@@ -1164,6 +1200,7 @@ document.addEventListener('change', async (e) => {
   if (k === 'f-mon') { ui.fact.mon = el.value; render(); return; }
   if (k === 'c-mon') { ui.canc.mon = el.value; ui.canc.limite = 100; render(); return; }
   if (k === 'imp-col') { ui.imp.mapeo[el.dataset.v] = el.value === '' ? '' : Number(el.value); dialogoImportar(); return; }
+  if (k === 'imp-prov') { ui.imp.asignados[el.dataset.v] = el.value; dialogoImportar(); return; }
   if (k === 'imp-fijo') { ui.imp.fijos[el.dataset.v] = el.value; dialogoImportar(); return; }
   if (k === 'imp-archivo') {
     const file = el.files[0];

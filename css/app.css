@@ -392,3 +392,15 @@ pre.txt { font-family: var(--mono); font-size: 12px; background: var(--tinta); c
   .marca img { height: 28px; }
   .logo-inicio { width: 120px; margin-bottom: 12px; }
 }
+
+/* Importación: reporte de GTI y proveedores del archivo */
+.imp-gti { background: #E8F5EE; border: 1px solid #BFE3CD; color: #17643A; border-radius: 10px; padding: 10px 14px; margin: 0 0 10px; }
+.imp-detalles { margin: 0 0 14px; }
+.imp-detalles summary { cursor: pointer; color: var(--azul); font-weight: 600; padding: 4px 0; }
+.imp-emisores { display: grid; gap: 8px; margin-bottom: 16px; }
+.imp-emisor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 6px 14px; align-items: center; padding: 10px 12px; border: 1px solid var(--borde); border-radius: 10px; background: var(--superficie); }
+.imp-emisor.es-nuevo { border-color: #E3C27E; background: #FFF8EA; }
+.imp-emisor strong { display: block; overflow-wrap: anywhere; }
+.imp-emisor .sub { display: block; font-size: 12.5px; margin: 2px 0 0; }
+.imp-emisor select { width: 100%; min-width: 0; }
+@media (max-width: 760px) { .imp-emisor { grid-template-columns: 1fr; } }
