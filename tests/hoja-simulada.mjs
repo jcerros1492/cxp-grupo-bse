@@ -82,7 +82,9 @@ const contexto = vm.createContext({
   console,
 });
 vm.runInContext(readFileSync(raiz + 'js/logica.js', 'utf8'), contexto, { filename: 'Logica.gs' });
-vm.runInContext(readFileSync(raiz + 'apps-script/Codigo.gs', 'utf8'), contexto, { filename: 'Codigo.gs' });
+const CLAVE_PRUEBA = 'Prueba-Servicio-2026';
+propiedades.CLAVE_SERVICIO = CLAVE_PRUEBA;
+vm.runInContext(readFileSync(raiz + 'apps-script/Codigo.gs', 'utf8').replace("'ESCRIBA-AQUI-SU-CONTRASEÑA';", `'${CLAVE_PRUEBA}';`), contexto, { filename: 'Codigo.gs' });
 // Con un .xlsx como segundo argumento, la hoja simulada arranca con ese contenido
 // (como si se hubiera subido a Drive y abierto con Google Sheets).
 if (process.argv[3]) {

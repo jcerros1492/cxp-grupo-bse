@@ -6,6 +6,18 @@ Aplicación web para las cuentas por pagar de Santa Eduviges, La Hilda, Nosavar 
 - **Funciona sin internet.** Cada computadora guarda una copia y los cambios se envían a la hoja cuando vuelve la conexión.
 - **Sincroniza entre las tres personas.** Cada 20 segundos, y en cada cambio, la aplicación trae lo que hicieron los demás.
 
+## Versiones
+
+La versión publicada se ve al pie de cada pantalla. Si no coincide con la última, falta subir los archivos a GitHub o recargar con Ctrl + F5.
+
+| Versión | Cambios |
+|---|---|
+| 1.4.0 | Contraseña del servicio escrita en el código de Apps Script. La dirección del servicio sale de la pantalla de entrada y se configura una vez por computadora. Número de versión visible. |
+| 1.3.0 | Hoja de Google lista para subir con todos los datos (`tools/crear-hoja.mjs`). |
+| 1.2.0 | Usuario y contraseña propios para cada persona; contraseñas cifradas; sesiones. |
+| 1.1.0 | Google Sheets como base de datos, sincronización y trabajo sin internet. |
+| 1.0.0 | Primera versión: programar pagos, aplicar y archivo para el banco. |
+
 ## Flujo de trabajo
 
 1. **Norman** entra a *Programar pagos*. Marca las facturas, escribe cuánto pagar de cada una y elige la fecha. Si el monto es menor que el saldo, queda como abono.
@@ -28,7 +40,7 @@ La hoja se crea a partir del archivo **CXP Grupo BSE.xlsx**, que ya trae todas l
 6. Guarde con el ícono del disquete.
 7. Arriba, elija la función **configurarInicio** y haga clic en **Ejecutar**. No borra nada: solo revisa que estén todas las pestañas.
 8. Google pide permisos. Haga clic en *Revisar permisos* y elija su cuenta. Si aparece "Google no verificó esta app", entre a *Configuración avanzada → Ir a … (no seguro)* y después a *Permitir*.
-9. En el **registro de ejecución**, abajo, aparece la **contraseña del servicio** (empieza con `Srv-`). Guárdela: se necesita para conectar cada computadora. Para verla de nuevo, ejecute la función `mostrarClaveServicio`.
+9. La **contraseña del servicio** se escribe en el propio código, en la línea `var CLAVE_SERVICIO = '...'` al inicio de `Codigo.gs`. Es una sola para todas las computadoras y se pide junto con el enlace `/exec` al conectar cada una. (En GitHub el código solo tiene el texto de ejemplo; la contraseña real vive únicamente en su Apps Script).
 10. En la pestaña **Usuarios** está el usuario (`jonathan`, `norman`, `daniel`) y la **contraseña temporal** de cada persona. Entréguesela a cada uno en privado. La primera vez que entren, la aplicación les pide crear su propia contraseña.
 
 > Si se empieza con una hoja vacía en lugar del archivo, `configurarInicio` crea las pestañas y los usuarios, y Jonathan carga el Excel desde la aplicación.
@@ -40,7 +52,7 @@ La hoja se crea a partir del archivo **CXP Grupo BSE.xlsx**, que ya trae todas l
 3. En *Ejecutar como*, elija **Yo**. En *Quién tiene acceso*, elija **Cualquier usuario**. Esta opción solo permite llamar al servicio: para leer o escribir datos hay que iniciar sesión con usuario y contraseña.
 4. Haga clic en **Implementar** y copie la **URL de la aplicación web**. Termina en `/exec`.
 
-> Para cambiar la contraseña del servicio: engranaje *Configuración del proyecto* → *Propiedades de la secuencia de comandos* → `CLAVE_SERVICIO`. Después hay que volver a conectar cada computadora.
+> Para cambiar la contraseña del servicio: edite `CLAVE_SERVICIO` en el código, guarde e implemente una nueva versión. Después hay que volver a conectar cada computadora.
 
 > Si más adelante cambia el script, entre a **Implementar → Gestionar implementaciones → editar (lápiz) → Versión: Nueva versión**. Así se conserva la misma URL.
 

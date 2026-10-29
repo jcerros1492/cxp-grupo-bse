@@ -2,7 +2,7 @@
 // Estrategia: primero la red (para recibir actualizaciones) y, si no hay, la copia guardada.
 // Las consultas a Google Sheets (POST) no pasan por aquí.
 
-const CACHE = 'cxp-v5';
+const CACHE = 'cxp-1.4.0';
 const ARCHIVOS = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest',
   'js/app.js', 'js/store.js', 'js/sync.js', 'js/config.js', 'js/logica.js', 'js/util.js',
@@ -28,7 +28,7 @@ self.addEventListener('fetch', (e) => {
   const fuentes = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
   if (!propio && !fuentes) return;
   e.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'no-cache' })
       .then((resp) => {
         if (resp.ok || resp.type === 'opaque') {
           const copia = resp.clone();

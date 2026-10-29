@@ -1,6 +1,7 @@
 // Pantallas y eventos de la aplicación.
 import * as S from './store.js';
 import * as Sync from './sync.js';
+import { VERSION } from './config.js';
 import { importarExcel } from './importer.js';
 import { construirArchivo } from './banco.js';
 import {
@@ -965,6 +966,8 @@ function resultado(r, okMsg) {
   avisar(okMsg + (r.avisos?.length ? ' · ' + r.avisos.join(' · ') : ''));
   return true;
 }
+
+document.getElementById('pie').textContent = `Cuentas por Pagar · Grupo BSE · Versión ${VERSION}`;
 
 Sync.alAvisar((msg, tipo) => avisar(msg, tipo === 'aviso' ? 'ok' : tipo));
 Sync.iniciar();

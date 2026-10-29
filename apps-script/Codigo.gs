@@ -13,6 +13,15 @@
 
 var VERSION_SERVICIO = 1;
 
+// ================================================================
+//  CONTRASEÑA DEL SERVICIO
+//  Escriba aquí, entre las comillas, la contraseña que se pedirá en cada
+//  computadora junto con el enlace /exec. Es la misma para todas.
+//  Después de cambiarla: guarde (Ctrl + S) e implemente una nueva versión.
+// ================================================================
+var CLAVE_SERVICIO = 'ESCRIBA-AQUI-SU-CONTRASEÑA';
+
+
 // Pestañas de la hoja. Tipos: t = texto, n = número, b = sí/no.
 var ESQUEMA = {
   facturas: { hoja: 'Facturas', cols: [
@@ -122,14 +131,11 @@ function manejar_(p) {
 
 // ---------------------------------------------------------------- Contraseña del servicio
 
-/**
- * La contraseña del servicio se guarda en las propiedades del script (no en la hoja).
- * configurarInicio() crea una al azar; para verla ejecute mostrarClaveServicio().
- * Para poner una propia: Configuración del proyecto (engranaje) → Propiedades de la
- * secuencia de comandos → CLAVE_SERVICIO.
- */
+/** La contraseña del servicio es la que está escrita arriba, en CLAVE_SERVICIO. */
 function claveServicio_() {
-  return String(PropertiesService.getScriptProperties().getProperty('CLAVE_SERVICIO') || '');
+  var c = String(CLAVE_SERVICIO || '').trim();
+  if (!c || c === 'ESCRIBA-AQUI-SU-CONTRASEÑA') return '';
+  return c;
 }
 
 function claveServicioCorrecta_(clave) {
@@ -140,7 +146,7 @@ function claveServicioCorrecta_(clave) {
 /** Muestra en el registro de ejecución la contraseña del servicio. */
 function mostrarClaveServicio() {
   var c = claveServicio_();
-  Logger.log(c ? 'Contraseña del servicio: ' + c : 'Aún no hay contraseña del servicio: ejecute configurarInicio.');
+  Logger.log(c ? 'Contraseña del servicio: ' + c : 'Falta escribir la contraseña en CLAVE_SERVICIO, al inicio del código.');
 }
 
 // ---------------------------------------------------------------- Usuarios y sesiones
@@ -421,11 +427,9 @@ function configurarInicio() {
   }
   var hoja1 = libro.getSheetByName('Hoja 1') || libro.getSheetByName('Sheet1');
   if (hoja1 && hoja1.getLastRow() === 0 && libro.getSheets().length > 1) libro.deleteSheet(hoja1);
-  var props = PropertiesService.getScriptProperties();
-  if (!props.getProperty('CLAVE_SERVICIO')) {
-    props.setProperty('CLAVE_SERVICIO', 'Srv-' + Utilities.getUuid().replace(/-/g, '').slice(0, 12));
-  }
   SpreadsheetApp.flush();
   Logger.log('Listo. En la pestaña Usuarios está el usuario y la contraseña temporal de cada persona.');
-  Logger.log('Contraseña del servicio (para "Configurar conexión" en cada computadora): ' + claveServicio_());
+  if (!claveServicio_()) Logger.log('ATENCIÓN: falta escribir la contraseña del servicio en CLAVE_SERVICIO, al inicio del código. Sin ella la aplicación no se puede conectar.');
+  else if (claveServicio_().length < 10) Logger.log('Sugerencia: use una contraseña del servicio de al menos 10 caracteres.');
+  else Logger.log('Contraseña del servicio configurada.');
 }
