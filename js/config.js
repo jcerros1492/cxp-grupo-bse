@@ -7,17 +7,13 @@ export const API_URL = 'https://script.google.com/macros/s/AKfycbxBud0gvtSXjPFC9
 // la lista de la hoja de Google (pestaña Usuarios), que se administra desde Configuración.
 export const USUARIOS = [
   { usuario: 'jonathan', nombre: 'Jonathan Cerros', rol: 'admin' },
-  { usuario: 'fernando', nombre: 'Fernando', rol: 'admin' },
+  { usuario: 'fernando', nombre: 'Fernando', rol: 'aplica' },
   { usuario: 'norman', nombre: 'Norman Alpízar', rol: 'aprueba' },
   { usuario: 'daniel', nombre: 'Daniel Barquero', rol: 'aplica' },
 ];
 
 // Versión de la aplicación: se muestra abajo en cada pantalla para confirmar qué versión está publicada.
-export const VERSION = '1.6.1';
-
-// Modo de pruebas: cada persona escribe su PIN la primera vez en este dispositivo y
-// después entra tocando su nombre, sin PIN. Para exigir el PIN siempre, ponga false.
-export const MODO_PRUEBAS = true;
+export const VERSION = '1.7.0';
 
 // Cada cuántos segundos se buscan cambios de los demás mientras la página está abierta.
 export const SEGUNDOS_SINCRONIZAR = 20;

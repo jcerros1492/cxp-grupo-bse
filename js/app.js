@@ -46,7 +46,7 @@ function rutaActual() {
 const ROLES = { admin: 'Administra y aplica', aplica: 'Aplica pagos', aprueba: 'Aprueba pagos' };
 
 function indicadorRed() {
-  return (Sync.modoPruebas() ? '<span class="red pruebas" title="Se entra sin PIN. Desactívelo en Apps Script (MODO_PRUEBAS = false).">Modo pruebas</span>' : '') + indicadorConexion();
+  return indicadorConexion();
 }
 
 function indicadorConexion() {
@@ -67,13 +67,13 @@ function render() {
     return `<a href="#/${r}" class="${r === ruta ? 'activo' : ''}" ${r === ruta ? 'aria-current="page"' : ''}>${RUTAS[r].titulo}${n ? ` <span class="burbuja">${n}</span>` : ''}</a>`;
   }).join('') : '';
   $user.innerHTML = u
-    ? `${indicadorRed()}<button class="usuario-info" data-act="cuenta" title="Mi cuenta"><span class="avatar" aria-hidden="true">${esc(u.nombre.split(' ').map((p) => p[0]).join('').slice(0, 2))}</span><span><strong>${esc(u.nombre)}</strong><small>${esc(ROLES[u.rol] || u.rol)}</small></span></button>`
+    ? `${indicadorRed()}<button class="usuario-info" data-act="cambiar-usuario" title="Cambiar de usuario"><span class="avatar" aria-hidden="true">${esc(u.nombre.split(' ').map((p) => p[0]).join('').slice(0, 2))}</span><span><strong>${esc(u.nombre)}</strong><small>${esc(ROLES[u.rol] || u.rol)}</small></span></button>`
     : '';
   document.title = `${RUTAS[ruta].titulo} · Cuentas por Pagar`;
 
   if (!Sync.estado.cargado) { $app.innerHTML = '<p class="vacio">Cargando…</p>'; return; }
   if (!u) { $app.innerHTML = vistaLogin(); return; }
-  if (u.debeCambiar) { $nav.innerHTML = ''; $app.innerHTML = vistaCrearContrasena(); return; }
+  if (u.debeCambiar) { $nav.innerHTML = ''; $app.innerHTML = vistaLogin(); return; }
   if (!S.hayDatos() && ruta !== 'config') { $app.innerHTML = Sync.estado.desde ? vistaBienvenida() : vistaCargando(); return; }
   $app.innerHTML = RUTAS[ruta].vista();
   despuesDeRender(ruta);
@@ -150,26 +150,17 @@ function vistaLogin() {
   </section>`;
 }
 
+/** Solo la primera vez en un dispositivo: la contraseña del servicio. */
 function vistaClave(u) {
-  const conectado = !!Sync.conexion();
   return `<section class="centro">
     <span class="avatar grande" aria-hidden="true">${iniciales(u.nombre)}</span>
     <h1>${esc(u.nombre)}</h1>
-    <p class="sub">${esc(ROLES[u.rol] || u.rol)}</p>
+    <p class="sub">Primera vez en este dispositivo: escriba la contraseña del servicio. Solo se pide una vez; después se entra tocando el nombre.</p>
     <form class="form-login" data-form="login">
       <input type="hidden" name="usuario" value="${esc(u.usuario)}">
-      <input type="text" name="username" value="${esc(u.usuario)}" autocomplete="username" hidden>
-      ${conectado && Sync.modoPruebasServidor()
-        ? '<p class="aviso-pruebas">Modo de pruebas: se entra sin PIN.</p>'
-        : `<label>PIN <input name="contrasena" class="pin" ${PIN} ${conectado ? 'required' : ''} autofocus placeholder="••••">
-        <span class="ayuda">4 números. Si es la primera vez, use el PIN temporal que le dio el administrador.${Sync.modoPruebas() ? ' En modo de pruebas, después de esta vez entrará solo tocando su nombre en este dispositivo.' : ''}</span></label>`}
-      ${conectado ? '' : `
-      <div class="primera-vez">
-        <strong>Primera vez en este dispositivo</strong>
-        ${API_URL ? '' : '<label>Dirección del servicio <input name="url" type="url" required placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>'}
-        <label>Contraseña del servicio <input name="servicio" type="password" required autocomplete="off">
-          <span class="ayuda">Se pide una sola vez en cada dispositivo. La tiene Jonathan.</span></label>
-      </div>`}
+      ${API_URL ? '' : '<label>Dirección del servicio <input name="url" type="url" required placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>'}
+      <label>Contraseña del servicio <input name="servicio" type="password" required autocomplete="off" autofocus>
+        <span class="ayuda">La tiene Jonathan.</span></label>
       <button class="btn primario grande" type="submit">Entrar</button>
     </form>
     <p class="nota"><button class="btn-link" data-act="elegir" data-v="">← Elegir otro usuario</button></p>
@@ -200,42 +191,6 @@ function dialogoConexion(desbloqueada = false) {
       <p class="sub">Dirección del servicio y contraseña del servicio de este dispositivo.</p></div>
       <button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
     <div class="dlg-cuerpo">${cuerpo}</div>`);
-}
-
-function vistaCrearContrasena() {
-  const u = S.usuarioActual();
-  return `<section class="centro">
-    <h1>Hola, ${esc(u.nombre.split(' ')[0])}</h1>
-    <p class="sub">Entró con un PIN temporal. Cree su propio PIN de 4 números; solo usted lo va a conocer.</p>
-    <form class="form-login" data-form="nueva-clave">
-      <label>PIN nuevo <input name="nueva" class="pin" ${PIN} required placeholder="••••"><span class="ayuda">4 números, que no sean 1111 ni 1234</span></label>
-      <label>Repítalo <input name="repetir" class="pin" ${PIN} required placeholder="••••"></label>
-      <button class="btn primario grande" type="submit">Guardar PIN</button>
-    </form>
-    <p class="nota"><button class="btn-link" data-act="salir">Salir</button></p>
-  </section>`;
-}
-
-function dialogoCuenta() {
-  const u = S.usuarioActual();
-  abrirDialogo(`
-    <header class="dlg-cab"><div><h2>${esc(u.nombre)}</h2><p class="sub">Usuario <strong>${esc(u.usuario)}</strong> · ${esc(ROLES[u.rol] || u.rol)}</p></div>
-      <button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
-    <div class="dlg-cuerpo">
-      <h3>Cambiar PIN</h3>
-      <form class="form-grid" data-form="cambiar-clave">
-        <label>PIN actual <input name="actual" class="pin" ${PIN} placeholder="••••"></label>
-        <label>PIN nuevo <input name="nueva" class="pin" ${PIN} required placeholder="••••"></label>
-        <label>Repítalo <input name="repetir" class="pin" ${PIN} required placeholder="••••"></label>
-        <div class="ancho"><button class="btn primario" type="submit">Cambiar PIN</button></div>
-      </form>
-      <h3>Sesión</h3>
-      <p class="sub">${Sync.modoPruebas() ? 'Modo de pruebas: puede volver a la pantalla de usuarios y entrar de nuevo tocando su nombre, sin PIN. «Cerrar sesión» hace que este dispositivo vuelva a pedirle el PIN.' : 'La sesión queda abierta en esta computadora, también sin internet, hasta que la cierre.'}</p>
-      <div class="acciones-fila">
-        ${Sync.modoPruebas() ? '<button class="btn primario" data-act="cambiar-usuario">Cambiar de usuario</button>' : ''}
-        <button class="btn" data-act="salir">Cerrar sesión</button>
-      </div>
-    </div>`);
 }
 
 function vistaCargando() {
@@ -711,17 +666,17 @@ function seccionUsuarios() {
       <h2>Usuarios</h2>
       <p class="sub">Los usuarios se administran en la pestaña <strong>Usuarios</strong> de la hoja de Google:</p>
       <ul class="lista-pasos">
-        <li><strong>Agregar a alguien:</strong> fila nueva con usuario (en minúsculas), nombre, rol (<span class="mono">admin</span>, <span class="mono">aplica</span> o <span class="mono">aprueba</span>), <span class="mono">TRUE</span> y un PIN temporal de 4 números en <em>contrasenaTemporal</em>. Para que aparezca en la pantalla de inicio, avíseme y lo agrego a la lista de la aplicación.</li>
-        <li><strong>Si alguien olvida su PIN:</strong> escriba un PIN temporal nuevo de 4 números en su fila.</li>
+        <li><strong>Agregar a alguien:</strong> fila nueva con usuario (en minúsculas), nombre, rol (<span class="mono">admin</span>, <span class="mono">aplica</span> o <span class="mono">aprueba</span>), <span class="mono">TRUE</span> y la palabra <span class="mono">${esc(Sync.CLAVE_INICIAL)}</span> en <em>contrasenaTemporal</em>. Para que aparezca en la pantalla de inicio, avíseme y lo agrego a la lista de la aplicación.</li>
+        <li><strong>Si alguien no puede entrar:</strong> escriba <span class="mono">${esc(Sync.CLAVE_INICIAL)}</span> en su columna <em>contrasenaTemporal</em>.</li>
         <li><strong>Quitar el acceso:</strong> ponga <span class="mono">FALSE</span> en <em>activo</em>.</li>
       </ul>
-      <p class="sub">Use PIN temporales que no empiecen con 0 (Google puede borrar ese cero).</p>
+      <p class="sub">Roles: <strong>admin</strong> ve todo, incluida Configuración completa; <strong>aplica</strong> registra facturas y aplica pagos; <strong>aprueba</strong> programa pagos.</p>
     </section>`;
   }
   const lista = Sync.usuariosConocidos() || [];
   return `<section class="bloque">
     <h2>Usuarios</h2>
-    <p class="sub">Cada persona entra tocando su nombre y escribiendo su PIN de 4 números. Al crear un usuario o pedir un PIN nuevo, la aplicación muestra un PIN temporal para entregarle; la persona lo cambia al entrar.</p>
+    <p class="sub">Cada persona entra tocando su nombre en la pantalla de inicio.</p>
     <div class="tabla-scroll"><table class="tabla">
       <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
       <tbody>${lista.map((u) => `<tr>
@@ -855,17 +810,14 @@ const acciones = {
   },
   conexion: () => dialogoConexion(),
   elegir: (v) => {
-    try {
-      if (v && Sync.entrarGuardado(v)) { ui.login = ''; location.hash = '#/tablero'; render(); return; }
-    } catch (e) { avisar(e.message, 'error'); return; }
-    ui.login = v;
-    render();
-    setTimeout(() => document.querySelector('[name=contrasena]')?.focus(), 0);
+    if (!v) { ui.login = ''; render(); return; }
+    if (!Sync.conexion()) { ui.login = v; render(); return; }
+    entrarComo(v);
   },
   'cambiar-usuario': () => {
     try { Sync.cambiarUsuario(); cerrarDialogo(); ui.login = ''; location.hash = ''; render(); } catch (e) { avisar(e.message, 'error'); }
   },
-  cuenta: () => dialogoCuenta(),
+  cuenta: () => acciones['cambiar-usuario'](),
   salir: async () => {
     const n = Sync.estado.pendientes.length;
     if (!confirm(n ? `Hay ${n} cambios que aún no llegan a Google Sheets y se perderán. ¿Cerrar sesión de todos modos?` : '¿Cerrar sesión en esta computadora?')) return;
@@ -1002,13 +954,8 @@ document.addEventListener('submit', (e) => {
     const btn = form.querySelector('button[type=submit]');
     btn.disabled = true;
     btn.textContent = 'Entrando…';
-    const conectar = Sync.conexion() ? Promise.resolve() : Sync.configurarConexion(d.url || API_URL, d.servicio);
-    conectar.then(() => Sync.iniciarSesion(d.usuario, d.contrasena)).then(() => {
-      ui.login = '';
-      location.hash = '#/tablero';
-      render();
-    }).catch((err) => {
-      avisar(navigator.onLine ? err.message : 'Para entrar la primera vez se necesita internet', 'error');
+    Sync.configurarConexion(d.url || API_URL, d.servicio).then(() => entrarComo(d.usuario)).catch((err) => {
+      avisar(navigator.onLine ? err.message : 'La primera vez en este dispositivo se necesita internet', 'error');
       btn.disabled = false;
       btn.textContent = 'Entrar';
     });
@@ -1082,6 +1029,28 @@ function exportarExcel() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas), 'Facturas');
   XLSX.writeFile(wb, `cuentas-por-pagar-${hoyISO()}.xlsx`);
+}
+
+/** Entra como la persona elegida y abre el Tablero. */
+let entrando = false;
+async function entrarComo(usuario) {
+  if (entrando) return;
+  entrando = true;
+  document.querySelectorAll('.tarjeta-usuario').forEach((b) => { b.disabled = true; });
+  const t = document.querySelector(`[data-act=elegir][data-v="${CSS.escape(usuario)}"] small`);
+  if (t) t.textContent = 'Entrando…';
+  try {
+    await Sync.entrarDirecto(usuario);
+    ui.login = '';
+    location.hash = '#/tablero';
+    render();
+  } catch (e) {
+    avisar(e.message, 'error');
+    ui.login = '';
+    render();
+  } finally {
+    entrando = false;
+  }
 }
 
 /** Muestra el resultado de un cambio. Devuelve true si se aplicó. */

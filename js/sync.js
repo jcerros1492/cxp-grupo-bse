@@ -5,7 +5,7 @@
 // - Cuando hay internet, la cola se envía al servicio de Google, que la valida y
 //   devuelve lo que cambiaron los demás. Si no hay internet, se reintenta luego.
 
-import { API_URL, SEGUNDOS_SINCRONIZAR, MODO_PRUEBAS } from './config.js';
+import { API_URL, SEGUNDOS_SINCRONIZAR } from './config.js';
 
 const L = window.Logica;
 
@@ -167,8 +167,6 @@ export function usuariosConocidos() {
   try { return JSON.parse(localStorage.getItem(CLAVE_USUARIOS) || 'null'); } catch { return null; }
 }
 
-/** Modo de pruebas: el del script (si lo tiene) o el de config.js. */
-export const modoPruebas = () => !!conexion()?.modoPruebas || MODO_PRUEBAS;
 export const modoPruebasServidor = () => !!conexion()?.modoPruebas;
 export const gestionUsuarios = () => !!conexion()?.gestionUsuarios;
 
@@ -182,14 +180,53 @@ function claveDesdePin(pin) {
   return 'pin:' + x + ':cxp-bse';
 }
 
-// ---------------------------------------------------------------- Sesiones guardadas (modo de pruebas)
+// ---------------------------------------------------------------- Entrada directa (sin PIN)
+//
+// Cada persona entra tocando su nombre. Con el script 1.4, que exige contraseña, la
+// aplicación usa una clave interna por usuario: la primera vez entra con la clave
+// temporal «acceso» (escrita en la hoja) y la reemplaza sola por la interna.
+
+export const CLAVE_INICIAL = 'acceso';
+const claveInterna = (usuario) => 'cxp:' + usuario + ':acceso-directo';
+
+/** Entra como `usuario`: usa la sesión guardada en este dispositivo o inicia una nueva. */
+export async function entrarDirecto(usuario) {
+  if (entrarGuardado(usuario)) return;
+  if (!navigator.onLine) throw new Error('La primera vez que una persona entra en este dispositivo se necesita internet');
+  const intentos = [claveInterna(usuario), CLAVE_INICIAL];
+  let r;
+  for (const c of intentos) {
+    r = await api({ accion: 'login', usuario, contrasena: c, equipo: nombreEquipo() });
+    if (r.ok || /desactivado/i.test(r.error || '')) break;
+  }
+  if (!r.ok) {
+    throw new Error(/desactivado/i.test(r.error || '') ? r.error
+      : `No se pudo entrar como ${usuario}. En la hoja de Google, pestaña Usuarios, escriba «${CLAVE_INICIAL}» en la columna contrasenaTemporal de esa persona.`);
+  }
+  if (estado.pendientes.length && estado.sesion?.usuario && estado.sesion.usuario !== r.usuario.usuario) {
+    throw new Error('Hay cambios de otra persona que aún no llegan a Google. Espere a que se sincronicen.');
+  }
+  estado.sesion = { token: r.token, ...r.usuario };
+  estado.hoja = r.hoja || estado.hoja;
+  if (r.usuario.debeCambiar) {
+    const c = await api({ accion: 'cambiarContrasena', token: r.token, actual: CLAVE_INICIAL, nueva: claveInterna(usuario) });
+    if (!c.ok) throw new Error(c.error || 'No se pudo preparar el acceso');
+    estado.sesion.debeCambiar = false;
+  }
+  guardarSesionUsuario(estado.sesion);
+  guardarLocal();
+  notificar();
+  await sincronizar();
+}
+
+// ---------------------------------------------------------------- Sesiones guardadas en este dispositivo
 
 const CLAVE_SESIONES = 'cxp-sesiones';
 function sesionesGuardadas() {
   try { return JSON.parse(localStorage.getItem(CLAVE_SESIONES) || '{}'); } catch { return {}; }
 }
 function guardarSesionUsuario(s) {
-  if (!MODO_PRUEBAS || !s?.usuario) return;
+  if (!s?.usuario) return;
   const g = sesionesGuardadas();
   g[s.usuario] = s;
   try { localStorage.setItem(CLAVE_SESIONES, JSON.stringify(g)); } catch { /* sin almacenamiento */ }
@@ -200,9 +237,8 @@ function olvidarSesionUsuario(usuario) {
   try { localStorage.setItem(CLAVE_SESIONES, JSON.stringify(g)); } catch { /* sin almacenamiento */ }
 }
 
-/** En modo de pruebas: entrar tocando el nombre si esa persona ya entró antes en este dispositivo. */
+/** Entrar tocando el nombre si esa persona ya entró antes en este dispositivo. */
 export function entrarGuardado(usuario) {
-  if (!MODO_PRUEBAS) return false;
   const s = sesionesGuardadas()[usuario];
   if (!s || s.debeCambiar) return false;
   if (estado.pendientes.length && estado.sesion?.usuario !== usuario) {

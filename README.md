@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.7.0 | Sin PIN: se entra tocando el nombre (la contraseña del servicio protege cada dispositivo). Tocar el nombre arriba vuelve a la pantalla de usuarios. Fernando con rol *aplica*. Funciona con el script 1.4: en la pestaña Usuarios, la columna *contrasenaTemporal* de cada persona debe decir `acceso` la primera vez. |
 | 1.6.1 | Funciona con el script de Google ya publicado (1.4), sin cambiarlo: PIN de 4 números, modo de pruebas en la aplicación (`MODO_PRUEBAS` en `js/config.js`: tras la primera vez se entra tocando el nombre) y botón «Cambiar de usuario». |
 | 1.6.0 | PIN de 4 números con bloqueo tras 5 intentos; modo de pruebas sin PIN (`MODO_PRUEBAS` en Apps Script); la aplicación abre en el Tablero; pantalla de carga en lugar de "cargar Excel"; administración de usuarios desde Configuración; usuario Fernando (administrador). |
 | 1.5.1 | Dirección del servicio incluida en la aplicación: en un dispositivo nuevo solo se pide la contraseña del servicio. |
