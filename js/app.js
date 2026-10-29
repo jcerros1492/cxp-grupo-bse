@@ -86,9 +86,50 @@ function render() {
   if (!u) { $app.innerHTML = vistaLogin(); return; }
   if (u.debeCambiar) { $nav.innerHTML = ''; $app.innerHTML = vistaLogin(); return; }
   if (!S.hayDatos() && ruta !== 'config') { $app.innerHTML = Sync.estado.desde ? vistaBienvenida() : vistaCargando(); return; }
-  $app.innerHTML = RUTAS[ruta].vista();
+  const html = RUTAS[ruta].vista();
+  if (ruta === rutaDibujada && $app.firstChild) {
+    // Misma pantalla: solo se cambia lo que cambió. El campo donde se escribe no se toca,
+    // así el teclado del celular no se reinicia con cada búsqueda.
+    const t = document.createElement('template');
+    t.innerHTML = html;
+    etiquetarTablas(t.content);
+    parchar($app, t.content);
+  } else {
+    $app.innerHTML = html;
+  }
+  rutaDibujada = ruta;
   despuesDeRender(ruta);
   restaurarFoco(foco);
+}
+let rutaDibujada = null;
+
+/** Actualiza `viejo` para que quede igual a `nuevo`, sin reemplazar el elemento que tiene el foco. */
+function parchar(viejo, nuevo) {
+  const activo = document.activeElement;
+  const sel = activo && activo !== document.body && viejo.contains(activo) ? selectorDe(activo) : null;
+  const a = [...viejo.childNodes], b = [...nuevo.childNodes];
+  const ia = sel ? a.findIndex((x) => x.contains(activo)) : -1;
+  const jb = ia < 0 ? -1 : b.findIndex((y) => y.nodeType === 1 && y.tagName === a[ia].tagName && (y.matches(sel) || y.querySelector(sel)));
+  if (jb < 0) { viejo.replaceChildren(...b); return; }
+  const x = a[ia], y = b[jb];
+  a.forEach((n) => { if (n !== x) n.remove(); });
+  x.before(...b.slice(0, jb));
+  x.after(...b.slice(jb + 1));
+  copiarAtributos(x, y, x === activo);
+  if (x !== activo) parchar(x, y);
+}
+function selectorDe(el) {
+  if (el.id) return '#' + CSS.escape(el.id);
+  if (el.dataset.in) return `[data-in="${el.dataset.in}"]` + (el.dataset.v ? `[data-v="${CSS.escape(el.dataset.v)}"]` : '');
+  if (el.name) return `${el.tagName.toLowerCase()}[name="${CSS.escape(el.name)}"]`;
+  return null;
+}
+function copiarAtributos(x, y, esActivo) {
+  for (const { name } of [...x.attributes]) if (!y.hasAttribute(name)) x.removeAttribute(name);
+  for (const { name, value } of [...y.attributes]) {
+    if (esActivo && name === 'value') continue;
+    if (x.getAttribute(name) !== value) x.setAttribute(name, value);
+  }
 }
 
 /** Al llegar cambios de otra persona se redibuja la pantalla: se conserva el campo donde se escribe. */
@@ -271,7 +312,7 @@ function vistaProgramar() {
     <div class="fila-chips" role="group" aria-label="Sociedad">${chipsSociedad('p-soc', P.soc)}</div>
     <div class="fila-chips" role="group" aria-label="Moneda">${chip('p-mon', '', P.mon, 'Ambas monedas')}${chip('p-mon', 'CRC', P.mon, 'Colones')}${chip('p-mon', 'USD', P.mon, 'Dólares')}</div>
     <div class="fila-busqueda">
-      <label class="buscar"><span class="vh">Buscar</span><input type="search" placeholder="Buscar proveedor o número de factura" value="${esc(P.q)}" data-in="p-q"></label>
+      <label class="buscar"><span class="vh">Buscar</span><input type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Buscar proveedor o número de factura" value="${esc(P.q)}" data-in="p-q"></label>
       <label class="check"><input type="checkbox" data-in="p-venc" ${P.vencidas ? 'checked' : ''}> Solo vencidas o que vencen hoy</label>
     </div>
   </div>
@@ -531,7 +572,7 @@ function vistaFacturas() {
   <div class="filtros">
     <div class="fila-chips" role="group" aria-label="Sociedad">${chipsSociedad('f-soc', F.soc)}</div>
     <div class="fila-busqueda">
-      <label class="buscar"><span class="vh">Buscar</span><input type="search" placeholder="Proveedor, factura o comprobante" value="${esc(F.q)}" data-in="f-q"></label>
+      <label class="buscar"><span class="vh">Buscar</span><input type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Proveedor, factura o comprobante" value="${esc(F.q)}" data-in="f-q"></label>
       <label>Estado <select data-in="f-est">
         ${[['saldo', 'Con saldo'], ['', 'Todas'], ['Pendiente', 'Pendiente'], ['Programada', 'Programada'], ['Abonada', 'Abonada'], ['Revisión', 'Revisión'], ['Cancelada', 'Cancelada']]
           .map(([v, n]) => `<option value="${v}" ${F.est === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
@@ -578,7 +619,7 @@ function vistaCanceladas() {
   <div class="filtros">
     <div class="fila-chips" role="group" aria-label="Sociedad">${chipsSociedad('c-soc', C.soc)}</div>
     <div class="fila-busqueda">
-      <label class="buscar"><span class="vh">Buscar</span><input type="search" placeholder="Proveedor, número de factura o comprobante" value="${esc(C.q)}" data-in="c-q"></label>
+      <label class="buscar"><span class="vh">Buscar</span><input type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Proveedor, número de factura o comprobante" value="${esc(C.q)}" data-in="c-q"></label>
       <label>Moneda <select data-in="c-mon"><option value="">Ambas</option><option value="CRC" ${C.mon === 'CRC' ? 'selected' : ''}>Colones</option><option value="USD" ${C.mon === 'USD' ? 'selected' : ''}>Dólares</option></select></label>
     </div>
   </div>
@@ -820,7 +861,7 @@ function vistaProveedores() {
   </div>
   <div class="filtros">
     <div class="fila-busqueda">
-      <label class="buscar"><span class="vh">Buscar</span><input type="search" placeholder="Nombre, alias o código" value="${esc(P.q)}" data-in="pv-q"></label>
+      <label class="buscar"><span class="vh">Buscar</span><input type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Nombre, alias o código" value="${esc(P.q)}" data-in="pv-q"></label>
       <div class="fila-chips">${chip('pv-filtro', '', P.filtro, 'Todos')}${chip('pv-filtro', 'con-saldo', P.filtro, 'Con saldo')}${chip('pv-filtro', 'sin-iban', P.filtro, 'Sin IBAN')}</div>
     </div>
   </div>
@@ -1065,6 +1106,8 @@ document.addEventListener('click', (e) => {
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.matches('tr[data-act]')) acciones[e.target.dataset.act]?.(e.target.dataset.v);
+  // «Buscar» en el teclado del celular: muestra los resultados ya y cierra el teclado
+  if (e.key === 'Enter' && e.target.matches('input[type="search"]')) { e.preventDefault(); clearTimeout(tBusqueda); render(); e.target.blur(); }
 });
 
 const acciones = {
@@ -1175,12 +1218,7 @@ document.addEventListener('input', (e) => {
   if (busquedas[k]) {
     busquedas[k](el.value);
     clearTimeout(tBusqueda);
-    tBusqueda = setTimeout(() => {
-      const pos = el.selectionStart;
-      render();
-      const nuevo = document.querySelector(`[data-in="${k}"]`);
-      if (nuevo) { nuevo.focus(); nuevo.setSelectionRange(pos, pos); }
-    }, 250);
+    tBusqueda = setTimeout(render, 300);
   }
 });
 
