@@ -12,6 +12,8 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.5.1 | Dirección del servicio incluida en la aplicación: en un dispositivo nuevo solo se pide la contraseña del servicio. |
+| 1.5.0 | Pantalla de inicio con las tarjetas de los usuarios. La conexión con Google se ve en Configuración, protegida con la contraseña del servicio; en la entrada solo se pide la primera vez en cada dispositivo. |
 | 1.4.0 | Contraseña del servicio escrita en el código de Apps Script. La dirección del servicio sale de la pantalla de entrada y se configura una vez por computadora. Número de versión visible. |
 | 1.3.0 | Hoja de Google lista para subir con todos los datos (`tools/crear-hoja.mjs`). |
 | 1.2.0 | Usuario y contraseña propios para cada persona; contraseñas cifradas; sesiones. |

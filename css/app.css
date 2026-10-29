@@ -67,6 +67,9 @@ h3 { font-size: 15px; margin: 18px 0 8px; }
 .red.sync { color: #9CC3EA; cursor: default; }
 .red.off { color: #F0C27A; cursor: default; }
 .red.err { color: #F2A196; border-color: #F2A196; }
+.primera-vez { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px dashed var(--borde-fuerte); border-radius: 8px; background: var(--superficie); }
+.primera-vez strong { font-size: 13px; }
+.caja-url { word-break: break-all; background: #F8F9FB; border: 1px solid var(--borde); border-radius: 6px; padding: 10px; }
 .form-login { display: flex; flex-direction: column; gap: 14px; width: min(420px, 100%); text-align: left; }
 
 /* Botones y campos */

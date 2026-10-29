@@ -1,7 +1,7 @@
 // Pantallas y eventos de la aplicación.
 import * as S from './store.js';
 import * as Sync from './sync.js';
-import { VERSION } from './config.js';
+import { VERSION, USUARIOS, API_URL } from './config.js';
 import { importarExcel } from './importer.js';
 import { construirArchivo } from './banco.js';
 import {
@@ -15,6 +15,7 @@ const $dialog = document.getElementById('dialogo');
 
 // Estado temporal de pantallas (no se guarda)
 const ui = {
+  login: '',
   prog: { soc: '', mon: '', q: '', vencidas: false, sel: new Map(), fecha: '', verProgramado: true },
   fact: { soc: '', mon: '', est: 'saldo', q: '', limite: 150 },
   prov: { q: '', filtro: '', abierto: null },
@@ -67,7 +68,6 @@ function render() {
   document.title = `${RUTAS[ruta].titulo} · Cuentas por Pagar`;
 
   if (!Sync.estado.cargado) { $app.innerHTML = '<p class="vacio">Cargando…</p>'; return; }
-  if (!Sync.conexion()) { $app.innerHTML = vistaConexion(); return; }
   if (!u) { $app.innerHTML = vistaLogin(); return; }
   if (u.debeCambiar) { $nav.innerHTML = ''; $app.innerHTML = vistaCrearContrasena(); return; }
   if (!S.hayDatos() && ruta !== 'config') { $app.innerHTML = vistaBienvenida(); return; }
@@ -127,44 +127,71 @@ const totalesTxt = (t) => [t.CRC ? money(t.CRC, 'CRC') : '', t.USD ? money(t.USD
 
 // ---------------------------------------------------------------- Inicio
 
+const iniciales = (n) => esc(n.split(' ').map((p) => p[0]).join('').slice(0, 2));
+
+/** Pantalla de inicio: las personas que usan la aplicación. */
 function vistaLogin() {
+  const elegido = USUARIOS.find((x) => x.usuario === ui.login);
+  if (elegido) return vistaClave(elegido);
   return `<section class="centro">
-    <h1>Cuentas por Pagar</h1>
-    <p class="sub">Entre con su usuario y contraseña. Si es la primera vez, use la contraseña temporal que le dio Jonathan.</p>
+    <h1>¿Quién está usando la aplicación?</h1>
+    <p class="sub">Toque su nombre para entrar.</p>
+    <div class="usuarios">${USUARIOS.map((u) => `
+      <button class="tarjeta-usuario" data-act="elegir" data-v="${esc(u.usuario)}">
+        <span class="avatar grande" aria-hidden="true">${iniciales(u.nombre)}</span>
+        <strong>${esc(u.nombre)}</strong><small>${esc(ROLES[u.rol] || u.rol)}</small>
+      </button>`).join('')}</div>
+  </section>`;
+}
+
+function vistaClave(u) {
+  const conectado = !!Sync.conexion();
+  return `<section class="centro">
+    <span class="avatar grande" aria-hidden="true">${iniciales(u.nombre)}</span>
+    <h1>${esc(u.nombre)}</h1>
+    <p class="sub">${esc(ROLES[u.rol] || u.rol)}</p>
     <form class="form-login" data-form="login">
-      <label>Usuario <input name="usuario" required autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Ej. norman"></label>
-      <label>Contraseña <input name="contrasena" type="password" required autocomplete="current-password"></label>
+      <input type="hidden" name="usuario" value="${esc(u.usuario)}">
+      <input type="text" name="username" value="${esc(u.usuario)}" autocomplete="username" hidden>
+      <label>Contraseña <input name="contrasena" type="password" required autocomplete="current-password" autofocus>
+        <span class="ayuda">Si es la primera vez, use la contraseña temporal que le dio Jonathan.</span></label>
+      ${conectado ? '' : `
+      <div class="primera-vez">
+        <strong>Primera vez en este dispositivo</strong>
+        ${API_URL ? '' : '<label>Dirección del servicio <input name="url" type="url" required placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>'}
+        <label>Contraseña del servicio <input name="servicio" type="password" required autocomplete="off">
+          <span class="ayuda">Se pide una sola vez en cada dispositivo. La tiene Jonathan.</span></label>
+      </div>`}
       <button class="btn primario grande" type="submit">Entrar</button>
     </form>
-    <p class="nota">Después de entrar la primera vez, la aplicación funciona también sin internet en esta computadora.</p>
-    <p class="nota"><button class="btn-link" data-act="conexion">Configuración de la conexión</button></p>
+    <p class="nota"><button class="btn-link" data-act="elegir" data-v="">← Elegir otro usuario</button></p>
   </section>`;
 }
 
-/** Primera vez en esta computadora: dirección del servicio y su contraseña. */
-function vistaConexion() {
-  return `<section class="centro">
-    <h1>Configurar esta computadora</h1>
-    <p class="sub">Para conectar esta computadora con la hoja de Google se necesita la dirección del servicio y la contraseña del servicio. Las tiene Jonathan.</p>
-    ${formConexion()}
-  </section>`;
-}
-
-function formConexion() {
+function formConexion(url = '') {
   return `<form class="form-login" data-form="conexion">
-      <label>Dirección del servicio <input name="url" type="url" required placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
+      <label>Dirección del servicio <input name="url" type="url" required value="${esc(url)}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
       <label>Contraseña del servicio <input name="clave" type="password" required autocomplete="off"></label>
-      <button class="btn primario grande" type="submit">Conectar</button>
+      <button class="btn primario" type="submit">Guardar conexión</button>
     </form>`;
 }
 
-function dialogoConexion() {
+/** La conexión solo se muestra después de escribir la contraseña del servicio. */
+function dialogoConexion(desbloqueada = false) {
   const c = Sync.conexion();
+  const cuerpo = !desbloqueada && c
+    ? `<form class="form-login" data-form="ver-conexion">
+        <label>Contraseña del servicio <input name="clave" type="password" required autocomplete="off" autofocus></label>
+        <button class="btn primario" type="submit">Ver conexión</button>
+      </form>`
+    : `${c ? `<p class="sub">Dirección actual:</p><p class="mono caja-url">${esc(c.url)}</p>
+        <p class="sub">Para cambiarla, escriba la nueva dirección y la contraseña del servicio.</p>` : ''}
+      ${formConexion(c?.url || API_URL)}`;
   abrirDialogo(`
     <header class="dlg-cab"><div><h2>Conexión con Google Sheets</h2>
-      <p class="sub">${c ? 'Esta computadora está conectada. Para cambiar la conexión escriba la nueva dirección y la contraseña del servicio.' : 'Esta computadora no está conectada.'}</p></div>
+      <p class="sub">Dirección del servicio y contraseña del servicio de este dispositivo.</p></div>
       <button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
-    <div class="dlg-cuerpo">${formConexion()}</div>`);
+    <div class="dlg-cuerpo">${cuerpo}</div>`);
 }
 
 function vistaCrearContrasena() {
@@ -678,8 +705,10 @@ function vistaConfig() {
       ${e.hoja ? `<a class="btn" href="${esc(e.hoja)}" target="_blank" rel="noopener">Abrir la hoja de Google</a>` : ''}
       <button class="btn" data-act="sync-ahora">Sincronizar ahora</button>
       <button class="btn" data-act="cfg-excel" ${S.hayDatos() ? '' : 'disabled'}>Exportar facturas a Excel</button>
-      ${S.esAdmin() ? '<button class="btn" data-act="conexion">Cambiar conexión</button>' : ''}
     </div>
+    ${S.esAdmin() ? `<h3>Conexión de este dispositivo</h3>
+    <p class="sub">${Sync.conexion() ? 'Conectado. La dirección y la contraseña del servicio se ven con la contraseña del servicio.' : 'Sin conexión configurada.'}</p>
+    <button class="btn" data-act="conexion">Ver o cambiar la conexión</button>` : ''}
     <p class="sub">${e.pendientes.length ? `${e.pendientes.length} cambios esperando conexión para enviarse.` : 'No hay cambios pendientes de enviar.'}${e.error ? ' Último error: ' + esc(e.error) : ''}</p>
   </section>
 
@@ -754,6 +783,7 @@ document.addEventListener('keydown', (e) => {
 const acciones = {
   'sync-ahora': () => Sync.sincronizar(),
   conexion: () => dialogoConexion(),
+  elegir: (v) => { ui.login = v; render(); setTimeout(() => document.querySelector('[name=contrasena]')?.focus(), 0); },
   cuenta: () => dialogoCuenta(),
   salir: async () => {
     const n = Sync.estado.pendientes.length;
@@ -891,7 +921,9 @@ document.addEventListener('submit', (e) => {
     const btn = form.querySelector('button[type=submit]');
     btn.disabled = true;
     btn.textContent = 'Entrando…';
-    Sync.iniciarSesion(d.usuario, d.contrasena).then(() => {
+    const conectar = Sync.conexion() ? Promise.resolve() : Sync.configurarConexion(d.url || API_URL, d.servicio);
+    conectar.then(() => Sync.iniciarSesion(d.usuario, d.contrasena)).then(() => {
+      ui.login = '';
       location.hash = S.esNorman() ? '#/programar' : '#/aplicar';
       render();
     }).catch((err) => {
@@ -899,6 +931,9 @@ document.addEventListener('submit', (e) => {
       btn.disabled = false;
       btn.textContent = 'Entrar';
     });
+  } else if (k === 'ver-conexion') {
+    if (Sync.verificarClaveServicio(d.clave)) dialogoConexion(true);
+    else avisar('La contraseña del servicio no es correcta', 'error');
   } else if (k === 'conexion') {
     const btn = form.querySelector('button[type=submit]');
     btn.disabled = true;
