@@ -3,7 +3,7 @@ import * as S from './store.js';
 import * as Sync from './sync.js';
 import { VERSION, USUARIOS, API_URL } from './config.js';
 import { importarExcel } from './importer.js';
-import { crearPdfReporte } from './reporte-pdf.js';
+import { crearPdfReporte, crearPdfEstadoCuenta } from './reporte-pdf.js';
 import { CAMPOS as CAMPOS_IMP, leerFilas, filaEncabezado, sugerirMapeo, prepararFacturas, detectarGTI } from './importar-facturas.js';
 import { construirArchivo } from './banco.js';
 import {
@@ -22,7 +22,9 @@ const ui = {
   fact: { soc: '', mon: '', est: 'saldo', q: '', limite: 150 },
   canc: { soc: '', mon: '', q: '', limite: 100 },
   prov: { q: '', filtro: '', abierto: null },
-  rep: { soc: '', prov: '', mon: 'CRC', desde: '', hasta: '' },
+  rep: { tipo: 'cxp', soc: '', prov: '', mon: 'CRC', desde: '', hasta: '' },
+  ec: { prov: '', soc: '', mon: 'CRC', alcance: 'saldo', desde: '', hasta: '' },
+  provDrop: null,
 };
 
 // ---------------------------------------------------------------- Navegación
@@ -1103,6 +1105,23 @@ function celdaDias(f) {
   return d < 0 ? `<span class="d-venc">−${fmtNum(-d).replace(/,00$/, '')}</span>` : `<span class="d-porv">+${fmtNum(d).replace(/,00$/, '')}</span>`;
 }
 
+/** Lista de proveedores tipo filtro de Excel: botón + casilla para escribir + lista. */
+function dropProveedor(k, actual, lista, textoTodos) {
+  const abierto = ui.provDrop === k;
+  return `<div class="rep-prov-drop"><span class="lbl">Proveedor</span>
+    <button type="button" class="rep-prov-boton ${actual ? 'elegido' : ''}" data-act="r-prov-abrir" data-v="${k}" aria-expanded="${abierto}">
+      <span>${esc(actual ? S.proveedor(actual).nombre : textoTodos)}</span><span aria-hidden="true">▾</span></button>
+    ${abierto ? `<div class="rep-prov-panel">
+      <input type="search" data-in="r-provfiltro" placeholder="Escriba para buscar…" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
+      <ul class="rep-prov-lista">
+        ${textoTodos === 'Todos los proveedores' ? `<li><button type="button" data-act="r-prov-set" data-k="${k}" data-v="" class="${actual ? '' : 'on'}">(Todos los proveedores)</button></li>` : ''}
+        ${lista.map((p) => `<li data-nombre="${esc(p.nombre.toLowerCase())}"><button type="button" data-act="r-prov-set" data-k="${k}" data-v="${esc(p.codigo)}" class="${actual === p.codigo ? 'on' : ''}">${esc(p.nombre)}</button></li>`).join('')}
+      </ul>
+      <p class="sub rep-prov-nada" ${lista.length ? 'hidden' : ''}>Ningún proveedor coincide.</p>
+    </div>` : ''}
+  </div>`;
+}
+
 /** Proveedores con saldo en la moneda (y sociedad) elegidas, para el filtro. */
 function proveedoresReporte() {
   const R = ui.rep;
@@ -1119,7 +1138,29 @@ function textoRango() {
   return 'Todas las facturas con saldo';
 }
 
-function vistaReportes() {
+function pestanasReportes() {
+  const t = ui.rep.tipo;
+  return `<div class="rep-pestanas no-imprimir" role="tablist">
+    <button class="rep-pestana ${t === 'cxp' ? 'on' : ''}" data-act="r-tipo" data-v="cxp" role="tab" aria-selected="${t === 'cxp'}">Cuentas por pagar</button>
+    <button class="rep-pestana ${t === 'ec' ? 'on' : ''}" data-act="r-tipo" data-v="ec" role="tab" aria-selected="${t === 'ec'}">Estado de cuenta</button>
+  </div>`;
+}
+
+/** Número para las tablas de reporte: bloque de ancho fijo, centrado bajo el título y alineado por los decimales. */
+const cifra = (n) => `<span class="cifra">${fmtNum(n)}</span>`;
+
+function vistaReportes() { return pestanasReportes() + (ui.rep.tipo === 'ec' ? vistaEstadoCuenta() : vistaCxp()); }
+
+function botonesSalida(prefijo, hay, extrasExcel) {
+  const compartir = puedeCompartirArchivos();
+  return `<div class="acciones rep-acciones">
+      ${compartir ? `<button class="btn primario" data-act="${prefijo}-compartir" ${hay ? '' : 'disabled'}>Compartir PDF</button>` : ''}
+      <button class="btn ${compartir ? '' : 'primario'}" data-act="${prefijo}-pdf" ${hay ? '' : 'disabled'}>Descargar PDF</button>
+      ${extrasExcel}
+      <button class="btn" data-act="r-imprimir" data-v="${prefijo}" ${hay ? '' : 'disabled'}>Imprimir</button></div>`;
+}
+
+function vistaCxp() {
   const R = ui.rep;
   const socs = Object.keys(S.sociedades());
   const grupos = datosReporte();
@@ -1129,27 +1170,13 @@ function vistaReportes() {
   const preset = (n, d, h) => `<button class="chip ${R.desde === d && R.hasta === h ? 'on' : ''}" data-act="r-preset" data-v="${d}|${h}">${n}</button>`;
   const total = { n: grupos.reduce((t, g) => t + g.cantidad, 0), monto: round2(grupos.reduce((t, g) => t + g.monto, 0)), saldo: round2(grupos.reduce((t, g) => t + g.saldo, 0)) };
   return `
-  <div class="titulo-vista no-imprimir"><div><h1>Reportes</h1><p class="sub">Cuentas por pagar con saldo, por fecha de vencimiento. Un reporte por moneda.</p></div>
-    <div class="acciones rep-acciones">
-      ${puedeCompartirArchivos() ? `<button class="btn primario" data-act="r-compartir" ${total.n ? '' : 'disabled'}>Compartir PDF</button>` : ''}
-      <button class="btn ${puedeCompartirArchivos() ? '' : 'primario'}" data-act="r-pdf" ${total.n ? '' : 'disabled'}>Descargar PDF</button>
-      <button class="btn" data-act="r-excel" ${total.n ? '' : 'disabled'}>Descargar Excel</button>
-      <button class="btn" data-act="r-imprimir" ${total.n ? '' : 'disabled'}>Imprimir</button></div></div>
+  <div class="titulo-vista no-imprimir"><div><h1>Cuentas por pagar</h1><p class="sub">Facturas con saldo, por fecha de vencimiento. Un reporte por moneda.</p></div>
+    ${botonesSalida('r', total.n, `<button class="btn" data-act="r-excel" ${total.n ? '' : 'disabled'} title="Agrupado por proveedor, con totales">Excel reporte</button>
+      <button class="btn" data-act="r-excel-lista" ${total.n ? '' : 'disabled'} title="Una fila por factura, con filtros">Excel lista</button>`)}</div>
   <section class="filtros no-imprimir">
     <div class="form-grid rep-filtros">
       <label>Sociedad <select data-in="r-soc"><option value="">Todas las sociedades</option>${socs.map((x) => `<option value="${esc(x)}" ${R.soc === x ? 'selected' : ''}>${esc(S.nombreSociedad(x))}</option>`).join('')}</select></label>
-      <div class="rep-prov-drop"><span class="lbl">Proveedor</span>
-        <button type="button" class="rep-prov-boton ${R.prov ? 'elegido' : ''}" data-act="r-prov-abrir" aria-expanded="${ui.rep.provAbierto ? 'true' : 'false'}">
-          <span>${esc(R.prov ? S.proveedor(R.prov).nombre : 'Todos los proveedores')}</span><span aria-hidden="true">▾</span></button>
-        ${ui.rep.provAbierto ? `<div class="rep-prov-panel">
-          <input type="search" data-in="r-provfiltro" placeholder="Escriba para buscar…" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
-          <ul class="rep-prov-lista">
-            <li><button type="button" data-act="r-prov-set" data-v="" class="${R.prov ? '' : 'on'}">(Todos los proveedores)</button></li>
-            ${proveedoresReporte().map((p) => `<li data-nombre="${esc(p.nombre.toLowerCase())}"><button type="button" data-act="r-prov-set" data-v="${esc(p.codigo)}" class="${R.prov === p.codigo ? 'on' : ''}">${esc(p.nombre)}</button></li>`).join('')}
-          </ul>
-          <p class="sub rep-prov-nada" hidden>Ningún proveedor coincide.</p>
-        </div>` : ''}
-      </div>
+      ${dropProveedor('rep', R.prov, proveedoresReporte(), 'Todos los proveedores')}
       <div><span class="lbl">Moneda</span><div class="chips">
         <button class="chip ${R.mon === 'CRC' ? 'on' : ''}" data-act="r-mon" data-v="CRC">Colones</button>
         <button class="chip ${R.mon === 'USD' ? 'on' : ''}" data-act="r-mon" data-v="USD">Dólares</button></div></div>
@@ -1174,26 +1201,35 @@ function vistaReportes() {
       <section class="rep-prov">
         <h3 class="rep-prov-nombre">${esc(x.prov.nombre)}</h3>
         <table class="rep-tabla">
-          <thead><tr><th class="w-doc">N°<span class="larga"> Factura</span></th><th class="c-ff w-ff">Fecha de<br>factura</th><th class="w-fv"><span class="larga">Fecha de<br>vencimiento</span><span class="corta">Vence</span></th><th class="num w-dias">Días</th><th class="num w-saldo">Saldo</th><th class="c-mon w-mon">Moneda</th></tr></thead>
-          <tbody>${x.facturas.map((f) => `<tr><td>${esc(f.documento)}</td><td class="c-ff">${fmtFecha(f.fechaFactura)}</td><td><span class="larga">${fmtFecha(f.fechaVence)}</span><span class="corta">${fmtFecha(f.fechaVence).replace(/\/20(\d\d)$/, '/$1')}</span></td><td class="num">${celdaDias(f)}</td>
-            <td class="num">${fmtNum(S.saldo(f))}</td><td class="c-mon">${mon.nombre}</td></tr>`).join('')}</tbody>
-          ${R.prov ? '' : `<tfoot><tr class="rep-tot-num"><td></td><td class="c-ff"></td><td></td><td class="rep-tot-junto"><span>Total Cliente · ${x.facturas.length} ${x.facturas.length === 1 ? 'factura' : 'facturas'}</span></td><td class="num">${fmtNum(x.saldo)}</td><td class="c-mon"></td></tr></tfoot>`}
+          <thead><tr><th class="w-doc">N°<span class="larga"> Factura</span></th><th class="c-ff w-ff">Fecha de<br>factura</th><th class="w-fv"><span class="larga">Fecha de<br>vencimiento</span><span class="corta">Vence</span></th><th class="w-dias">Días</th><th class="num w-saldo">Saldo</th><th class="c-mon w-mon">Moneda</th></tr></thead>
+          <tbody>${x.facturas.map((f) => `<tr><td>${esc(f.documento)}</td><td class="c-ff">${fmtFecha(f.fechaFactura)}</td><td><span class="larga">${fmtFecha(f.fechaVence)}</span><span class="corta">${fmtFecha(f.fechaVence).replace(/\/20(\d\d)$/, '/$1')}</span></td><td class="c-dias">${celdaDias(f)}</td>
+            <td class="num">${cifra(S.saldo(f))}</td><td class="c-mon">${mon.nombre}</td></tr>`).join('')}</tbody>
+          ${R.prov ? '' : `<tfoot><tr class="rep-tot-num"><td></td><td class="c-ff"></td><td></td><td class="rep-tot-junto"><span>Total Cliente · ${x.facturas.length} ${x.facturas.length === 1 ? 'factura' : 'facturas'}</span></td><td class="num">${cifra(x.saldo)}</td><td class="c-mon"></td></tr></tfoot>`}
         </table>
       </section>`).join('')}
-      <table class="rep-tabla rep-tabla-total rep-total-soc"><tbody><tr><td class="w-doc"></td><td class="c-ff w-ff"></td><td class="w-fv"></td><td class="w-dias rep-tot-junto"><span>Total ${esc(S.nombreSociedad(g.soc))} · ${g.cantidad} ${g.cantidad === 1 ? 'factura' : 'facturas'}</span></td><td class="num w-saldo">${fmtNum(g.saldo)}</td><td class="c-mon w-mon"></td></tr></tbody></table>
+      <table class="rep-tabla rep-tabla-total rep-total-soc"><tbody><tr><td class="w-doc"></td><td class="c-ff w-ff"></td><td class="w-fv"></td><td class="w-dias rep-tot-junto"><span>Total ${esc(S.nombreSociedad(g.soc))} · ${g.cantidad} ${g.cantidad === 1 ? 'factura' : 'facturas'}</span></td><td class="num w-saldo">${cifra(g.saldo)}</td><td class="c-mon w-mon"></td></tr></tbody></table>
     </article>`).join('')}</div>
-  ${!R.soc && grupos.filter((g) => g.cantidad).length > 1 ? `<div class="reporte rep-general"><table class="rep-tabla rep-tabla-total rep-total-soc"><tbody><tr><td class="w-doc"></td><td class="c-ff w-ff"></td><td class="w-fv"></td><td class="w-dias rep-tot-junto"><span>Total todas las sociedades · ${total.n} facturas</span></td><td class="num w-saldo">${fmtNum(total.saldo)}</td><td class="c-mon w-mon"></td></tr></tbody></table></div>` : ''}`;
+  ${!R.soc && grupos.filter((g) => g.cantidad).length > 1 ? `<div class="reporte rep-general"><table class="rep-tabla rep-tabla-total rep-total-soc"><tbody><tr><td class="w-doc"></td><td class="c-ff w-ff"></td><td class="w-fv"></td><td class="w-dias rep-tot-junto"><span>Total todas las sociedades · ${total.n} facturas</span></td><td class="num w-saldo">${cifra(total.saldo)}</td><td class="c-mon w-mon"></td></tr></tbody></table></div>` : ''}`;
 }
 
-/** Nombre del archivo: "Reporte CxP - DON CORLEONE SA - Todas - Colones - 2026-10-30". */
+const limpioArchivo = (t) => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 .-]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+/** Nombre del archivo: "Reporte CxP - DON CORLEONE S.A. - COLONES" (con la sociedad si se eligió una). */
 function nombreArchivoReporte() {
   const R = ui.rep;
-  const limpio = (t) => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 .-]+/g, ' ').replace(/\s+/g, ' ').trim();
   const partes = ['Reporte CxP'];
-  if (R.prov) partes.push(limpio(S.proveedor(R.prov).nombre).slice(0, 60));
-  partes.push(R.soc ? limpio(S.nombreSociedad(R.soc)) : 'Todas');
-  partes.push(R.mon === 'USD' ? 'Dolares' : 'Colones', hoyISO());
+  if (R.prov) partes.push(limpioArchivo(S.proveedor(R.prov).nombre).slice(0, 60));
+  else if (!R.soc) partes.push('Todas');
+  if (R.soc) partes.push(limpioArchivo(S.nombreSociedad(R.soc)));
+  partes.push(R.mon === 'USD' ? 'DOLARES' : 'COLONES');
   return partes.join(' - ');
+}
+
+async function compartirArchivo(crear) {
+  let archivo;
+  try { archivo = crear(); } catch (err) { avisar('No se pudo crear el PDF: ' + err.message, 'error'); return; }
+  try { await navigator.share({ files: [archivo], title: archivo.name.replace(/\.pdf$/, '') }); }
+  catch (err) { if (err.name !== 'AbortError') { descargar(archivo.name, archivo); avisar('No se pudo compartir; se descargó el PDF'); } }
 }
 
 function puedeCompartirArchivos() {
@@ -1211,6 +1247,40 @@ function pdfReporte() {
     total: !R.soc && grupos.length > 1 ? { n: grupos.reduce((t, g) => t + g.cantidad, 0), saldo: round2(grupos.reduce((t, g) => t + g.saldo, 0)) } : null,
   });
   return new File([doc.output('blob')], nombreArchivoReporte() + '.pdf', { type: 'application/pdf' });
+}
+
+const fechaExcel = (iso) => { if (!iso) return ''; const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); };
+
+function guardarExcel(filas, anchos, nombre, formatos = {}, filtro = null) {
+  const XLSX = window.XLSX;
+  const ws = XLSX.utils.aoa_to_sheet(filas, { cellDates: true });
+  ws['!cols'] = anchos.map((wch) => ({ wch }));
+  const rango = XLSX.utils.decode_range(ws['!ref']);
+  for (let r = rango.s.r; r <= rango.e.r; r++) {
+    for (let c = rango.s.c; c <= rango.e.c; c++) {
+      const celda = ws[XLSX.utils.encode_cell({ r, c })];
+      if (!celda) continue;
+      if (celda.t === 'd' || celda.v instanceof Date) celda.z = 'dd/mm/yyyy';
+      else if (celda.t === 'n' && formatos[c]) celda.z = formatos[c];
+    }
+  }
+  if (filtro) ws['!autofilter'] = { ref: filtro };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Reporte');
+  const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx', cellDates: true });
+  descargar(nombre + '.xlsx', new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+}
+
+/** Excel "lista": una fila por factura con todas sus columnas, para filtrar u ordenar en Excel. */
+function excelListaReporte() {
+  const R = ui.rep;
+  const filas = [['Proveedor', 'N° Factura', 'Fecha de vencimiento', 'Días', 'Saldo', 'Moneda', 'Sociedad (origen de la factura)']];
+  for (const g of datosReporte().filter((x) => x.cantidad)) {
+    for (const x of g.proveedores) {
+      for (const f of x.facturas) filas.push([x.prov.nombre, String(f.documento), fechaExcel(f.fechaVence), diasReporte(f) ?? '', round2(S.saldo(f)), MONEDAS[R.mon].nombre, nombreLegalSociedad(f.sociedad)]);
+    }
+  }
+  guardarExcel(filas, [44, 14, 20, 8, 16, 10, 40], nombreArchivoReporte() + ' (lista)', { 3: '+0;-0;"Hoy"', 4: '#,##0.00' }, `A1:G${filas.length}`);
 }
 
 function excelReporte() {
@@ -1247,6 +1317,162 @@ function excelReporte() {
   XLSX.utils.book_append_sheet(wb, ws, 'Reporte');
   const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
   descargar(nombreArchivoReporte() + '.xlsx', new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+}
+
+// ---------------------------------------------------------------- Estado de cuenta
+
+const TIPOS_MOV = { pago: 'Pago', abono: 'Abono', nc: 'Nota de crédito', cargo: 'Intereses / otros cargos' };
+
+/** Proveedores con facturas en la moneda (y sociedad) elegidas. */
+function proveedoresEstado() {
+  const E = ui.ec;
+  const base = E.alcance === 'saldo' ? S.conSaldo() : S.listaFacturas();
+  const cods = new Set(base.filter((f) => f.moneda === E.mon && (!E.soc || f.sociedad === E.soc)).map((f) => f.codigo));
+  if (E.prov) cods.add(E.prov);
+  return [...cods].map((c) => S.proveedor(c)).sort((a, b) => a.nombre.localeCompare(b.nombre));
+}
+
+/** Por sociedad: cada factura con su monto y, debajo, sus movimientos con el saldo después de cada uno. */
+function datosEstadoCuenta() {
+  const E = ui.ec;
+  if (!E.prov) return [];
+  const socs = E.soc ? [E.soc] : Object.keys(S.sociedades());
+  const facts = S.listaFacturas().filter((f) => f.codigo === E.prov && f.moneda === E.mon && socs.includes(f.sociedad)
+    && (E.alcance !== 'saldo' || S.saldo(f) > 0.004)
+    && (!E.desde || (f.fechaFactura || '') >= E.desde) && (!E.hasta || (f.fechaFactura || '') <= E.hasta));
+  return socs.map((soc) => {
+    const lista = facts.filter((f) => f.sociedad === soc)
+      .sort((a, b) => (a.fechaFactura || '').localeCompare(b.fechaFactura || '') || String(a.documento).localeCompare(String(b.documento), 'es', { numeric: true }));
+    const t = { facturado: 0, abonos: 0, nc: 0, cargos: 0, saldo: 0 };
+    const facturas = lista.map((f) => {
+      let saldo = round2(f.monto);
+      const lineas = [{ fecha: f.fechaFactura, tipo: 'factura', detalle: `Factura ${f.documento}` + (f.fechaVence ? ` · vence ${fmtFecha(f.fechaVence)}` : ''), cargo: round2(f.monto), abono: null, saldo }];
+      const movs = [...S.movimientosDe(f)].sort((a, b) => (a.fecha || '9999').localeCompare(b.fecha || '9999'));
+      for (const m of movs) {
+        const monto = round2(m.monto);
+        const comp = m.comprobante ? (m.tipo === 'nc' ? ` N° ${m.comprobante}` : ` · Comp. ${m.comprobante}`) : '';
+        const ref = m.tipo === 'nc' ? `aplicada a la factura ${f.documento}` : `a la factura ${f.documento}`;
+        if (m.tipo === 'cargo') {
+          t.cargos = round2(t.cargos + monto);
+          lineas.push({ fecha: m.fecha, tipo: 'cargo', detalle: TIPOS_MOV.cargo + ' (pagados)' + comp, ref, cargo: monto, abono: monto, saldo });
+        } else {
+          saldo = round2(saldo - monto);
+          if (m.tipo === 'nc') t.nc = round2(t.nc + monto); else t.abonos = round2(t.abonos + monto);
+          lineas.push({ fecha: m.fecha, tipo: m.tipo, detalle: (TIPOS_MOV[m.tipo] || m.tipo) + comp, ref, cargo: null, abono: monto, saldo });
+        }
+      }
+      t.facturado = round2(t.facturado + f.monto);
+      t.saldo = round2(t.saldo + S.saldo(f));
+      return { f, lineas };
+    });
+    return { soc, facturas, t };
+  }).filter((g) => g.facturas.length);
+}
+
+function textoRangoEstado() {
+  const E = ui.ec;
+  const alc = E.alcance === 'saldo' ? 'Facturas con saldo' : 'Todas las facturas';
+  if (E.desde && E.hasta) return `${alc} del ${fmtFecha(E.desde)} al ${fmtFecha(E.hasta)} (fecha de factura)`;
+  if (E.desde) return `${alc} desde el ${fmtFecha(E.desde)}`;
+  if (E.hasta) return `${alc} hasta el ${fmtFecha(E.hasta)}`;
+  return alc;
+}
+
+function totalesEstado(grupos) {
+  const z = { facturado: 0, abonos: 0, nc: 0, cargos: 0, saldo: 0 };
+  for (const g of grupos) for (const k in z) z[k] = round2(z[k] + g.t[k]);
+  return z;
+}
+
+function nombreArchivoEstado() {
+  const E = ui.ec;
+  const partes = ['Estado de cuenta', limpioArchivo(S.proveedor(E.prov).nombre).slice(0, 60)];
+  if (E.soc) partes.push(limpioArchivo(S.nombreSociedad(E.soc)));
+  partes.push(E.mon === 'USD' ? 'DOLARES' : 'COLONES');
+  return partes.join(' - ');
+}
+
+function vistaEstadoCuenta() {
+  const E = ui.ec;
+  const socs = Object.keys(S.sociedades());
+  const grupos = datosEstadoCuenta();
+  const z = totalesEstado(grupos);
+  const hay = grupos.length > 0;
+  const ahora = new Date();
+  const fechaCorta = (iso) => (iso ? `<span class="larga">${fmtFecha(iso)}</span><span class="corta">${fmtFecha(iso).replace(/\/20(\d\d)$/, '/$1')}</span>` : '<span class="sub">sin fecha</span>');
+  const filaTotales = (etq, t, cls = '') => `<tr class="ec-tot ${cls}"><td colspan="2" class="ec-tot-lbl">${etq}</td><td class="num">${cifra(t.facturado + t.cargos)}</td><td class="num">${cifra(t.abonos + t.nc + t.cargos)}</td><td class="num">${cifra(t.saldo)}</td></tr>`;
+  return `
+  <div class="titulo-vista no-imprimir"><div><h1>Estado de cuenta</h1><p class="sub">Todos los movimientos de un proveedor: cada factura con su monto, abonos, pagos, notas de crédito y el saldo.</p></div>
+    ${botonesSalida('ec', hay, `<button class="btn" data-act="ec-excel" ${hay ? '' : 'disabled'}>Descargar Excel</button>`)}</div>
+  <section class="filtros no-imprimir">
+    <div class="form-grid rep-filtros">
+      ${dropProveedor('ec', E.prov, proveedoresEstado(), 'Elija un proveedor')}
+      <label>Sociedad <select data-in="ec-soc"><option value="">Todas las sociedades</option>${socs.map((x) => `<option value="${esc(x)}" ${E.soc === x ? 'selected' : ''}>${esc(S.nombreSociedad(x))}</option>`).join('')}</select></label>
+      <div><span class="lbl">Moneda</span><div class="chips">
+        <button class="chip ${E.mon === 'CRC' ? 'on' : ''}" data-act="ec-mon" data-v="CRC">Colones</button>
+        <button class="chip ${E.mon === 'USD' ? 'on' : ''}" data-act="ec-mon" data-v="USD">Dólares</button></div></div>
+      <div><span class="lbl">Facturas</span><div class="chips">
+        <button class="chip ${E.alcance === 'saldo' ? 'on' : ''}" data-act="ec-alcance" data-v="saldo">Con saldo</button>
+        <button class="chip ${E.alcance === 'todas' ? 'on' : ''}" data-act="ec-alcance" data-v="todas">Todas</button></div></div>
+      <label>Fecha de factura desde <input type="date" data-in="ec-desde" value="${E.desde}"></label>
+      <label>Hasta <input type="date" data-in="ec-hasta" value="${E.hasta}"></label>
+    </div>
+    <div class="chips rep-presets"><button type="button" class="btn chico rep-limpiar" data-act="ec-limpiar">Limpiar filtros</button></div>
+  </section>
+  ${!E.prov ? '<p class="vacio grande no-imprimir">Elija un proveedor para ver su estado de cuenta.</p>' : !hay ? '<p class="vacio grande no-imprimir">Ese proveedor no tiene facturas con esos filtros.</p>' : `
+  <div class="reporte-hojas seguido">
+    <article class="reporte estado-cuenta">
+      <header class="rep-cab">
+        <div><h2 class="rep-soc">${esc(S.proveedor(E.prov).nombre)}</h2>
+          <p class="rep-titulo">Estado de Cuenta</p>
+          <p class="rep-rango">${E.soc ? esc(nombreLegalSociedad(E.soc)) : 'Todas las sociedades'} · ${MONEDAS[E.mon].nombre}</p>
+          <p class="rep-rango">${textoRangoEstado()}</p></div>
+        <div class="rep-emitido">Emitido<br><strong>${fmtFecha(hoyISO())}</strong><br>${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}</div>
+      </header>
+      ${grupos.map((g) => `
+      <section class="ec-soc">
+        <h3 class="ec-soc-nombre">${esc(nombreLegalSociedad(g.soc))}</h3>
+        <table class="rep-tabla ec-tabla">
+          <thead><tr><th class="ec-w-fecha">Fecha</th><th class="ec-w-det">Detalle</th><th class="ec-w-num">Monto</th><th class="ec-w-num">Abonos</th><th class="ec-w-num">Saldo</th></tr></thead>
+          ${g.facturas.map(({ lineas }) => `<tbody class="ec-factura">${lineas.map((l) => `<tr class="ec-${l.tipo === 'factura' ? 'fact' : 'mov'} ${l.tipo === 'nc' ? 'ec-nc' : ''}">
+            <td>${fechaCorta(l.fecha)}</td><td class="ec-det">${l.tipo === 'factura' ? esc(l.detalle).replace(' · vence ', '<span class="ec-vence"> · vence ').replace(/(vence [0-9/]+)$/, '$1</span>') : `<span class="ec-flecha">↳</span> ${esc(l.detalle)} <span class="ec-ref">· ${esc(l.ref)}</span>`}</td>
+            <td class="num">${l.cargo == null ? '' : cifra(l.cargo)}</td><td class="num">${l.abono == null ? '' : cifra(l.abono)}</td><td class="num">${cifra(l.saldo)}</td></tr>`).join('')}</tbody>`).join('')}
+          <tfoot>${filaTotales(`Total ${esc(S.nombreSociedad(g.soc))} · ${g.facturas.length} ${g.facturas.length === 1 ? 'factura' : 'facturas'}`, g.t)}</tfoot>
+        </table>
+        <p class="ec-resumen">Facturado ${fmtNum(g.t.facturado)} · Abonos y pagos ${fmtNum(g.t.abonos)} · Notas de crédito ${fmtNum(g.t.nc)}${g.t.cargos ? ` · Intereses pagados ${fmtNum(g.t.cargos)}` : ''} · <strong>Saldo ${fmtNum(g.t.saldo)}</strong></p>
+      </section>`).join('')}
+      ${grupos.length > 1 ? `<table class="rep-tabla ec-tabla ec-general"><colgroup><col class="ec-w-fecha"><col class="ec-w-det"><col class="ec-w-num"><col class="ec-w-num"><col class="ec-w-num"></colgroup><tbody>${filaTotales(`Total todas las sociedades · ${grupos.reduce((n, g) => n + g.facturas.length, 0)} facturas`, z, 'ec-tot-general')}</tbody></table>` : ''}
+    </article>
+  </div>`}`;
+}
+
+function excelEstado() {
+  const E = ui.ec;
+  const grupos = datosEstadoCuenta();
+  const filas = [[S.proveedor(E.prov).nombre], ['Estado de Cuenta'], [`${E.soc ? nombreLegalSociedad(E.soc) : 'Todas las sociedades'} · ${MONEDAS[E.mon].nombre}`], [textoRangoEstado()], [`Emitido: ${fmtFecha(hoyISO())}`], [],
+    ['Sociedad', 'Factura', 'Fecha', 'Detalle', 'Monto', 'Abonos', 'Saldo']];
+  for (const g of grupos) {
+    for (const { f, lineas } of g.facturas) {
+      for (const l of lineas) filas.push([S.nombreSociedad(g.soc), String(f.documento), fechaExcel(l.fecha), l.tipo === 'factura' ? l.detalle : `   ↳ ${l.detalle} · ${l.ref}`, l.cargo ?? '', l.abono ?? '', l.saldo]);
+    }
+    filas.push(['', '', '', `Total ${S.nombreSociedad(g.soc)} · ${g.facturas.length} facturas`, round2(g.t.facturado + g.t.cargos), round2(g.t.abonos + g.t.nc + g.t.cargos), g.t.saldo], []);
+  }
+  if (grupos.length > 1) { const z = totalesEstado(grupos); filas.push(['', '', '', 'Total todas las sociedades', round2(z.facturado + z.cargos), round2(z.abonos + z.nc + z.cargos), z.saldo]); }
+  guardarExcel(filas, [18, 12, 12, 60, 16, 16, 16], nombreArchivoEstado(), { 4: '#,##0.00', 5: '#,##0.00', 6: '#,##0.00' });
+}
+
+function pdfEstado() {
+  const E = ui.ec;
+  const grupos = datosEstadoCuenta();
+  const ahora = new Date();
+  const doc = crearPdfEstadoCuenta({
+    titulo: nombreArchivoEstado(), proveedor: S.proveedor(E.prov).nombre, grupos,
+    subtitulo: `${E.soc ? nombreLegalSociedad(E.soc) : 'Todas las sociedades'} · ${MONEDAS[E.mon].nombre}`, rango: textoRangoEstado(),
+    emitido: { fecha: fmtFecha(hoyISO()), hora: `${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}` },
+    nombreSociedad: nombreLegalSociedad, nombreCorto: (c) => S.nombreSociedad(c), fmtNum, fmtFecha,
+    total: grupos.length > 1 ? { n: grupos.reduce((n, g) => n + g.facturas.length, 0), ...totalesEstado(grupos) } : null,
+  });
+  return new File([doc.output('blob')], nombreArchivoEstado() + '.pdf', { type: 'application/pdf' });
 }
 
 // ---------------------------------------------------------------- Configuración
@@ -1394,7 +1620,7 @@ function despuesDeRender(ruta) {
 }
 
 document.addEventListener('click', (e) => {
-  if (ui.rep.provAbierto && !e.target.closest('.rep-prov-drop')) { ui.rep.provAbierto = false; render(); }
+  if (ui.provDrop && !e.target.closest('.rep-prov-drop')) { ui.provDrop = null; render(); }
   const el = e.target.closest('[data-act]');
   if (!el) return;
   const act = el.dataset.act, v = el.dataset.v;
@@ -1411,7 +1637,7 @@ document.addEventListener('keydown', (e) => {
     if (vis.length === 1) vis[0].click();
     return;
   }
-  if (e.key === 'Escape' && ui.rep.provAbierto) { ui.rep.provAbierto = false; render(); return; }
+  if (e.key === 'Escape' && ui.provDrop) { ui.provDrop = null; render(); return; }
   if (e.key === 'Enter' && e.target.matches('input[type="search"]')) { e.preventDefault(); clearTimeout(tBusqueda); render(); e.target.blur(); }
 });
 
@@ -1501,26 +1727,29 @@ const acciones = {
   'f-mas': () => { ui.fact.limite += 300; render(); },
   'f-abrir': (v) => dialogoFactura(v),
   'r-mon': (v) => { ui.rep.mon = v; render(); },
-  'r-prov-abrir': () => {
-    ui.rep.provAbierto = !ui.rep.provAbierto; render();
-    if (ui.rep.provAbierto) setTimeout(() => document.querySelector('[data-in="r-provfiltro"]')?.focus(), 0);
+  'r-prov-abrir': (k) => {
+    ui.provDrop = ui.provDrop === k ? null : k; render();
+    if (ui.provDrop) setTimeout(() => document.querySelector('[data-in="r-provfiltro"]')?.focus(), 0);
   },
-  'r-prov-set': (v) => { ui.rep.prov = v; ui.rep.provAbierto = false; render(); },
-  'r-limpiar': () => { Object.assign(ui.rep, { soc: '', prov: '', desde: '', hasta: '', provAbierto: false }); render(); },
+  'r-prov-set': (v, el) => { (el.dataset.k === 'ec' ? ui.ec : ui.rep).prov = v; ui.provDrop = null; render(); },
+  'r-limpiar': () => { Object.assign(ui.rep, { soc: '', prov: '', desde: '', hasta: '' }); ui.provDrop = null; render(); },
   'r-preset': (v) => { const [d, h] = v.split('|'); ui.rep.desde = d; ui.rep.hasta = h; render(); },
-  'r-imprimir': () => {
+  'r-tipo': (v) => { ui.rep.tipo = v; ui.provDrop = null; render(); },
+  'ec-mon': (v) => { ui.ec.mon = v; render(); },
+  'ec-alcance': (v) => { ui.ec.alcance = v; render(); },
+  'ec-limpiar': () => { Object.assign(ui.ec, { soc: '', desde: '', hasta: '', alcance: 'saldo' }); ui.provDrop = null; render(); },
+  'ec-excel': () => { try { excelEstado(); } catch (err) { avisar('No se pudo crear el Excel: ' + err.message, 'error'); } },
+  'ec-pdf': () => { try { const f = pdfEstado(); descargar(f.name, f); } catch (err) { avisar('No se pudo crear el PDF: ' + err.message, 'error'); } },
+  'ec-compartir': () => compartirArchivo(pdfEstado),
+  'r-excel-lista': () => { try { excelListaReporte(); } catch (err) { avisar('No se pudo crear el Excel: ' + err.message, 'error'); } },
+  'r-imprimir': (v) => {
     const antes = document.title;
-    document.title = nombreArchivoReporte(); // nombre sugerido al guardar como PDF
+    document.title = v === 'ec' ? nombreArchivoEstado() : nombreArchivoReporte(); // nombre sugerido al guardar como PDF
     window.print();
     setTimeout(() => { document.title = antes; }, 1000);
   },
   'r-pdf': () => { try { const f = pdfReporte(); descargar(f.name, f); } catch (err) { avisar('No se pudo crear el PDF: ' + err.message, 'error'); } },
-  'r-compartir': async () => {
-    let archivo;
-    try { archivo = pdfReporte(); } catch (err) { avisar('No se pudo crear el PDF: ' + err.message, 'error'); return; }
-    try { await navigator.share({ files: [archivo], title: archivo.name.replace(/\.pdf$/, '') }); }
-    catch (err) { if (err.name !== 'AbortError') { descargar(archivo.name, archivo); avisar('No se pudo compartir; se descargó el PDF'); } }
-  },
+  'r-compartir': () => compartirArchivo(pdfReporte),
   'r-excel': () => { try { excelReporte(); } catch (err) { avisar('No se pudo crear el Excel: ' + err.message, 'error'); } },
   'pn-abrir': (v) => dialogoPagoNorman(v),
   'pn-txt': (v, el) => {
@@ -1563,7 +1792,17 @@ function formatearCampoMonto(el, e) {
 // Al tocar un monto se selecciona todo (para escribir encima); al salir se completan los céntimos.
 document.addEventListener('focusin', (e) => {
   const el = e.target;
-  if (el.matches?.('[data-monto]')) setTimeout(() => { try { el.select(); } catch { /* */ } }, 0);
+  if (!el.matches?.('[data-monto]')) return;
+  try { el.select(); } catch { /* */ }
+  el.dataset.seleccionar = '1'; // el clic que dio el foco no debe quitar la selección
+});
+document.addEventListener('mouseup', (e) => {
+  const el = e.target;
+  if (el.matches?.('[data-monto]') && el.dataset.seleccionar) { e.preventDefault(); delete el.dataset.seleccionar; try { el.select(); } catch { /* */ } }
+});
+document.addEventListener('touchend', (e) => {
+  const el = e.target;
+  if (el.matches?.('[data-monto]') && el.dataset.seleccionar) { delete el.dataset.seleccionar; setTimeout(() => { try { el.setSelectionRange(0, el.value.length); } catch { /* */ } }, 0); }
 });
 document.addEventListener('focusout', (e) => {
   const el = e.target;
@@ -1609,6 +1848,9 @@ document.addEventListener('change', async (e) => {
   if (k === 'fm-tipo') { actualizarRestoMov(); return; }
   if (k === 'r-soc') { ui.rep.soc = el.value; render(); return; }
   if (k === 'r-desde') { ui.rep.desde = el.value; render(); return; }
+  if (k === 'ec-soc') { ui.ec.soc = el.value; render(); return; }
+  if (k === 'ec-desde') { ui.ec.desde = el.value; render(); return; }
+  if (k === 'ec-hasta') { ui.ec.hasta = el.value; render(); return; }
   if (k === 'r-hasta') { ui.rep.hasta = el.value; render(); return; }
   if (k === 'p-sel') {
     const f = S.factura(el.dataset.v);

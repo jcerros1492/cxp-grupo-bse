@@ -661,3 +661,94 @@ input[type=date]::-webkit-date-and-time-value { text-align: left; }
   .rep-general { margin: 0 14mm !important; padding: 6px 8px 10px !important; }
 }
 .rep-acciones { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Pestañas de Reportes */
+.rep-pestanas { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 2px solid var(--borde); }
+.rep-pestana { font: inherit; font-size: 15px; font-weight: 600; padding: 10px 18px; border: 0; background: none; color: var(--tenue); cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+.rep-pestana.on { color: var(--tinta); border-bottom-color: var(--tinta); }
+@media screen and (max-width: 760px) { .rep-pestana { flex: 1 1 0; padding: 10px 6px; font-size: 14px; } }
+
+/* Estado de cuenta */
+.ec-soc { margin-bottom: 18px; break-inside: auto; }
+.ec-soc-nombre { font-size: 16px; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; margin: 0 0 6px; }
+.ec-tabla { table-layout: fixed; }
+.ec-tabla .ec-w-fecha { width: 13%; } .ec-tabla .ec-w-det { width: 39%; } .ec-tabla .ec-w-num { width: 16%; }
+.ec-tabla td, .ec-tabla th { text-align: left; }
+.ec-tabla td:first-child, .ec-tabla th:first-child { text-align: center; }
+.ec-tabla .num, .ec-tabla th.num { text-align: right !important; padding-right: 8px !important; }
+.ec-tabla tbody td:nth-child(1), .ec-tabla tbody td:nth-child(2), .ec-tabla tbody td:nth-child(3), .ec-tabla tbody td:nth-child(4) { text-align: inherit; }
+.ec-fact td { font-weight: 700; background: #F4F5F7; }
+.ec-fact td:first-child { text-align: center; }
+.ec-mov td.ec-det { padding-left: 22px; color: #444; }
+.ec-mov td { color: #444; }
+.ec-mov td:first-child { text-align: center; }
+.ec-nc td.ec-det { color: #17643A; }
+.ec-tot td { font-weight: 800; font-size: 14px; border-top: 1px solid #111; border-bottom: 0; padding-top: 7px; }
+.ec-tot-lbl { text-align: right !important; padding-right: 10px !important; }
+.ec-general { margin-top: 8px; border: 2px solid #111; }
+.ec-general td { font-size: 15px; border-top: 0; }
+.ec-resumen { text-align: right; font-size: 12px; color: #555; margin: 4px 2px 0; }
+@media screen and (max-width: 760px) {
+  .ec-tabla .ec-w-fecha { width: 17%; } .ec-tabla .ec-w-det { width: 35%; } .ec-tabla .ec-w-num { width: 16%; }
+  .ec-tabla td, .ec-tabla th { font-size: 11px; padding: 4px 2px !important; }
+  .ec-tabla .num { padding-right: 2px !important; }
+  .ec-mov td.ec-det { padding-left: 8px !important; }
+  .ec-tot td { font-size: 11.5px; }
+}
+@media screen and (max-width: 760px) {
+  .ec-vence { display: none; }
+  .ec-tabla .ec-w-fecha { width: 16%; } .ec-tabla .ec-w-det { width: 27%; } .ec-tabla .ec-w-num { width: 19%; }
+  .ec-tot td { font-size: 10.5px; }
+  .ec-tot-lbl { font-size: 10.5px; padding-right: 4px !important; }
+  .ec-resumen { font-size: 11px; }
+}
+.ec-tabla tfoot tr.ec-tot td, .ec-tabla.ec-general tr.ec-tot td { font-size: 14px; }
+.ec-tabla.ec-general tr.ec-tot td { font-size: 15px; }
+@media print { .ec-tabla tfoot tr.ec-tot td, .ec-tabla.ec-general tr.ec-tot td { font-size: 13px; } }
+@media screen and (max-width: 760px) {
+  .ec-tabla tfoot tr.ec-tot td, .ec-tabla.ec-general tr.ec-tot td { font-size: 10px; letter-spacing: -0.2px; }
+  .ec-tabla .num { font-size: 10.5px; }
+}
+
+/* Títulos centrados y cifras centradas bajo su título (alineadas por los decimales) */
+.rep-tabla th, .ec-tabla th { text-align: center !important; }
+.rep-tabla td.c-dias { text-align: center !important; padding-left: 2px !important; padding-right: 2px !important; }
+.rep-tabla td.num, .ec-tabla td.num { text-align: center !important; padding-left: 2px !important; padding-right: 2px !important; }
+.cifra { display: inline-block; min-width: 11.5ch; text-align: right; font-variant-numeric: tabular-nums; }
+.ec-tabla .ec-tot-lbl { text-align: right !important; padding-right: 10px !important; }
+/* Estado de cuenta: movimientos debajo de su factura */
+.ec-tabla tbody.ec-factura { border-top: 2px solid #cfd4da; }
+.ec-flecha { color: #888; margin-right: 2px; }
+.ec-ref { color: #888; }
+.ec-nc .ec-det { color: #17643A; }
+.ec-nc .ec-ref, .ec-nc .ec-flecha { color: #6f9c80; }
+@media screen and (max-width: 760px) {
+  .cifra { min-width: 9.5ch; }
+  .ec-ref { display: block; font-size: 10px; }
+}
+@media print { .cifra { min-width: 11.5ch; } }
+/* Mismo ancho de bloque en negrita y normal (em en lugar de ch) */
+.cifra { min-width: 7.6em; }
+@media screen and (max-width: 760px) { .cifra { min-width: 6.4em; } }
+@media print { .cifra { min-width: 7.6em; } }
+.ec-tabla tbody td:first-child { text-align: center !important; }
+/* Ancho fijo de las cifras (igual en filas, totales, negrita y normal) */
+.cifra { min-width: 104px; }
+@media screen and (max-width: 760px) { .cifra { min-width: 64px; } }
+@media screen and (max-width: 370px) { .cifra { min-width: 56px; } }
+@media print { .cifra { min-width: 96px; } }
+@media screen and (max-width: 760px) { .cifra { min-width: 74px; } .rep-tabla tfoot td, .rep-tabla-total td { font-size: 12px; } }
+@media screen and (max-width: 370px) { .cifra { min-width: 62px; } .ec-tabla tfoot tr.ec-tot td { font-size: 9.5px; } }
+.ec-general { border-collapse: collapse; }
+.ec-tabla.ec-general { border: 0; box-shadow: 0 0 0 2px #111; }
+@media screen and (max-width: 760px) {
+  .ec-tabla .ec-w-fecha { width: 15%; } .ec-tabla .ec-w-det { width: 34%; } .ec-tabla .ec-w-num { width: 17%; }
+  .ec-tabla .cifra { min-width: 0; width: 100%; }
+  .ec-tabla td, .ec-tabla td.num { font-size: 10px; letter-spacing: -0.2px; }
+  .ec-tabla .ec-ref { font-size: 9.5px; }
+  .ec-tabla tfoot tr.ec-tot td, .ec-tabla.ec-general tr.ec-tot td { font-size: 9.5px; }
+}
+@media screen and (max-width: 760px) {
+  .ec-tabla .ec-w-fecha { width: 15%; } .ec-tabla .ec-w-det { width: 30%; } .ec-tabla .ec-w-num { width: 18.33%; }
+  .ec-tabla.ec-general tr.ec-tot td { font-size: 8.5px !important; letter-spacing: -0.3px; }
+}
