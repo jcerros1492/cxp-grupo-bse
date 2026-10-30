@@ -158,6 +158,16 @@ function capturarEdiciones() {
   }
   return out;
 }
+/** Después de guardar: el formulario muestra lo guardado (con su formato), no lo que se escribió. */
+function limpiarEdiciones(selForm) {
+  const f = $app.querySelector(selForm);
+  if (!f) return;
+  for (const el of f.querySelectorAll('input, select, textarea')) {
+    if (el.type === 'checkbox' || el.type === 'radio') el.checked = el.defaultChecked;
+    else if (el.tagName !== 'SELECT' && el.type !== 'file') el.value = el.defaultValue;
+  }
+  f.querySelectorAll('[data-in="iban"]').forEach(validarCampoIBAN);
+}
 function restaurarEdiciones(lista) {
   for (const x of lista) {
     let el;
@@ -393,7 +403,7 @@ function grupoProveedor(fs) {
   const t = S.totales(fs);
   return `<section class="grupo">
     <header class="grupo-cab">
-      <div><h3>${esc(prov.nombre)}</h3><span class="sub">${esc(S.nombreSociedad(f0.sociedad))} · ${MONEDAS[f0.moneda].nombre} · ${fs.length} ${fs.length === 1 ? 'factura' : 'facturas'}</span></div>
+      <div><h3>${esc(prov.nombre)}${prov[f0.moneda === 'USD' ? 'ibanUSD' : 'ibanCRC'] ? '' : ' <span class="tag-sin" title="Antes de pagar por banco hay que agregar su cuenta IBAN">sin IBAN</span>'}</h3><span class="sub">${esc(S.nombreSociedad(f0.sociedad))} · ${MONEDAS[f0.moneda].nombre} · ${fs.length} ${fs.length === 1 ? 'factura' : 'facturas'}</span></div>
       <div class="grupo-tot">${money(t[f0.moneda], f0.moneda)}
         <button class="btn chico" data-act="p-todas" data-v="${fs.map((f) => f.id).join(',')}">Marcar todas</button></div>
     </header>
@@ -598,7 +608,7 @@ function tarjetaLote(l) {
         return `<tr class="${fm === 'manual' ? 'fila-manual' : ''}">
         <td><strong>${esc(ln.prov.nombre)}</strong></td>
         <td class="facts">${facts(ln, true)}</td>
-        <td class="mono">${ln.iban ? `${fmtIBAN(ln.iban)} ${errorIBAN(ln.iban) ? '<span class="malo">inválido</span>' : ''}` : `<a href="#/proveedores" data-act="ir-prov" data-v="${esc(ln.codigo)}" class="${fm === 'banco' ? 'malo' : ''}">Agregar IBAN</a>`}</td>
+        <td class="mono">${ln.iban ? `${fmtIBAN(ln.iban)} ${errorIBAN(ln.iban) ? '<span class="malo">inválido</span>' : ''}` : `<button type="button" class="btn-link agregar-iban ${fm === 'banco' ? 'malo' : ''}" data-act="iban-rapido" data-v="${esc(ln.codigo)}" data-mon="${l.moneda}" data-docs="${esc(ln.items.map(({ f }) => f.documento).join(' '))}">Agregar IBAN</button>`}</td>
         <td class="num"><input class="mini" type="text" inputmode="decimal" data-monto value="${ln.extra ? fmtNum(ln.extra) : ''}" placeholder="0,00" data-in="a-extra" data-lote="${id}" data-v="${esc(ln.codigo)}" aria-label="Intereses u otros cargos para ${esc(ln.prov.nombre)}"></td>
         <td><input type="text" value="${esc(ln.descripcion)}" data-in="a-desc" data-lote="${id}" data-v="${esc(ln.codigo)}" aria-label="Descripción para ${esc(ln.prov.nombre)}"></td>
         <td class="num"><strong>${money(ln.total, l.moneda)}</strong></td>
@@ -1181,6 +1191,8 @@ function seccionEmisores(emisores) {
           <option value="" ${e.codigo ? '' : 'selected'}>➕ Crear proveedor nuevo${e.nuevo ? ` (código ${esc(e.nuevo.codigo)})` : ''}</option>
           ${provs.map((p) => `<option value="${esc(p.codigo)}" ${p.codigo === e.codigo ? 'selected' : ''}>${esc(p.codigo)} · ${esc(p.nombre)}</option>`).join('')}
         </select>
+        ${e.codigo ? '' : `<div class="imp-ibans">${['CRC', 'USD'].map((mon) => `<label>IBAN ${mon === 'USD' ? 'dólares' : 'colones'} <span class="sub-inline">opcional</span>
+          <input class="mono" data-in="imp-iban" data-v="${esc(e.clave)}" data-mon="${mon}" value="${esc(ui.imp.ibans?.[e.clave]?.[mon] || '')}" placeholder="Se puede poner después" autocomplete="off"><span class="ayuda" data-ayuda></span></label>`).join('')}</div>`}
       </div>`).join('')}</div>`;
 }
 
@@ -1194,9 +1206,13 @@ function confirmarImportacion() {
     for (const e of I.res.emisores) if (e.cedula && e.codigo) mem[e.cedula] = e.codigo;
     localStorage.setItem('cxp-cedulas', JSON.stringify(mem));
   } catch { /* sin almacenamiento */ }
+  const ibanDe = (p) => { const e = I.res.emisores.find((x) => x.nuevo?.codigo === p.codigo); return (e && I.ibans?.[e.clave]) || {}; };
+  const malos = I.res.resumen.proveedoresNuevos.filter((p) => Object.values(ibanDe(p)).some((v) => v.trim() && errorIBAN(v)));
+  if (malos.length) { avisar(`Revise la cuenta IBAN de ${malos.map((p) => p.nombre).join(', ')} (o déjela vacía para ponerla después)`, 'error'); return; }
   const errores = [];
   for (const p of I.res.resumen.proveedoresNuevos) {
-    const r = S.guardarProveedor(p.codigo, { nombre: p.nombre, alias: '', ibanCRC: '', ibanUSD: '', plazo: 30 }, true);
+    const ib = ibanDe(p);
+    const r = S.guardarProveedor(p.codigo, { nombre: p.nombre, alias: '', ibanCRC: ib.CRC || '', ibanUSD: ib.USD || '', plazo: 30 }, true);
     if (r.error) errores.push(p.nombre + ': ' + r.error);
   }
   let ok = 0;
@@ -1240,9 +1256,10 @@ function vistaProveedores() {
     t[f.moneda] = round2(t[f.moneda] + S.saldo(f)); t.n++;
     saldoPorProv.set(f.codigo, t);
   }
+  const faltan = new Map(S.faltaIban().map((x) => [x.prov.codigo, x.falta]));
   let lista = Object.values(S.datos().proveedores).filter((p) => {
     if (texto && !(`${p.nombre} ${p.alias} ${p.codigo}`.toLowerCase().includes(texto))) return false;
-    if (P.filtro === 'sin-iban' && (p.ibanCRC || p.ibanUSD)) return false;
+    if (P.filtro === 'sin-iban' && !faltan.has(p.codigo)) return false;
     if (P.filtro === 'con-saldo' && !saldoPorProv.has(p.codigo)) return false;
     return true;
   }).sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -1252,10 +1269,11 @@ function vistaProveedores() {
     <div><h1>Proveedores</h1><p class="sub">${Object.keys(S.datos().proveedores).length} proveedores · ${conIban} con cuenta IBAN</p></div>
     <div class="acciones"><button class="btn primario" data-act="pv-nuevo">+ Nuevo proveedor</button></div>
   </div>
+  ${faltan.size && P.filtro !== 'sin-iban' ? avisoFaltaIban(faltan.size) : ''}
   <div class="filtros">
     <div class="fila-busqueda">
       <label class="buscar"><span class="vh">Buscar</span><input type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Nombre, alias o código" value="${esc(P.q)}" data-in="pv-q"></label>
-      <div class="fila-chips">${chip('pv-filtro', '', P.filtro, 'Todos')}${chip('pv-filtro', 'con-saldo', P.filtro, 'Con saldo')}${chip('pv-filtro', 'sin-iban', P.filtro, 'Sin IBAN')}</div>
+      <div class="fila-chips">${chip('pv-filtro', '', P.filtro, 'Todos')}${chip('pv-filtro', 'con-saldo', P.filtro, 'Con saldo')}${chip('pv-filtro', 'sin-iban', P.filtro, `Falta IBAN${faltan.size ? ` (${faltan.size})` : ''}`)}</div>
     </div>
   </div>
   <div class="tabla-scroll"><table class="tabla clic">
@@ -1264,11 +1282,18 @@ function vistaProveedores() {
       const t = saldoPorProv.get(p.codigo);
       return `<tr data-act="pv-abrir" data-v="${esc(p.codigo)}" tabindex="0">
       <td>${esc(p.codigo)}</td><td><a href="#/proveedores" data-act="pv-abrir" data-v="${esc(p.codigo)}">${esc(p.nombre)}</a></td><td>${esc(p.alias)}</td>
-      <td class="mono">${p.ibanCRC ? fmtIBAN(p.ibanCRC) : '<span class="sub">—</span>'}</td>
-      <td class="mono">${p.ibanUSD ? fmtIBAN(p.ibanUSD) : '<span class="sub">—</span>'}</td>
+      <td class="mono">${p.ibanCRC ? fmtIBAN(p.ibanCRC) : faltan.get(p.codigo)?.includes('CRC') ? '<span class="tag-sin">falta</span>' : '<span class="sub">—</span>'}</td>
+      <td class="mono">${p.ibanUSD ? fmtIBAN(p.ibanUSD) : faltan.get(p.codigo)?.includes('USD') ? '<span class="tag-sin">falta</span>' : '<span class="sub">—</span>'}</td>
       <td class="num">${t ? totalesTxt(t) : ''}</td></tr>`;
     }).join('')}</tbody>
   </table></div>`;
+}
+
+/** Aviso: proveedores con facturas por pagar que no tienen la cuenta IBAN de esa moneda. */
+function avisoFaltaIban(n) {
+  return `<div class="aviso-iban"><div><b>⚠ ${n} ${n === 1 ? 'proveedor con facturas por pagar no tiene' : 'proveedores con facturas por pagar no tienen'} cuenta IBAN.</b>
+    <span class="sub">Si Norman les programa un pago, no se podrá generar el archivo del banco (sí se puede pagar Manual).</span></div>
+    <button class="btn primario chico" data-act="ir-falta-iban">Completar cuentas</button></div>`;
 }
 
 function dialogoProveedor(codigo) {
@@ -1288,13 +1313,41 @@ function dialogoProveedor(codigo) {
   $dialog.querySelectorAll('[data-in="iban"]').forEach(validarCampoIBAN);
 }
 
+/** Banco según el código del IBAN (solo los confirmados con cuentas reales). */
+const BANCOS_IBAN = { '152': 'Banco de Costa Rica' };
+function bancoDeIban(iban) {
+  const limpio = String(iban || '').replace(/\s+/g, '').toUpperCase();
+  return BANCOS_IBAN[limpio.slice(5, 8)] || '';
+}
 function validarCampoIBAN(input) {
   const ayuda = input.parentElement.querySelector('[data-ayuda]');
   const v = input.value.trim();
   const err = v ? errorIBAN(v) : null;
   input.classList.toggle('malo', !!err);
-  if (ayuda) { ayuda.textContent = !v ? '' : err || 'IBAN válido'; ayuda.className = 'ayuda ' + (err ? 'malo' : 'bien'); }
+  const banco = !err && v ? bancoDeIban(v) : '';
+  if (ayuda) { ayuda.textContent = !v ? '' : err || ('IBAN válido' + (banco ? ' · ' + banco : '')); ayuda.className = 'ayuda ' + (err ? 'malo' : 'bien'); }
   return !err;
+}
+
+/** Agregar la cuenta IBAN sin salir de la pantalla (Por aplicar). */
+function dialogoIbanRapido(codigo, moneda, docs) {
+  const p = S.proveedor(codigo);
+  const campo = (mon) => {
+    const k = mon === 'USD' ? 'ibanUSD' : 'ibanCRC', esta = mon === moneda;
+    return `<label class="${esta ? 'ancho' : ''}">IBAN en ${mon === 'USD' ? 'dólares' : 'colones'} <span class="sub-inline">${esta ? `este pago es en ${mon === 'USD' ? 'dólares' : 'colones'}` : 'opcional'}</span>
+      <input name="${k}" class="mono" value="${esc(fmtIBAN(p[k]))}" placeholder="CR00 0000 0000 0000 0000 00" data-in="iban" ${esta ? 'required autofocus' : ''} autocomplete="off"><span class="ayuda" data-ayuda></span></label>`;
+  };
+  const aliasDef = p.nombre.split(/\s+/).slice(0, 2).join(' ');
+  abrirDialogo(`
+    <header class="dlg-cab"><div><h2>Agregar cuenta IBAN</h2><p class="sub">${esc(p.nombre)} · código ${esc(p.codigo)}</p></div><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+    <form class="dlg-cuerpo form-grid" data-form="pv-iban" data-v="${esc(codigo)}">
+      ${campo(moneda)}${campo(moneda === 'USD' ? 'CRC' : 'USD')}
+      <label>Alias para el banco <span class="sub-inline">opcional</span><input name="alias" value="${esc(p.alias)}" placeholder="${esc(aliasDef)}" data-in="iban-alias" data-docs="${esc(docs || '')}" data-def="${esc(aliasDef)}"></label>
+      ${docs ? `<p class="ancho sub" id="iban-desc">La descripción quedaría: <b>${esc(`Pago Fact ${docs} ${p.alias || aliasDef}`)}</b></p>` : ''}
+      <div class="ancho acciones-fila"><button class="btn primario" type="submit">Guardar y volver al pago</button><button class="btn" type="button" data-act="cerrar">Cancelar</button></div>
+    </form>`);
+  $dialog.querySelectorAll('[data-in="iban"]').forEach(validarCampoIBAN);
+  setTimeout(() => $dialog.querySelector('input[required]')?.focus(), 0);
 }
 
 // ---------------------------------------------------------------- Tablero
@@ -1318,8 +1371,10 @@ function vistaTablero() {
   const maxCRC = Math.max(0, ...porSoc.map((x) => x.t.CRC)), maxUSD = Math.max(0, ...porSoc.map((x) => x.t.USD));
   const porTramo = tramos.map(([n, fn, c]) => ({ n, c, t: S.totales(pend.filter((f) => { const d = S.diasVencida(f); return d != null && fn(d); })) }));
   const maxTC = Math.max(0, ...porTramo.map((x) => x.t.CRC)), maxTU = Math.max(0, ...porTramo.map((x) => x.t.USD));
+  const nFalta = S.usuarioActual()?.rol === 'aprueba' ? 0 : S.faltaIban().length;
   return `
   <div class="titulo-vista"><div><h1>Tablero</h1><p class="sub">Al ${fmtFecha(hoyISO())}</p></div></div>
+  ${nFalta ? avisoFaltaIban(nFalta) : ''}
   <div class="kpis">
     <div class="kpi k-total"><span>Total por pagar</span><strong>${money(S.totales(pend).CRC, 'CRC')}</strong><strong class="usd">${money(S.totales(pend).USD, 'USD')}</strong><small>${pend.length} facturas</small></div>
     <div class="kpi alerta"><span>Vencido</span><strong>${money(S.totales(venc).CRC, 'CRC')}</strong><strong class="usd">${money(S.totales(venc).USD, 'USD')}</strong><small>${venc.length} facturas</small></div>
@@ -2086,6 +2141,8 @@ const acciones = {
     catch (err) { if (err.name !== 'AbortError') { descargar(a.name, a); avisar('No se pudo compartir; se descargó el archivo'); } }
   },
   'arch-descargar': () => { if (ui.archivoAbierto) descargar(ui.archivoAbierto.name, ui.archivoAbierto); },
+  'iban-rapido': (v, el) => dialogoIbanRapido(v, el.dataset.mon, el.dataset.docs),
+  'ir-falta-iban': () => { ui.prov.filtro = 'sin-iban'; ui.prov.q = ''; location.hash = '#/proveedores'; },
   'ir-prov': (v) => { location.hash = '#/proveedores'; setTimeout(() => dialogoProveedor(v), 0); },
 
   'f-soc': (v) => { ui.fact.soc = v; ui.fact.limite = 150; render(); },
@@ -2180,6 +2237,13 @@ document.addEventListener('input', (e) => {
     return;
   }
   if (k === 'fm-monto') { actualizarRestoMov(); return; }
+  if (k === 'iban-alias') { const t = document.getElementById('iban-desc'); if (t) t.innerHTML = `La descripción quedaría: <b>${esc(`Pago Fact ${el.dataset.docs} ${el.value.trim() || el.dataset.def}`)}</b>`; return; }
+  if (k === 'imp-iban') {
+    const I = ui.imp; if (!I) return;
+    (I.ibans ||= {})[el.dataset.v] = { ...(I.ibans[el.dataset.v] || {}), [el.dataset.mon]: el.value };
+    validarCampoIBAN(el);
+    return;
+  }
   if (k === 'pn-monto') { const r = document.getElementById('pn-resto'); if (r) r.innerHTML = textoResto(S.factura(el.dataset.v), parseMonto(el.value)); return; }
   if (k === 'nf-fecha' || k === 'nf-plazo') {
     const form = el.form;
@@ -2383,13 +2447,17 @@ document.addEventListener('submit', (e) => {
     if (!(monto > 0)) { avisar('Monto inválido', 'error'); return; }
     const r = S.nuevaFactura({ sociedad: d.sociedad, codigo, documento: d.documento.trim(), moneda: d.moneda, fechaFactura: d.fechaFactura, fechaVence: d.fechaVence || sumarDias(d.fechaFactura, 30), monto, observaciones: d.observaciones });
     if (resultado(r, 'Factura guardada')) cerrarDialogo();
+  } else if (k === 'pv-iban') {
+    const p = S.proveedor(form.dataset.v);
+    if ([...form.querySelectorAll('[data-in="iban"]')].some((i) => !validarCampoIBAN(i))) { avisar('Revise la cuenta IBAN', 'error'); return; }
+    if (resultado(S.guardarProveedor(p.codigo, { ...p, ibanCRC: d.ibanCRC, ibanUSD: d.ibanUSD, alias: d.alias }, false), 'Cuenta guardada · ya se puede generar el archivo')) { cerrarDialogo(); render(); }
   } else if (k === 'pv-guardar') {
     const nuevo = !form.querySelector('[name=codigo]').readOnly;
     if (resultado(S.guardarProveedor(d.codigo.trim(), { nombre: d.nombre, alias: d.alias, ibanCRC: d.ibanCRC, ibanUSD: d.ibanUSD, plazo: d.plazo }, nuevo), 'Proveedor guardado')) cerrarDialogo();
   } else if (k === 'cfg-banco') {
     const ced = d.controlEncabezado.replace(/\D/g, '');
     if (d.controlEncabezado.trim() && (!ced || ced.length > 12)) { avisar('La cédula del empleado debe tener solo números (hasta 12)', 'error'); return; }
-    resultado(S.guardarConfig({ controlEncabezado: ced }), 'Configuración guardada');
+    if (resultado(S.guardarConfig({ controlEncabezado: ced }), 'Configuración guardada')) { render(); limpiarEdiciones('form[data-form="cfg-banco"]'); }
   } else if (k === 'cfg-soc') {
     const soc = form.dataset.v;
     const cedula = d.cedulaBCR.replace(/\D/g, '');
@@ -2401,6 +2469,7 @@ document.addEventListener('submit', (e) => {
     const b = S.bancoSoc(soc);
     if (b.cedula !== cedula || (b.ultimo ?? null) !== ultimo) { const r2 = S.guardarBancoSoc(soc, { cedula, ultimo }); if (r2.error) { avisar(r2.error, 'error'); return; } }
     avisar('Sociedad guardada'); render();
+    limpiarEdiciones(`form[data-form="cfg-soc"][data-v="${CSS.escape(soc)}"]`);
   }
 });
 

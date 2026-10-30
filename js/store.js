@@ -283,6 +283,17 @@ export function registrarMovimiento(facturaId, m) {
   });
 }
 export const actualizarFactura = (id, cambios) => Sync.ejecutar({ tipo: 'editarFactura', id, cambios });
+/** Proveedores con facturas por pagar en una moneda sin cuenta IBAN: [{ prov, falta: ['CRC'|'USD'], n }]. */
+export function faltaIban() {
+  const m = new Map();
+  for (const f of conSaldo()) {
+    const p = proveedor(f.codigo);
+    if (p[f.moneda === 'USD' ? 'ibanUSD' : 'ibanCRC']) continue;
+    if (!m.has(f.codigo)) m.set(f.codigo, { prov: p, falta: new Set(), n: 0 });
+    const x = m.get(f.codigo); x.falta.add(f.moneda); x.n++;
+  }
+  return [...m.values()].map((x) => ({ ...x, falta: [...x.falta] })).sort((a, b) => a.prov.nombre.localeCompare(b.prov.nombre));
+}
 export const guardarProveedor = (codigo, datosProv, nuevo) => Sync.ejecutar({ tipo: 'guardarProveedor', codigo, datos: datosProv, nuevo });
 export const guardarSociedad = (clave, d) => Sync.ejecutar({ tipo: 'guardarSociedad', clave, datos: d });
 export const guardarConfig = (cambios) => Sync.ejecutar({ tipo: 'guardarConfig', cambios });
