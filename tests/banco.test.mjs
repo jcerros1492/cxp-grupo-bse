@@ -28,7 +28,7 @@ test('los IBAN ficticios son válidos y uno alterado no', () => {
 
 test('estructura del archivo', () => {
   const txt = construirArchivo({
-    cliente: '1234', fecha: '2026-10-29', control: '000000000777',
+    cliente: '1234', consecutivo: 5, moneda: 'USD', fecha: '2026-10-29', control: '205470116',
     debito: { iban: DEB, descripcion: 'PROVEE PRUEBA' },
     creditos: [
       { iban: P1, monto: 863.13, descripcion: 'Pago Fact 1 2 Uno' },
@@ -42,15 +42,15 @@ test('estructura del archivo', () => {
 
   const [enc, deb, c1] = lineas;
   assert.equal(enc.slice(0, 15), '000000000001234');
-  assert.equal(enc.slice(15, 18), '003');
+  assert.equal(enc.slice(15, 18), '005'); // consecutivo del archivo
   assert.equal(enc.slice(18, 26), '29102026');
-  assert.equal(enc.slice(26, 38), '000000000777');
+  assert.equal(enc.slice(26, 38), '000205470116');
   assert.equal(enc.slice(38, 50), ' '.repeat(12));
   assert.equal(enc.slice(50, 56), '000000');
 
   assert.equal(deb.slice(0, 28), '000' + DEB + '024');
   assert.equal(deb.slice(32, 52), '00000000000000439305'); // 863,13 + 3.529,92
-  assert.equal(deb.slice(64, 68), '1234');
+  assert.equal(deb.slice(52, 84), ' '.repeat(12) + '1234'.padEnd(20));
   assert.equal(deb.slice(84).trimEnd(), 'PROVEE PRUEBA');
 
   assert.equal(c1.slice(0, 28), '000' + P1 + '022');
@@ -61,14 +61,29 @@ test('estructura del archivo', () => {
 
 test('quita tildes y rechaza IBAN inválido', () => {
   const txt = construirArchivo({
-    cliente: '1', fecha: '2026-01-02', debito: { iban: DEB, descripcion: 'Débito' },
+    cliente: '1', consecutivo: 1, moneda: 'CRC', fecha: '2026-01-02', debito: { iban: DEB, descripcion: 'Débito' },
     creditos: [{ iban: P1, monto: 1, descripcion: 'Pagó Ñandú' }],
   });
   assert.ok(txt.includes('Pago Nandu'));
   assert.throws(() => construirArchivo({
-    cliente: '1', fecha: '2026-01-02', debito: { iban: DEB, descripcion: 'x' },
+    cliente: '1', consecutivo: 1, moneda: 'CRC', fecha: '2026-01-02', debito: { iban: DEB, descripcion: 'x' },
     creditos: [{ iban: 'CR00123', monto: 1, descripcion: 'x' }],
   }), /IBAN inválido/);
+});
+
+test('colones usa 014/012, dólares 024/022; cédula larga completa en el débito', () => {
+  const base = { consecutivo: 2, fecha: '2026-05-28', control: '205470116', debito: { iban: DEB, descripcion: 'LOMA - PROVEE' },
+    creditos: [{ iban: P1, monto: 21089.5, descripcion: 'Pago Fact 1' }] };
+  const crc = construirArchivo({ ...base, cliente: '3101032890', moneda: 'CRC' }).split('\r\n');
+  assert.equal(crc[0].slice(0, 18), '000003101032890002');
+  assert.equal(crc[1].slice(25, 28), '014');
+  assert.equal(crc[1].slice(64, 84).trimEnd(), '3101032890');
+  assert.equal(crc[2].slice(25, 28), '012');
+  const usd = construirArchivo({ ...base, cliente: '37251', moneda: 'USD' }).split('\r\n');
+  assert.equal(usd[1].slice(25, 28), '024');
+  assert.equal(usd[2].slice(25, 28), '022');
+  assert.throws(() => construirArchivo({ ...base, cliente: '1', moneda: 'CRC', consecutivo: 0 }), /consecutivo/);
+  assert.throws(() => construirArchivo({ ...base, cliente: '1', moneda: 'CRC', consecutivo: 1000 }), /consecutivo/);
 });
 
 test('montos escritos a mano', () => {

@@ -194,7 +194,7 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--azul); mar
 .lote-total { font-size: 24px; font-weight: 700; }
 .lote-tabla td { vertical-align: middle; }
 .lote-tabla .facts div { white-space: nowrap; font-size: 13px; }
-.lote-tabla input { min-width: 300px; }
+.lote-tabla input { min-width: 200px; }
 .lote-tabla td.mono { white-space: nowrap; }
 .lote-tabla input.mini { min-width: 0; width: 110px; text-align: right; }
 .aviso { margin: 12px 20px 0; padding: 12px 14px; background: var(--ambar-fondo); color: #5E3A00; border-radius: 8px; font-size: 14px; }
@@ -830,3 +830,6 @@ tr.fila-manual td { background: #FFFBF3; }
 label.pa-forma, label.adjuntar { flex-direction: row !important; }
 label.pa-forma { align-items: flex-start !important; }
 label.adjuntar { align-items: center !important; }
+/* 1.18.1 · consecutivo del archivo */
+.paso .consec input { width: 80px; text-align: center; font-weight: 700; }
+.consec-ayuda { align-self: center; margin: 0; font-size: 12.5px; }

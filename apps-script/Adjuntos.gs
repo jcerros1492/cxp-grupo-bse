@@ -1,5 +1,5 @@
 // ============================================================================
-// Cuentas por Pagar · Grupo BSE · Adjuntos y anotaciones (versión 1.18)
+// Cuentas por Pagar · Grupo BSE · Adjuntos y anotaciones (versión 1.18.1)
 //
 // Pegue este bloque completo AL FINAL del script, y agregue en la función
 // manejar_ esta línea justo debajo de la que dice  if (p.accion === 'quienSoy') ...
@@ -29,7 +29,7 @@ function adjuntos_(p, usuario) {
 
 /**
  * Operación «anotar»: guarda en la pestaña Config un dato compartido entre todos los dispositivos
- * (enviado al banco, N° de documento por proveedor, comprobantes adjuntos). Valor vacío = sin dato.
+ * (enviado al banco, N° de documento por proveedor, comprobantes adjuntos, datos del BCR por sociedad). Valor vacío = sin dato.
  */
 function instalarAnotar_() {
   if (Logica.__anotar) return;
@@ -37,7 +37,7 @@ function instalarAnotar_() {
   Logica.aplicarOp = function (d, op, ctx) {
     if (!op || op.tipo !== 'anotar') return original(d, op, ctx);
     var clave = String(op.clave || '');
-    if (!/^(envio|adj|doc):/.test(clave)) return { ok: false, error: 'Anotación no permitida', cambios: [] };
+    if (!/^(envio|adj|doc|banco):/.test(clave)) return { ok: false, error: 'Anotación no permitida', cambios: [] };
     d.config[clave] = { clave: clave, valor: String(op.valor == null ? '' : op.valor), v: ctx.ahora };
     return { ok: true, cambios: [['config', clave]] };
   };

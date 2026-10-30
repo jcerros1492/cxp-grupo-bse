@@ -875,10 +875,10 @@ var Logica = (function () {
     },
 
     /** { cambios: {clienteBanco, controlEncabezado} } */
-    /** { clave: 'envio:…' | 'adj:…' | 'doc:…', valor } — dato compartido en la pestaña Config (1.18). */
+    /** { clave: 'envio:…' | 'adj:…' | 'doc:…' | 'banco:…', valor } — dato compartido en la pestaña Config (1.18). */
     anotar: function (d, op, ctx, marcar) {
       var clave = String(op.clave || '');
-      if (!/^(envio|adj|doc):/.test(clave)) return { error: 'Anotación no permitida' };
+      if (!/^(envio|adj|doc|banco):/.test(clave)) return { error: 'Anotación no permitida' };
       d.config[clave] = { clave: clave, valor: String(op.valor == null ? '' : op.valor) };
       marcar('config', clave);
       return { ok: true };

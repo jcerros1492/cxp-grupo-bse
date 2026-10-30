@@ -126,9 +126,9 @@ export function nota(clave) {
 
 /** Envío al banco de un pago programado: { por, fecha, grupo } o null. */
 export const envioDe = (progId) => nota('envio:' + progId);
-export function marcarEnviado(progIds) {
+export function marcarEnviado(progIds, consecutivo) {
   const grupo = Sync.nuevoId();
-  const v = { por: usuarioActual()?.nombre || '', fecha: new Date().toISOString(), grupo };
+  const v = { por: usuarioActual()?.nombre || '', fecha: new Date().toISOString(), grupo, consecutivo: consecutivo || null };
   for (const id of progIds) { const r = anotar('envio:' + id, v); if (r.error) return r; }
   return { ok: true };
 }
@@ -136,6 +136,12 @@ export function volverPendiente(progIds) {
   for (const id of progIds) { const r = anotar('envio:' + id, ''); if (r.error) return r; }
   return { ok: true };
 }
+
+/** Datos del BCR por sociedad: { cedula (la «Cédula jurídica» de la plantilla), ultimo (último consecutivo usado) }. */
+export const bancoSoc = (soc) => nota('banco:soc:' + soc) || {};
+export const guardarBancoSoc = (soc, cambios) => anotar('banco:soc:' + soc, { ...bancoSoc(soc), ...cambios });
+/** Consecutivo que sigue (1-999; después de 999 vuelve a 1). */
+export const siguienteConsecutivo = (soc) => ((Number(bancoSoc(soc).ultimo) || 0) % 999) + 1;
 
 /** Datos de un proveedor dentro de un pago aplicado: { documento, archivo: {id, nombre} }. */
 export const docLinea = (loteId, codigo) => nota(`doc:${loteId}:${codigo}`) || {};
@@ -185,7 +191,7 @@ export function pagarAutorizadoNorman(f, { monto, fecha, comprobante, nota, desc
 }
 
 /** Pagar ahora por banco: se programa para hoy, queda «enviado al banco» y se devuelve el lote para el .txt. */
-export function pagarAhoraBanco(f, { monto, fecha, nota, descripcion }) {
+export function pagarAhoraBanco(f, { monto, fecha, nota, descripcion, consecutivo }) {
   monto = round2(monto);
   const ya = programacionDe(f);
   if (ya) return { error: `Esta factura ya está programada por ${ya.por}. Aplíquela o devuélvala en «Por aplicar» primero.` };
@@ -194,7 +200,7 @@ export function pagarAhoraBanco(f, { monto, fecha, nota, descripcion }) {
   const progId = Sync.nuevoId();
   const r = Sync.ejecutar({ tipo: 'programar', fechaPago: fecha, nota: NOTA_PAGAR_AHORA + ' · banco' + (nota ? ' · ' + String(nota).trim() : ''), items: [{ progId, facturaId: f.id, monto }] });
   if (r.error) return r;
-  const m = marcarEnviado([progId]);
+  const m = marcarEnviado([progId], consecutivo);
   if (m.error) return m;
   if (descripcion != null && String(descripcion).trim()) guardarBorrador([f.sociedad, f.moneda, fecha].join('|'), f.codigo, { descripcion: String(descripcion).trim() });
   return { ok: true, lote: loteDirecto(f, monto, fecha, descripcion) };
@@ -241,7 +247,8 @@ export function autorizadosNorman(dias = 30) {
 export function problemasLote(lote) {
   const out = [];
   const mon = lote.moneda === 'USD' ? 'dólares' : 'colones';
-  if (!cfg('clienteBanco')) out.push('Falta el código de cliente del banco (Configuración).');
+  if (!bancoSoc(lote.sociedad).cedula) out.push(`Falta la cédula jurídica de ${nombreSociedad(lote.sociedad)} para el BCR (Configuración → Sociedades).`);
+  if (!cfg('controlEncabezado')) out.push('Falta la cédula del empleado que sube el archivo (Configuración → Banco).');
   if (!lote.cuentaDebito) out.push(`Falta la cuenta IBAN en ${mon} de ${nombreSociedad(lote.sociedad)} (Configuración).`);
   else if (L.errorIBAN(lote.cuentaDebito)) out.push(`La cuenta de ${nombreSociedad(lote.sociedad)} no es un IBAN válido.`);
   for (const ln of lote.lineas) {

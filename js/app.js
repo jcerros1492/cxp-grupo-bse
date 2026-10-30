@@ -509,30 +509,46 @@ function vistaAplicar() {
 }
 
 /** Proveedores de un lote pendiente: los que ya se enviaron al banco y los que no. */
-function partesLote(l) {
-  const enviadas = [], pendientes = [];
+/**
+ * Divide un lote: lo pendiente y cada archivo ya enviado al banco (un bloque por archivo).
+ * Con `grupo`, `enviadas` son solo las líneas de ese archivo.
+ */
+function partesLote(l, grupo) {
+  const pendientes = [], porGrupo = new Map();
   const parte = (ln, items, conExtra) => {
     const facturas = round2(items.reduce((t, x) => t + x.p.monto, 0)), extra = conExtra ? ln.extra : 0;
     return { ...ln, items, facturas, extra, total: round2(facturas + extra) };
   };
   for (const ln of l.lineas) {
-    const env = ln.items.filter(({ p }) => S.envioDe(p.id)), resto = ln.items.filter(({ p }) => !S.envioDe(p.id));
-    if (env.length) enviadas.push({ ln: resto.length ? parte(ln, env, false) : ln, e: S.envioDe(env[0].p.id) });
-    if (resto.length) pendientes.push(env.length ? parte(ln, resto, true) : ln);
+    const resto = [], grupos = new Map();
+    for (const it of ln.items) {
+      const e = S.envioDe(it.p.id);
+      if (!e) { resto.push(it); continue; }
+      const g = String(e.grupo || 'x');
+      if (!grupos.has(g)) grupos.set(g, { e, items: [] });
+      grupos.get(g).items.push(it);
+    }
+    for (const [g, { e, items }] of grupos) {
+      if (!porGrupo.has(g)) porGrupo.set(g, { grupo: g, e, lineas: [] });
+      porGrupo.get(g).lineas.push(items.length === ln.items.length ? ln : parte(ln, items, false));
+    }
+    if (resto.length) pendientes.push(resto.length === ln.items.length ? ln : parte(ln, resto, true));
   }
+  const envios = [...porGrupo.values()].sort((a, b) => String(a.e.fecha).localeCompare(String(b.e.fecha)));
+  const elegidos = grupo ? envios.filter((x) => x.grupo === grupo) : envios;
+  const enviadas = elegidos.flatMap((x) => x.lineas.map((ln) => ({ ln, e: x.e })));
   const forma = (ln) => ui.forma[l.clave + '|' + ln.codigo] || 'banco';
-  return { enviadas, pendientes, banco: pendientes.filter((ln) => forma(ln) === 'banco'), forma };
+  return { envios, enviadas, pendientes, banco: pendientes.filter((ln) => forma(ln) === 'banco'), forma };
 }
 
 function tarjetaLote(l) {
-  const { enviadas, pendientes, banco, forma } = partesLote(l);
+  const { envios, pendientes, banco, forma } = partesLote(l);
   const nFact = l.lineas.reduce((s, x) => s + x.items.length, 0);
   const id = encodeURIComponent(l.clave);
   const subBanco = S.subLote(l, banco.map((x) => x.codigo));
   const problemas = banco.length ? S.problemasLote(subBanco) : [];
   const facts = (ln, conDevolver) => ln.items.map(({ p, f }) => `<div>${esc(f.documento)}: ${money(p.monto, f.moneda)}${p.monto < S.saldo(f) - 0.004 ? ' <span class="tag-abono">abono</span>' : ''}
       ${conDevolver ? `<button class="btn-link" data-act="a-devolver" data-v="${p.id}" title="Devolver a Norman">devolver</button>` : ''}</div>`).join('');
-  const e0 = enviadas[0]?.e;
   return `<section class="lote">
     <header class="lote-cab">
       <div>
@@ -569,27 +585,33 @@ function tarjetaLote(l) {
       <div class="paso">
         <span class="num-paso">1</span>
         <span class="sub paso-txt">${banco.length ? `El archivo lleva <b>${banco.length} ${banco.length === 1 ? 'proveedor' : 'proveedores'}</b> · ${money(subBanco.total, l.moneda)}${banco.length < pendientes.length ? ' (sin los pagos manuales)' : ''}` : 'Todos los pagos pendientes de este grupo son manuales.'}</span>
+        ${banco.length && !problemas.length ? `<label class="consec">Consecutivo del archivo <input type="text" inputmode="numeric" maxlength="3" id="consec-${id}" value="${S.siguienteConsecutivo(l.sociedad)}" aria-describedby="consec-ayuda-${id}"></label>
+        <span class="sub consec-ayuda" id="consec-ayuda-${id}">Último usado en ${esc(S.nombreSociedad(l.sociedad))}: ${S.bancoSoc(l.sociedad).ultimo ? c3(S.bancoSoc(l.sociedad).ultimo) : '—'}</span>` : ''}
         <button class="btn" data-act="a-ver-txt" data-v="${id}" ${!banco.length || problemas.length ? 'disabled' : ''}>Ver contenido</button>
         <button class="btn oscuro" data-act="a-txt" data-v="${id}" ${!banco.length || problemas.length ? 'disabled' : ''}>Descargar archivo para el banco (.txt)</button>
       </div>
     </div>` : ''}
-    ${enviadas.length ? `
+    ${envios.map(({ grupo, e, lineas }) => {
+      const g = esc(grupo), k = `${id}-${g}`;
+      return `
     <div class="enviado">
       <div class="enviado-cab"><span class="estado-envio">Enviado al banco · esperando comprobante</span>
-        <span class="sub">Archivo generado por ${esc(e0.por || '—')} · ${fechaHora(Date.parse(e0.fecha))} · ${enviadas.length} ${enviadas.length === 1 ? 'proveedor' : 'proveedores'} · ${money(round2(enviadas.reduce((t, x) => t + x.ln.total, 0)), l.moneda)}</span></div>
-      <ul class="enviado-lista">${enviadas.map(({ ln }) => `<li><strong>${esc(ln.prov.nombre)}</strong> <span class="sub">${ln.items.map(({ f }) => esc(f.documento)).join(' · ')}</span> <span class="num">${money(ln.total, l.moneda)}</span></li>`).join('')}</ul>
+        <span class="sub">${e.consecutivo ? `Consecutivo <b>${c3(e.consecutivo)}</b> · ` : ''}generado por ${esc(e.por || '—')} · ${fechaHora(Date.parse(e.fecha))} · ${lineas.length} ${lineas.length === 1 ? 'proveedor' : 'proveedores'} · ${money(round2(lineas.reduce((t, x) => t + x.total, 0)), l.moneda)}</span></div>
+      <ul class="enviado-lista">${lineas.map((ln) => `<li><strong>${esc(ln.prov.nombre)}</strong> <span class="sub">${ln.items.map(({ f }) => esc(f.documento)).join(' · ')}</span> <span class="num">${money(ln.total, l.moneda)}</span></li>`).join('')}</ul>
       <div class="paso aplicar">
         <span class="num-paso">2</span>
-        <label>Comprobante general del débito <input type="text" id="comp-${id}" placeholder="Del banco" autocomplete="off"></label>
-        <label>Fecha <input type="date" id="fecha-${id}" value="${l.fecha}"></label>
-        ${campoArchivo('gen|' + l.clave, 'PDF del banco (uso interno)')}
-        <button class="btn primario" data-act="a-aplicar" data-v="${id}">Aplicar pago</button>
+        <label>Comprobante general del débito <input type="text" id="comp-${k}" placeholder="Del banco" autocomplete="off"></label>
+        <label>Fecha <input type="date" id="fecha-${k}" value="${l.fecha}"></label>
+        ${campoArchivo('gen|' + l.clave + '|' + grupo, 'PDF del banco (uso interno)')}
+        <button class="btn primario" data-act="a-aplicar" data-v="${id}" data-g="${g}">Aplicar pago</button>
       </div>
       <div class="enviado-otras">
-        <button class="btn-link" data-act="a-txt-otra" data-v="${id}">Descargar el archivo otra vez</button> ·
-        <button class="btn-link" data-act="a-volver" data-v="${id}">Volver a pendiente (si el banco lo rechazó)</button>
+        <button class="btn-link" data-act="a-txt-rechazo" data-v="${id}" data-g="${g}">El banco rechazó el consecutivo: generar con otro</button> ·
+        <button class="btn-link" data-act="a-txt-otra" data-v="${id}" data-g="${g}">Descargar el archivo otra vez</button> ·
+        <button class="btn-link" data-act="a-volver" data-v="${id}" data-g="${g}">Volver a pendiente (si el banco lo rechazó)</button>
       </div>
-    </div>` : ''}
+    </div>`;
+    }).join('')}
   </section>`;
 }
 
@@ -691,10 +713,12 @@ function loteDe(idCodificado) {
   return S.lotesPendientes().find((l) => l.clave === clave);
 }
 
-function textoArchivo(l) {
+function textoArchivo(l, consecutivo) {
   const soc = S.sociedades()[l.sociedad];
   return construirArchivo({
-    cliente: S.cfg('clienteBanco'),
+    cliente: S.bancoSoc(l.sociedad).cedula,
+    consecutivo,
+    moneda: l.moneda,
     fecha: l.fecha,
     control: S.cfg('controlEncabezado'),
     debito: { iban: l.cuentaDebito, descripcion: soc?.descripcionBanco || ('PROVEE ' + S.nombreSociedad(l.sociedad)).toUpperCase() },
@@ -702,10 +726,18 @@ function textoArchivo(l) {
   });
 }
 
-function descargarTxt(l, sufijo = '') {
-  const txt = textoArchivo(l);
+/** Descarga el .txt con ese consecutivo y lo deja anotado como el último usado de la sociedad. */
+function descargarTxt(l, consecutivo, sufijo = '') {
+  const txt = textoArchivo(l, consecutivo);
   const soc = S.nombreSociedad(l.sociedad).toUpperCase().replace(/[^A-Z0-9]+/g, '');
-  descargar(`PROVEEDORES_${soc}_${l.moneda}_${l.fecha.split('-').reverse().join('')}${sufijo}.txt`, txt, 'text/plain');
+  descargar(`PROVEEDORES_${soc}_${l.moneda}_${l.fecha.split('-').reverse().join('')}_C${String(consecutivo).padStart(3, '0')}${sufijo}.txt`, txt, 'text/plain');
+  if (Number(S.bancoSoc(l.sociedad).ultimo) !== Number(consecutivo)) S.guardarBancoSoc(l.sociedad, { ultimo: Number(consecutivo) });
+}
+const c3 = (n) => String(n).padStart(3, '0');
+function leerConsecutivo(el) {
+  const n = Number(String(el?.value || '').trim());
+  if (!(Number.isInteger(n) && n >= 1 && n <= 999)) { avisar('El consecutivo del archivo debe ser un número de 1 a 999', 'error'); el?.focus(); return null; }
+  return n;
 }
 
 function descargar(nombre, contenido, tipo) {
@@ -892,6 +924,8 @@ function dialogoPagoNorman(id) {
       <label class="ancho">Nota <span class="sub-inline">opcional</span> <input type="text" name="nota" placeholder="Ej. Norman lo pidió por teléfono"></label>
       <div class="ancho solo-banco pn-banco">
         <label>Descripción en el banco <input type="text" name="descripcion" maxlength="60" value="${esc(lote.lineas[0].descripcion)}"></label>
+        <label>Consecutivo del archivo <input type="text" name="consecutivo" inputmode="numeric" maxlength="3" value="${S.siguienteConsecutivo(f.sociedad)}">
+          <span class="sub">Último usado en ${esc(S.nombreSociedad(f.sociedad))}: ${S.bancoSoc(f.sociedad).ultimo ? c3(S.bancoSoc(f.sociedad).ultimo) : '—'}</span></label>
         ${prob.length ? `<div class="aviso"><strong>Para generar el archivo falta:</strong><ul>${prob.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
         <p class="sub">Al tocar el botón se descarga el .txt y el pago queda «Enviado al banco · esperando comprobante» en Por aplicar.</p>
       </div>
@@ -1768,15 +1802,14 @@ function vistaConfig() {
   <section class="bloque">
     <h2>Banco</h2>
     <form class="form-grid" data-form="cfg-banco">
-      <label>Código de cliente en el banco <input name="clienteBanco" value="${esc(S.cfg('clienteBanco'))}" placeholder="Ej. 1234"></label>
-      <label>Campo de control del encabezado (posiciones 27-38) <input name="controlEncabezado" value="${esc(S.cfg('controlEncabezado'))}" placeholder="12 dígitos, por confirmar con el banco"></label>
-      <p class="ancho sub">El campo de control aún no está confirmado: pregunte al banco qué valor lleva. Si se deja vacío, se llena con ceros.</p>
+      <label>Cédula del empleado que sube el archivo <input name="controlEncabezado" inputmode="numeric" value="${esc(String(S.cfg('controlEncabezado')).replace(/^0+/, ''))}" placeholder="Ej. 205470116"></label>
+      <p class="ancho sub">Es la «Cédula Empleado» de la plantilla del BCR (hoy la de Daniel). Va en todos los archivos, de todas las sociedades. La «Cédula jurídica», la cuenta y el consecutivo de cada sociedad están más abajo.</p>
       <div class="ancho"><button class="btn primario" type="submit">Guardar</button></div>
     </form>
   </section>
 
   <section class="bloque">
-    <h2>Cuentas de las sociedades (cuenta que se debita)</h2>
+    <h2>Sociedades: datos para el archivo del BCR</h2>
     ${socs.length ? socs.map(([k, s]) => `
     <form class="form-grid sociedad-form" data-form="cfg-soc" data-v="${esc(k)}">
       <h3 class="ancho">${esc(k)}</h3>
@@ -1784,6 +1817,9 @@ function vistaConfig() {
       <label>Descripción en la línea de débito <input name="descripcionBanco" value="${esc(s.descripcionBanco)}" placeholder="Ej. PROVEE ${esc(String(s.corto).toUpperCase())}"></label>
       <label>IBAN colones <input name="cuentaCRC" class="mono" value="${esc(fmtIBAN(s.cuentaCRC))}" data-in="iban"><span class="ayuda" data-ayuda></span></label>
       <label>IBAN dólares <input name="cuentaUSD" class="mono" value="${esc(fmtIBAN(s.cuentaUSD))}" data-in="iban"><span class="ayuda" data-ayuda></span></label>
+      <label>Cédula jurídica (como en la plantilla del BCR) <input name="cedulaBCR" inputmode="numeric" value="${esc(S.bancoSoc(k).cedula || '')}" placeholder="Ej. 6133"></label>
+      <label>Último consecutivo usado <input name="ultimoConsec" inputmode="numeric" maxlength="3" value="${esc(S.bancoSoc(k).ultimo ?? '')}" placeholder="Ej. 5">
+        <span class="sub">El próximo archivo usará el ${S.siguienteConsecutivo(k)}.</span></label>
       <div class="ancho"><button class="btn" type="submit">Guardar ${esc(s.corto)}</button></div>
     </form>`).join('') : '<p class="sub">Aparecerán al cargar el Excel.</p>'}
   </section>
@@ -1928,23 +1964,37 @@ const acciones = {
     try {
       const prob = S.problemasLote(sub);
       if (prob.length) { avisar(prob.join(' '), 'error'); return; }
-      descargarTxt(sub);
-      const r = S.marcarEnviado(banco.flatMap((ln) => ln.items.map(({ p }) => p.id)));
-      if (resultado(r, 'Archivo descargado · quedó «Enviado al banco · esperando comprobante»')) render();
+      const n = leerConsecutivo(document.getElementById('consec-' + v));
+      if (!n) return;
+      descargarTxt(sub, n);
+      const r = S.marcarEnviado(banco.flatMap((ln) => ln.items.map(({ p }) => p.id)), n);
+      if (resultado(r, `Archivo descargado (consecutivo ${c3(n)}) · quedó «Enviado al banco · esperando comprobante»`)) render();
     } catch (err) { avisar(err.message, 'error'); }
   },
-  'a-txt-otra': (v) => {
+  'a-txt-otra': (v, el) => {
     const l = loteDe(v);
     if (!l) return;
-    const { enviadas } = partesLote(l), e0 = enviadas[0]?.e;
+    const { enviadas } = partesLote(l, el.dataset.g), e0 = enviadas[0]?.e;
     if (!enviadas.length) return;
     if (!confirm(`Este archivo ya lo generó ${e0?.por || 'alguien'} (${fechaHora(Date.parse(e0?.fecha))}).\n\nSi ya se subió al banco, subirlo otra vez PAGARÍA DOS VECES.\n\n¿Descargarlo de nuevo de todos modos?`)) return;
-    try { descargarTxt({ ...l, lineas: enviadas.map((x) => x.ln) }); } catch (err) { avisar(err.message, 'error'); }
+    try { descargarTxt({ ...l, lineas: enviadas.map((x) => x.ln) }, e0?.consecutivo || S.siguienteConsecutivo(l.sociedad)); } catch (err) { avisar(err.message, 'error'); }
   },
-  'a-volver': (v) => {
+  'a-txt-rechazo': (v, el) => {
     const l = loteDe(v);
     if (!l) return;
-    const { enviadas } = partesLote(l);
+    const { enviadas } = partesLote(l, el.dataset.g), e0 = enviadas[0]?.e;
+    if (!enviadas.length) return;
+    const n = S.siguienteConsecutivo(l.sociedad);
+    if (!confirm(`Se generará el mismo archivo con el consecutivo ${c3(n)}${e0?.consecutivo ? ` (en lugar del ${c3(e0.consecutivo)})` : ''}.\n\nÚselo solo si el banco rechazó el archivo por consecutivo repetido. ¿Continuar?`)) return;
+    try {
+      descargarTxt({ ...l, lineas: enviadas.map((x) => x.ln) }, n);
+      if (resultado(S.marcarEnviado(enviadas.flatMap(({ ln }) => ln.items.map(({ p }) => p.id)), n), `Archivo descargado con el consecutivo ${c3(n)}`)) render();
+    } catch (err) { avisar(err.message, 'error'); }
+  },
+  'a-volver': (v, el) => {
+    const l = loteDe(v);
+    if (!l) return;
+    const { enviadas } = partesLote(l, el.dataset.g);
     if (!confirm('¿Volver a pendiente? Úselo solo si el banco rechazó el archivo o no se llegó a subir. Después podrá generar el archivo otra vez.')) return;
     if (resultado(S.volverPendiente(enviadas.flatMap(({ ln }) => ln.items.map(({ p }) => p.id))), 'Volvió a pendiente')) render();
   },
@@ -1952,26 +2002,26 @@ const acciones = {
     const l = loteDe(v);
     try {
       const { banco } = partesLote(l);
-      const txt = textoArchivo({ ...l, lineas: banco });
+      const txt = textoArchivo({ ...l, lineas: banco }, Number(document.getElementById('consec-' + v)?.value) || S.siguienteConsecutivo(l.sociedad));
       abrirDialogo(`<header class="dlg-cab"><h2>Contenido del archivo</h2><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
         <div class="dlg-cuerpo"><pre class="txt">${esc(txt.replace(/ +\r\n/g, '\r\n'))}</pre><p class="sub">Los espacios al final de cada línea no se muestran; el archivo descargado sí los lleva (214 caracteres por línea).</p></div>`);
     } catch (err) { avisar(err.message, 'error'); }
   },
-  'a-aplicar': (v) => {
-    const l = loteDe(v);
+  'a-aplicar': (v, el) => {
+    const l = loteDe(v), g = el.dataset.g;
     if (!l) return;
-    const { enviadas } = partesLote(l);
+    const { enviadas } = partesLote(l, g);
     const lineas = enviadas.map((x) => x.ln);
     const sub = { ...l, lineas, total: round2(lineas.reduce((t, x) => t + x.total, 0)) };
-    const comp = document.getElementById('comp-' + v).value.trim();
-    const fecha = document.getElementById('fecha-' + v).value;
+    const comp = document.getElementById(`comp-${v}-${g}`).value.trim();
+    const fecha = document.getElementById(`fecha-${v}-${g}`).value;
     if (!comp) { avisar('Escriba el comprobante general del débito', 'error'); return; }
     if (!confirm(`¿Aplicar el pago de ${money(sub.total, l.moneda)} (${lineas.length} ${lineas.length === 1 ? 'proveedor' : 'proveedores'}) con el comprobante ${comp}?`)) return;
     const r = S.aplicarLote(sub, { comprobante: comp, fecha });
     if (!resultado(r, 'Pago aplicado')) return;
     ui.apAbierto[r.loteId] = true;
     render();
-    adjuntarDespues('gen|' + l.clave, `Debito ${comp}`, (a) => S.guardarAdjLote(r.loteId, a));
+    adjuntarDespues('gen|' + l.clave + '|' + g, `Debito ${comp}`, (a) => S.guardarAdjLote(r.loteId, a));
   },
   'a-aplicar-manual': (v) => {
     const k = decodeURIComponent(v), i = k.lastIndexOf('|');
@@ -2277,10 +2327,13 @@ document.addEventListener('submit', (e) => {
       const l = S.loteDirecto(f, x.monto, x.fecha, x.descripcion);
       const prob = S.problemasLote(l);
       if (prob.length) { avisar(prob.join(' '), 'error'); return; }
-      const r = S.pagarAhoraBanco(f, x);
+      const n = leerConsecutivo(form.consecutivo);
+      if (!n) return;
+      try { textoArchivo(l, n); } catch (err) { avisar(err.message, 'error'); return; }
+      const r = S.pagarAhoraBanco(f, { ...x, consecutivo: n });
       if (r.error) { avisar(r.error, 'error'); return; }
-      try { descargarTxt(r.lote, '_FACT' + String(f.documento).replace(/[^A-Za-z0-9]+/g, '')); } catch (err) { avisar(err.message, 'error'); }
-      avisar('Archivo descargado · el pago quedó en «Por aplicar» esperando el comprobante del banco');
+      try { descargarTxt(r.lote, n, '_FACT' + String(f.documento).replace(/[^A-Za-z0-9]+/g, '')); } catch (err) { avisar(err.message, 'error'); }
+      avisar(`Archivo descargado (consecutivo ${c3(n)}) · el pago quedó en «Por aplicar» esperando el comprobante del banco`);
       cerrarDialogo(); render();
     } else {
       if (!String(x.comprobante || '').trim()) { avisar('Escriba el N° de comprobante', 'error'); return; }
@@ -2302,9 +2355,20 @@ document.addEventListener('submit', (e) => {
     const nuevo = !form.querySelector('[name=codigo]').readOnly;
     if (resultado(S.guardarProveedor(d.codigo.trim(), { nombre: d.nombre, alias: d.alias, ibanCRC: d.ibanCRC, ibanUSD: d.ibanUSD, plazo: d.plazo }, nuevo), 'Proveedor guardado')) cerrarDialogo();
   } else if (k === 'cfg-banco') {
-    resultado(S.guardarConfig({ clienteBanco: d.clienteBanco.trim(), controlEncabezado: d.controlEncabezado.trim() }), 'Configuración guardada');
+    const ced = d.controlEncabezado.replace(/\D/g, '');
+    if (d.controlEncabezado.trim() && (!ced || ced.length > 12)) { avisar('La cédula del empleado debe tener solo números (hasta 12)', 'error'); return; }
+    resultado(S.guardarConfig({ controlEncabezado: ced }), 'Configuración guardada');
   } else if (k === 'cfg-soc') {
-    resultado(S.guardarSociedad(form.dataset.v, d), 'Sociedad guardada');
+    const soc = form.dataset.v;
+    const cedula = d.cedulaBCR.replace(/\D/g, '');
+    if (d.cedulaBCR.trim() && (!cedula || cedula.length > 15)) { avisar('La cédula jurídica debe tener solo números', 'error'); return; }
+    const ultimo = d.ultimoConsec.trim() === '' ? null : Number(d.ultimoConsec.trim());
+    if (ultimo != null && !(Number.isInteger(ultimo) && ultimo >= 0 && ultimo <= 999)) { avisar('El consecutivo debe ser un número de 0 a 999', 'error'); return; }
+    const r = S.guardarSociedad(soc, d);
+    if (r.error) { avisar(r.error, 'error'); return; }
+    const b = S.bancoSoc(soc);
+    if (b.cedula !== cedula || (b.ultimo ?? null) !== ultimo) { const r2 = S.guardarBancoSoc(soc, { cedula, ultimo }); if (r2.error) { avisar(r2.error, 'error'); return; } }
+    avisar('Sociedad guardada'); render();
   }
 });
 

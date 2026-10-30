@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.18.1 | **Archivo del BCR igual al de la plantilla de Excel** (comparado letra por letra con archivos reales de las cuatro sociedades): códigos 014/012 en colones y 024/022 en dólares; «Cédula jurídica» de la plantilla por sociedad (6847, 6133, 37251, 3101032890); cédula del empleado que sube el archivo; **consecutivo del archivo** por sociedad, compartido entre dispositivos, sugerido y editable antes de descargar, con botón «El banco rechazó el consecutivo: generar con otro». Bloque de Apps Script actualizado (permite guardar los datos del BCR). |
 | 1.18.0 | **Banco o Manual.** En «Por aplicar» cada proveedor se paga por Banco (.txt) o Manual. Al descargar el .txt el pago queda «Enviado al banco · esperando comprobante» (quién y cuándo, visible en todos los dispositivos), con aviso si se intenta descargar de nuevo y botón «Volver a pendiente». El comprobante general del débito lo escribe Jonathan, Fernando o Daniel. «Pagar ahora» (antes «Autorizado por Norman») con Banco o Manual. Comprobantes en PDF o foto guardados en Google Drive (carpeta «CxP Comprobantes») y visibles desde cualquier dispositivo sin guardarse en él. En «Aplicados recientemente»: comprobante general (solo uso interno), N° de documento y comprobante individual por proveedor, y **Aviso de pago** en PDF para compartir por WhatsApp. **Requiere el bloque `apps-script/Adjuntos.gs` en Apps Script.** |
 | 1.17.2 | Pestaña «Reportes» (antes «Cuentas por pagar»). «Limpiar filtros» del estado de cuenta también quita el proveedor. Totales con el signo de la moneda (₡ / $) en reportes y estado de cuenta: pantalla, Excel (formato de moneda) y PDF (¢ / $, porque la letra del PDF no trae ₡). |
 | 1.17.1 | Estado de cuenta: cada abono, pago o nota de crédito debajo de su factura con «↳» y a qué factura se aplicó («Nota de crédito N° NC-56 · aplicada a la factura 2752»); línea entre facturas; columna «Monto» (antes «Cargos»); títulos centrados. En el Excel, columna «Factura» para filtrar. Reportes: títulos y cifras centrados bajo su columna (Días y Saldo incluidos) y alineados por los decimales, también en el PDF. |
@@ -136,15 +137,15 @@ Cada línea mide 214 caracteres y termina en CRLF. El formato reproduce byte por
 
 | Línea | Posiciones | Contenido |
 |---|---|---|
-| Encabezado | 1–15 | Código de cliente con ceros a la izquierda |
-| | 16–18 | Cantidad de líneas de detalle |
+| Encabezado | 1–15 | «Cédula jurídica» de la plantilla del BCR, con ceros a la izquierda |
+| | 16–18 | Consecutivo del archivo (no se puede repetir) |
 | | 19–26 | Fecha en formato DDMMAAAA |
-| | 27–38 | Campo de control (por confirmar con el banco; se configura en la app) |
+| | 27–38 | Cédula del empleado que sube el archivo |
 | | 51–56 | `000000` |
 | Detalle | 4–25 | IBAN |
-| | 26–28 | `024` para el débito, `022` para el crédito |
+| | 26–28 | Colones: `014` débito / `012` crédito · Dólares: `024` / `022` |
 | | 33–52 | Monto en centavos |
-| | 65–68 | Código de cliente (solo en el débito) |
+| | 65–84 | «Cédula jurídica» de la plantilla (solo en el débito) |
 | | 85+ | Descripción |
 
 ## Desarrollo
