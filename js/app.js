@@ -1134,9 +1134,18 @@ function vistaReportes() {
   <section class="filtros no-imprimir">
     <div class="form-grid rep-filtros">
       <label>Sociedad <select data-in="r-soc"><option value="">Todas las sociedades</option>${socs.map((x) => `<option value="${esc(x)}" ${R.soc === x ? 'selected' : ''}>${esc(S.nombreSociedad(x))}</option>`).join('')}</select></label>
-      <label>Proveedor <span class="rep-prov-buscar"><input type="search" data-in="r-provq" list="rep-provs" placeholder="Todos · escriba para buscar" value="${esc(R.prov ? S.proveedor(R.prov).nombre : '')}" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
-        ${R.prov ? '<button type="button" class="btn-limpiar" data-act="r-prov-todos" aria-label="Todos los proveedores">×</button>' : ''}</span>
-        <datalist id="rep-provs">${proveedoresReporte().map((p) => `<option value="${esc(p.nombre)}"></option>`).join('')}</datalist></label>
+      <div class="rep-prov-drop"><span class="lbl">Proveedor</span>
+        <button type="button" class="rep-prov-boton ${R.prov ? 'elegido' : ''}" data-act="r-prov-abrir" aria-expanded="${ui.rep.provAbierto ? 'true' : 'false'}">
+          <span>${esc(R.prov ? S.proveedor(R.prov).nombre : 'Todos los proveedores')}</span><span aria-hidden="true">▾</span></button>
+        ${ui.rep.provAbierto ? `<div class="rep-prov-panel">
+          <input type="search" data-in="r-provfiltro" placeholder="Escriba para buscar…" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
+          <ul class="rep-prov-lista">
+            <li><button type="button" data-act="r-prov-set" data-v="" class="${R.prov ? '' : 'on'}">(Todos los proveedores)</button></li>
+            ${proveedoresReporte().map((p) => `<li data-nombre="${esc(p.nombre.toLowerCase())}"><button type="button" data-act="r-prov-set" data-v="${esc(p.codigo)}" class="${R.prov === p.codigo ? 'on' : ''}">${esc(p.nombre)}</button></li>`).join('')}
+          </ul>
+          <p class="sub rep-prov-nada" hidden>Ningún proveedor coincide.</p>
+        </div>` : ''}
+      </div>
       <div><span class="lbl">Moneda</span><div class="chips">
         <button class="chip ${R.mon === 'CRC' ? 'on' : ''}" data-act="r-mon" data-v="CRC">Colones</button>
         <button class="chip ${R.mon === 'USD' ? 'on' : ''}" data-act="r-mon" data-v="USD">Dólares</button></div></div>
@@ -1144,7 +1153,8 @@ function vistaReportes() {
       <label>Vence hasta <input type="date" data-in="r-hasta" value="${R.hasta}"></label>
     </div>
     <div class="chips rep-presets"><span class="lbl">Rápido:</span>
-      ${preset('Vencidas a hoy', '', hoy)}${preset('Próximos 7 días', hoy, sumarDias(hoy, 7))}${preset('Próximos 30 días', hoy, sumarDias(hoy, 30))}${preset('Todo', '', '')}</div>
+      ${preset('Vencidas a hoy', '', hoy)}${preset('Próximos 7 días', hoy, sumarDias(hoy, 7))}${preset('Próximos 30 días', hoy, sumarDias(hoy, 30))}${preset('Todo', '', '')}
+      <button type="button" class="btn chico rep-limpiar" data-act="r-limpiar">Limpiar filtros</button></div>
   </section>
   ${total.n ? '' : '<p class="vacio grande no-imprimir">No hay facturas con saldo en ese rango.</p>'}
   <div class="reporte-hojas ${R.prov ? 'seguido' : ''}">${grupos.filter((g) => g.cantidad).map((g, i) => `
@@ -1163,7 +1173,7 @@ function vistaReportes() {
           <thead><tr><th class="w-doc">N°<span class="larga"> Factura</span></th><th class="c-ff w-ff">Fecha de<br>factura</th><th class="w-fv"><span class="larga">Fecha de<br>vencimiento</span><span class="corta">Vence</span></th><th class="num w-dias">Días</th><th class="num w-saldo">Saldo</th><th class="c-mon w-mon">Moneda</th></tr></thead>
           <tbody>${x.facturas.map((f) => `<tr><td>${esc(f.documento)}</td><td class="c-ff">${fmtFecha(f.fechaFactura)}</td><td><span class="larga">${fmtFecha(f.fechaVence)}</span><span class="corta">${fmtFecha(f.fechaVence).replace(/\/20(\d\d)$/, '/$1')}</span></td><td class="num">${celdaDias(f)}</td>
             <td class="num">${fmtNum(S.saldo(f))}</td><td class="c-mon">${mon.nombre}</td></tr>`).join('')}</tbody>
-          <tfoot><tr class="rep-tot-num"><td></td><td class="c-ff"></td><td></td><td class="rep-tot-junto"><span>Total Cliente · ${x.facturas.length} ${x.facturas.length === 1 ? 'factura' : 'facturas'}</span></td><td class="num">${fmtNum(x.saldo)}</td><td class="c-mon"></td></tr></tfoot>
+          ${R.prov ? '' : `<tfoot><tr class="rep-tot-num"><td></td><td class="c-ff"></td><td></td><td class="rep-tot-junto"><span>Total Cliente · ${x.facturas.length} ${x.facturas.length === 1 ? 'factura' : 'facturas'}</span></td><td class="num">${fmtNum(x.saldo)}</td><td class="c-mon"></td></tr></tfoot>`}
         </table>
       </section>`).join('')}
       <table class="rep-tabla rep-tabla-total rep-total-soc"><tbody><tr><td class="w-doc"></td><td class="c-ff w-ff"></td><td class="w-fv"></td><td class="w-dias rep-tot-junto"><span>Total ${esc(S.nombreSociedad(g.soc))} · ${g.cantidad} ${g.cantidad === 1 ? 'factura' : 'facturas'}</span></td><td class="num w-saldo">${fmtNum(g.saldo)}</td><td class="c-mon w-mon"></td></tr></tbody></table>
@@ -1181,7 +1191,7 @@ function excelReporte() {
       filas.push([x.prov.nombre]);
       filas.push(['N° Factura', 'Fecha de factura', 'Fecha de vencimiento', 'Días (− vencida / + por vencer)', 'Saldo', 'Moneda']);
       for (const f of x.facturas) filas.push([String(f.documento), fmtFecha(f.fechaFactura), fmtFecha(f.fechaVence), diasReporte(f) ?? '', round2(S.saldo(f)), MONEDAS[R.mon].nombre]);
-      filas.push(['', '', '', `Total Cliente · ${x.facturas.length} ${x.facturas.length === 1 ? 'factura' : 'facturas'}`, x.saldo, '']);
+      if (!R.prov) filas.push(['', '', '', `Total Cliente · ${x.facturas.length} ${x.facturas.length === 1 ? 'factura' : 'facturas'}`, x.saldo, '']);
       filas.push([]);
     }
     filas.push(['', '', '', `Total ${S.nombreSociedad(g.soc)} · ${g.cantidad} ${g.cantidad === 1 ? 'factura' : 'facturas'}`, g.saldo, ''], [], []);
@@ -1348,10 +1358,12 @@ function etiquetarTablas(raiz = document) {
 function despuesDeRender(ruta) {
   etiquetarTablas($app);
   if (ruta === 'programar') actualizarBarra();
+  if (ruta === 'reportes') { const f = document.querySelector('[data-in="r-provfiltro"]'); if (f?.value) f.dispatchEvent(new Event('input', { bubbles: true })); }
   if (ruta === 'config') document.querySelectorAll('[data-in="iban"]').forEach(validarCampoIBAN);
 }
 
 document.addEventListener('click', (e) => {
+  if (ui.rep.provAbierto && !e.target.closest('.rep-prov-drop')) { ui.rep.provAbierto = false; render(); }
   const el = e.target.closest('[data-act]');
   if (!el) return;
   const act = el.dataset.act, v = el.dataset.v;
@@ -1362,6 +1374,13 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.matches('tr[data-act]')) acciones[e.target.dataset.act]?.(e.target.dataset.v);
   // «Buscar» en el teclado del celular: muestra los resultados ya y cierra el teclado
+  if (e.key === 'Enter' && e.target.matches('[data-in="r-provfiltro"]')) {
+    e.preventDefault();
+    const vis = [...document.querySelectorAll('.rep-prov-lista li[data-nombre]:not([hidden]) button')];
+    if (vis.length === 1) vis[0].click();
+    return;
+  }
+  if (e.key === 'Escape' && ui.rep.provAbierto) { ui.rep.provAbierto = false; render(); return; }
   if (e.key === 'Enter' && e.target.matches('input[type="search"]')) { e.preventDefault(); clearTimeout(tBusqueda); render(); e.target.blur(); }
 });
 
@@ -1451,7 +1470,12 @@ const acciones = {
   'f-mas': () => { ui.fact.limite += 300; render(); },
   'f-abrir': (v) => dialogoFactura(v),
   'r-mon': (v) => { ui.rep.mon = v; render(); },
-  'r-prov-todos': () => { ui.rep.prov = ''; render(); },
+  'r-prov-abrir': () => {
+    ui.rep.provAbierto = !ui.rep.provAbierto; render();
+    if (ui.rep.provAbierto) setTimeout(() => document.querySelector('[data-in="r-provfiltro"]')?.focus(), 0);
+  },
+  'r-prov-set': (v) => { ui.rep.prov = v; ui.rep.provAbierto = false; render(); },
+  'r-limpiar': () => { Object.assign(ui.rep, { soc: '', prov: '', desde: '', hasta: '', provAbierto: false }); render(); },
   'r-preset': (v) => { const [d, h] = v.split('|'); ui.rep.desde = d; ui.rep.hasta = h; render(); },
   'r-imprimir': () => window.print(),
   'r-excel': () => { try { excelReporte(); } catch (err) { avisar('No se pudo crear el Excel: ' + err.message, 'error'); } },
@@ -1513,6 +1537,13 @@ document.addEventListener('input', (e) => {
   if (!k) return;
   if (k === 'p-monto') { ui.prog.sel.set(el.dataset.v, el.value); actualizarBarra(); return; }
   if (k === 'iban') { validarCampoIBAN(el); return; }
+  if (k === 'r-provfiltro') {
+    const t = el.value.trim().toLowerCase();
+    let n = 0;
+    document.querySelectorAll('.rep-prov-lista li[data-nombre]').forEach((li) => { const ok = !t || li.dataset.nombre.includes(t); li.hidden = !ok; if (ok) n++; });
+    const nada = document.querySelector('.rep-prov-nada'); if (nada) nada.hidden = n > 0;
+    return;
+  }
   if (k === 'fm-monto') { actualizarRestoMov(); return; }
   if (k === 'pn-monto') { const r = document.getElementById('pn-resto'); if (r) r.innerHTML = textoResto(S.factura(el.dataset.v), parseMonto(el.value)); return; }
   if (k === 'nf-fecha' || k === 'nf-plazo') {
@@ -1534,14 +1565,6 @@ document.addEventListener('change', async (e) => {
   if (!k) return;
   if (k === 'fm-tipo') { actualizarRestoMov(); return; }
   if (k === 'r-soc') { ui.rep.soc = el.value; render(); return; }
-  if (k === 'r-provq') {
-    const t = el.value.trim().toLowerCase();
-    if (!t) { ui.rep.prov = ''; render(); return; }
-    const lista = proveedoresReporte();
-    const p = lista.find((x) => x.nombre.toLowerCase() === t) || (lista.filter((x) => x.nombre.toLowerCase().includes(t)).length === 1 ? lista.find((x) => x.nombre.toLowerCase().includes(t)) : null);
-    if (p) { ui.rep.prov = p.codigo; render(); } else avisar('Elija el proveedor de la lista que aparece al escribir', 'error');
-    return;
-  }
   if (k === 'r-desde') { ui.rep.desde = el.value; render(); return; }
   if (k === 'r-hasta') { ui.rep.hasta = el.value; render(); return; }
   if (k === 'p-sel') {

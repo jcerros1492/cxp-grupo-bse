@@ -634,3 +634,18 @@ input[type=date]::-webkit-date-and-time-value { text-align: left; }
   .rep-cab-corta { break-after: avoid; }
   .rep-prov-nombre { break-after: avoid; }
 }
+
+/* Filtro de proveedor tipo Excel */
+.rep-prov-drop { position: relative; }
+.rep-prov-boton { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px; font: inherit; font-size: 15px; text-align: left; min-height: 42px; padding: 8px 12px; border: 1px solid var(--borde-fuerte); border-radius: 8px; background: var(--superficie); color: var(--tinta); cursor: pointer; }
+.rep-prov-boton span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rep-prov-boton.elegido { border-color: var(--tinta); font-weight: 600; }
+.rep-prov-panel { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; width: max(100%, 340px); max-width: calc(100vw - 32px); background: var(--superficie); border: 1px solid var(--borde-fuerte); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.15); padding: 8px; }
+.rep-prov-panel input { width: 100%; box-sizing: border-box; margin-bottom: 6px; }
+.rep-prov-lista { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow-y: auto; }
+.rep-prov-lista button { width: 100%; text-align: left; font: inherit; font-size: 14px; padding: 8px 10px; border: 0; border-radius: 6px; background: none; color: var(--tinta); cursor: pointer; }
+.rep-prov-lista button:hover { background: var(--azul-claro, #EAF1FB); }
+.rep-prov-lista button.on { background: var(--tinta); color: #fff; font-weight: 600; }
+.rep-prov-nada { margin: 6px 4px; }
+.rep-limpiar { margin-left: auto; }
+@media screen and (max-width: 760px) { .rep-prov-panel { width: 100%; } .rep-limpiar { margin-left: 0; } }

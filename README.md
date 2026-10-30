@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.15.7 | Reportes: botón «Limpiar filtros» (sociedad, proveedor y fechas). Proveedor como filtro tipo Excel: lista desplegable con casilla para escribir y la lista se reduce al escribir. En el reporte por proveedor solo va el total de cada sociedad (sin repetir «Total Cliente»). |
 | 1.15.6 | PDF: al imprimir siempre se usa el diseño de escritorio (la fecha de emisión pequeña a la derecha, también desde el celular). Reporte por proveedor: las sociedades siguen en la misma hoja, con el encabezado completo solo al inicio. Proveedor con buscador: se escribe parte del nombre y se elige de la lista. |
 | 1.15.5 | Reporte: «Total Cliente · N facturas» junto al saldo de cada proveedor; total de la sociedad y general también junto al saldo; totales un poco más grandes. Igual en el Excel. |
 | 1.15.4 | Reporte solo con Saldo (sin Monto), porque ya descuenta abonos y notas de crédito; también en PDF y Excel. Columna Moneda centrada. |
