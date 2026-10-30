@@ -4,6 +4,7 @@ import * as Sync from './sync.js';
 import { VERSION, USUARIOS, API_URL } from './config.js';
 import { importarExcel } from './importer.js';
 import { crearPdfReporte, crearPdfEstadoCuenta } from './reporte-pdf.js';
+import { crearAvisoPago } from './aviso-pdf.js';
 import { CAMPOS as CAMPOS_IMP, leerFilas, filaEncabezado, sugerirMapeo, prepararFacturas, detectarGTI } from './importar-facturas.js';
 import { construirArchivo } from './banco.js';
 import {
@@ -25,6 +26,9 @@ const ui = {
   rep: { tipo: 'cxp', soc: '', prov: '', mon: 'CRC', desde: '', hasta: '' },
   ec: { prov: '', soc: '', mon: 'CRC', alcance: 'saldo', desde: '', hasta: '' },
   provDrop: null,
+  forma: {},      // Por aplicar: 'banco' | 'manual' por proveedor de cada lote
+  adj: {},        // archivos elegidos para adjuntar, antes de subirlos
+  apAbierto: {},  // Aplicados recientemente: lotes desplegados
 };
 
 // ---------------------------------------------------------------- Navegación
@@ -497,20 +501,38 @@ function vistaAplicar() {
   ${seccionRevisar()}
   ${lotes.length ? lotes.map(tarjetaLote).join('') : `<p class="vacio grande">No hay pagos programados pendientes. Cuando Norman programe pagos, aparecerán aquí.</p>`}
 
-  ${hechos.length ? `<section class="bloque">
+  ${hechos.length ? `<section class="bloque aplicados">
     <h2>Aplicados recientemente</h2>
-    <div class="tabla-scroll"><table class="tabla">
-      <thead><tr><th>Fecha</th><th>Sociedad</th><th>Comprobante</th><th class="num">Total</th><th>Proveedores</th><th>Aplicó</th></tr></thead>
-      <tbody>${hechos.map((l) => `<tr><td>${fmtFecha(l.fecha)}</td><td>${esc(S.nombreSociedad(l.sociedad))}</td><td>${esc(l.comprobante)}</td>
-        <td class="num">${money(l.total, l.moneda)}</td><td>${nLineas(l)}</td><td>${esc(l.aplicadoPor)}</td></tr>`).join('')}</tbody>
-    </table></div>
+    <p class="sub">Toque un pago para adjuntar los comprobantes y compartir el aviso de pago con cada proveedor.</p>
+    ${hechos.map(tarjetaAplicado).join('')}
   </section>` : ''}`;
 }
 
+/** Proveedores de un lote pendiente: los que ya se enviaron al banco y los que no. */
+function partesLote(l) {
+  const enviadas = [], pendientes = [];
+  const parte = (ln, items, conExtra) => {
+    const facturas = round2(items.reduce((t, x) => t + x.p.monto, 0)), extra = conExtra ? ln.extra : 0;
+    return { ...ln, items, facturas, extra, total: round2(facturas + extra) };
+  };
+  for (const ln of l.lineas) {
+    const env = ln.items.filter(({ p }) => S.envioDe(p.id)), resto = ln.items.filter(({ p }) => !S.envioDe(p.id));
+    if (env.length) enviadas.push({ ln: resto.length ? parte(ln, env, false) : ln, e: S.envioDe(env[0].p.id) });
+    if (resto.length) pendientes.push(env.length ? parte(ln, resto, true) : ln);
+  }
+  const forma = (ln) => ui.forma[l.clave + '|' + ln.codigo] || 'banco';
+  return { enviadas, pendientes, banco: pendientes.filter((ln) => forma(ln) === 'banco'), forma };
+}
+
 function tarjetaLote(l) {
-  const problemas = S.problemasLote(l);
+  const { enviadas, pendientes, banco, forma } = partesLote(l);
   const nFact = l.lineas.reduce((s, x) => s + x.items.length, 0);
   const id = encodeURIComponent(l.clave);
+  const subBanco = S.subLote(l, banco.map((x) => x.codigo));
+  const problemas = banco.length ? S.problemasLote(subBanco) : [];
+  const facts = (ln, conDevolver) => ln.items.map(({ p, f }) => `<div>${esc(f.documento)}: ${money(p.monto, f.moneda)}${p.monto < S.saldo(f) - 0.004 ? ' <span class="tag-abono">abono</span>' : ''}
+      ${conDevolver ? `<button class="btn-link" data-act="a-devolver" data-v="${p.id}" title="Devolver a Norman">devolver</button>` : ''}</div>`).join('');
+  const e0 = enviadas[0]?.e;
   return `<section class="lote">
     <header class="lote-cab">
       <div>
@@ -520,32 +542,148 @@ function tarjetaLote(l) {
       </div>
       <div class="lote-total">${money(l.total, l.moneda)}</div>
     </header>
+    ${pendientes.length ? `
     <div class="tabla-scroll"><table class="tabla lote-tabla">
-      <thead><tr><th>Proveedor</th><th>Facturas</th><th>IBAN</th><th class="num">Intereses / otros</th><th>Descripción para el banco</th><th class="num">Total</th></tr></thead>
-      <tbody>${l.lineas.map((ln) => `<tr>
+      <thead><tr><th>Proveedor</th><th>Facturas</th><th>IBAN</th><th class="num">Intereses / otros</th><th>Descripción para el banco</th><th class="num">Total</th><th>¿Cómo se paga?</th></tr></thead>
+      <tbody>${pendientes.map((ln) => {
+        const k = l.clave + '|' + ln.codigo, ke = encodeURIComponent(k), fm = forma(ln);
+        return `<tr class="${fm === 'manual' ? 'fila-manual' : ''}">
         <td><strong>${esc(ln.prov.nombre)}</strong></td>
-        <td class="facts">${ln.items.map(({ p, f }) => `<div>${esc(f.documento)}: ${money(p.monto, f.moneda)}${p.monto < S.saldo(f) - 0.004 ? ' <span class="tag-abono">abono</span>' : ''}
-            <button class="btn-link" data-act="a-devolver" data-v="${p.id}" title="Devolver a Norman">devolver</button></div>`).join('')}</td>
-        <td class="mono">${ln.iban ? `${fmtIBAN(ln.iban)} ${errorIBAN(ln.iban) ? '<span class="malo">inválido</span>' : ''}` : `<a href="#/proveedores" data-act="ir-prov" data-v="${esc(ln.codigo)}" class="malo">Agregar IBAN</a>`}</td>
+        <td class="facts">${facts(ln, true)}</td>
+        <td class="mono">${ln.iban ? `${fmtIBAN(ln.iban)} ${errorIBAN(ln.iban) ? '<span class="malo">inválido</span>' : ''}` : `<a href="#/proveedores" data-act="ir-prov" data-v="${esc(ln.codigo)}" class="${fm === 'banco' ? 'malo' : ''}">Agregar IBAN</a>`}</td>
         <td class="num"><input class="mini" type="text" inputmode="decimal" data-monto value="${ln.extra ? fmtNum(ln.extra) : ''}" placeholder="0,00" data-in="a-extra" data-lote="${id}" data-v="${esc(ln.codigo)}" aria-label="Intereses u otros cargos para ${esc(ln.prov.nombre)}"></td>
         <td><input type="text" value="${esc(ln.descripcion)}" data-in="a-desc" data-lote="${id}" data-v="${esc(ln.codigo)}" aria-label="Descripción para ${esc(ln.prov.nombre)}"></td>
-        <td class="num"><strong>${money(ln.total, l.moneda)}</strong></td></tr>`).join('')}</tbody>
+        <td class="num"><strong>${money(ln.total, l.moneda)}</strong></td>
+        <td class="forma-celda">
+          <span class="seg" role="group" aria-label="Cómo se paga ${esc(ln.prov.nombre)}">
+            <button type="button" class="${fm === 'banco' ? 'on' : ''}" data-act="a-forma" data-v="${ke}|banco">Banco (.txt)</button><button type="button" class="${fm === 'manual' ? 'on' : ''}" data-act="a-forma" data-v="${ke}|manual">Manual</button></span>
+          ${fm === 'manual' ? `<div class="manual-aplicar">
+            <input type="text" id="mc-${ke}" placeholder="N° comprobante" aria-label="Comprobante del pago manual a ${esc(ln.prov.nombre)}" autocomplete="off">
+            ${campoArchivo('man|' + k, 'PDF (opcional)')}
+            <button class="btn primario chico" data-act="a-aplicar-manual" data-v="${ke}">Aplicar</button></div>` : ''}
+        </td></tr>`;
+      }).join('')}</tbody>
     </table></div>
     ${problemas.length ? `<div class="aviso"><strong>Antes de generar el archivo:</strong><ul>${problemas.map((p) => `<li>${esc(p)}</li>`).join('')}</ul></div>` : ''}
     <div class="lote-acciones">
       <div class="paso">
         <span class="num-paso">1</span>
-        <button class="btn oscuro" data-act="a-txt" data-v="${id}" ${problemas.length ? 'disabled' : ''}>Descargar archivo para el banco (.txt)</button>
-        <button class="btn" data-act="a-ver-txt" data-v="${id}" ${problemas.length ? 'disabled' : ''}>Ver contenido</button>
+        <span class="sub paso-txt">${banco.length ? `El archivo lleva <b>${banco.length} ${banco.length === 1 ? 'proveedor' : 'proveedores'}</b> · ${money(subBanco.total, l.moneda)}${banco.length < pendientes.length ? ' (sin los pagos manuales)' : ''}` : 'Todos los pagos pendientes de este grupo son manuales.'}</span>
+        <button class="btn" data-act="a-ver-txt" data-v="${id}" ${!banco.length || problemas.length ? 'disabled' : ''}>Ver contenido</button>
+        <button class="btn oscuro" data-act="a-txt" data-v="${id}" ${!banco.length || problemas.length ? 'disabled' : ''}>Descargar archivo para el banco (.txt)</button>
       </div>
+    </div>` : ''}
+    ${enviadas.length ? `
+    <div class="enviado">
+      <div class="enviado-cab"><span class="estado-envio">Enviado al banco · esperando comprobante</span>
+        <span class="sub">Archivo generado por ${esc(e0.por || '—')} · ${fechaHora(Date.parse(e0.fecha))} · ${enviadas.length} ${enviadas.length === 1 ? 'proveedor' : 'proveedores'} · ${money(round2(enviadas.reduce((t, x) => t + x.ln.total, 0)), l.moneda)}</span></div>
+      <ul class="enviado-lista">${enviadas.map(({ ln }) => `<li><strong>${esc(ln.prov.nombre)}</strong> <span class="sub">${ln.items.map(({ f }) => esc(f.documento)).join(' · ')}</span> <span class="num">${money(ln.total, l.moneda)}</span></li>`).join('')}</ul>
       <div class="paso aplicar">
         <span class="num-paso">2</span>
-        <label>N° de comprobante <input type="text" id="comp-${id}" placeholder="Del banco"></label>
+        <label>Comprobante general del débito <input type="text" id="comp-${id}" placeholder="Del banco" autocomplete="off"></label>
         <label>Fecha <input type="date" id="fecha-${id}" value="${l.fecha}"></label>
+        ${campoArchivo('gen|' + l.clave, 'PDF del banco (uso interno)')}
         <button class="btn primario" data-act="a-aplicar" data-v="${id}">Aplicar pago</button>
       </div>
-    </div>
+      <div class="enviado-otras">
+        <button class="btn-link" data-act="a-txt-otra" data-v="${id}">Descargar el archivo otra vez</button> ·
+        <button class="btn-link" data-act="a-volver" data-v="${id}">Volver a pendiente (si el banco lo rechazó)</button>
+      </div>
+    </div>` : ''}
   </section>`;
+}
+
+/** Proveedores pagados en un lote aplicado, con sus facturas (desde los movimientos). */
+function lineasAplicado(l) {
+  const porProv = new Map();
+  for (const m of Object.values(S.datos().movimientos)) {
+    if (m.loteId !== l.id) continue;
+    const f = S.factura(m.facturaId);
+    if (!f) continue;
+    if (!porProv.has(f.codigo)) porProv.set(f.codigo, { codigo: f.codigo, prov: S.proveedor(f.codigo), movs: [], total: 0 });
+    const x = porProv.get(f.codigo);
+    x.movs.push({ m, f });
+    x.total = round2(x.total + m.monto);
+  }
+  return [...porProv.values()].sort((a, b) => a.prov.nombre.localeCompare(b.prov.nombre));
+}
+
+function tarjetaAplicado(l) {
+  const abierto = !!ui.apAbierto[l.id];
+  const gen = S.adjLote(l.id);
+  const lineas = abierto ? lineasAplicado(l) : [];
+  const docs = lineas.map((x) => S.docLinea(l.id, x.codigo));
+  const conPdf = abierto ? docs.filter((d) => d.archivo?.id).length : 0;
+  return `<div class="aplicado ${abierto ? 'abierto' : ''}">
+    <button class="aplicado-cab" data-act="ap-toggle" data-v="${esc(l.id)}" aria-expanded="${abierto}">
+      <span>${fmtFecha(l.fecha)}</span><span>${esc(S.nombreSociedad(l.sociedad))} · ${MONEDAS[l.moneda]?.nombre || ''}</span>
+      <span class="mono">${esc(l.comprobante)}</span><span class="num">${money(l.total, l.moneda)}</span>
+      <span class="sub">${nLineas(l)} ${nLineas(l) === 1 ? 'proveedor' : 'proveedores'} · ${esc(l.aplicadoPor)}</span><span aria-hidden="true">${abierto ? '▴' : '▾'}</span></button>
+    ${abierto ? `<div class="aplicado-cuerpo">
+      <div class="ap-general">📎 <b>Comprobante general del débito</b>
+        ${gen?.id ? `<button class="btn-link" data-act="ver-arch" data-v="${esc(gen.id)}">Ver ${esc(gen.nombre)}</button>` : `<label class="adjuntar">Adjuntar PDF<input type="file" accept="application/pdf,image/jpeg,image/png" data-in="ap-gen" data-v="${esc(l.id)}" hidden></label>`}
+        <span class="candado">🔒 Solo uso interno · no se comparte</span></div>
+      <div class="tabla-scroll"><table class="tabla ap-tabla">
+        <thead><tr><th>Proveedor</th><th>Facturas</th><th class="num">Monto</th><th>N° documento del banco</th><th>Comprobante del proveedor</th><th>Aviso de pago</th></tr></thead>
+        <tbody>${lineas.map((x, i) => {
+          const d = docs[i], v = esc(l.id + '|' + x.codigo);
+          return `<tr><td><strong>${esc(x.prov.nombre)}</strong></td><td>${[...new Set(x.movs.map(({ f }) => f.documento))].map(esc).join(' · ')}</td>
+          <td class="num">${money(x.total, l.moneda)}</td>
+          <td><input type="text" class="mini-doc" value="${esc(d.documento || '')}" placeholder="opcional" data-in="ap-doc" data-v="${v}" aria-label="N° de documento del banco para ${esc(x.prov.nombre)}"></td>
+          <td>${d.archivo?.id ? `<button class="btn-link" data-act="ver-arch" data-v="${esc(d.archivo.id)}">✓ ${esc(d.archivo.nombre)}</button>
+              <label class="btn-link cambiar">cambiar<input type="file" accept="application/pdf,image/jpeg,image/png" data-in="ap-pdf" data-v="${v}" hidden></label>`
+            : `<label class="adjuntar">📎 Adjuntar PDF<input type="file" accept="application/pdf,image/jpeg,image/png" data-in="ap-pdf" data-v="${v}" hidden></label>`}</td>
+          <td><button class="btn primario chico" data-act="ap-aviso" data-v="${v}">${puedeCompartirArchivos() ? 'Compartir' : 'Descargar'}</button>
+            ${d.archivo?.id ? '' : '<div class="sub mini-nota">sin comprobante: solo la página 1</div>'}</td></tr>`;
+        }).join('')}</tbody>
+      </table></div>
+      <p class="sub">El aviso de pago lleva las facturas pagadas y, si lo adjuntó, el comprobante individual del proveedor. ${conPdf}/${lineas.length} con comprobante individual.</p>
+    </div>` : ''}
+  </div>`;
+}
+
+/** Aviso de pago (PDF) para un proveedor de un lote aplicado. */
+async function avisoPago(loteId, codigo) {
+  const l = S.datos().lotes[loteId];
+  if (!l) throw new Error('No se encontró el pago');
+  const x = lineasAplicado(l).find((y) => y.codigo === codigo);
+  if (!x) throw new Error('No se encontró el proveedor en ese pago');
+  const porFactura = new Map();
+  let cargos = 0;
+  for (const { m, f } of x.movs) {
+    if (m.tipo === 'cargo') { cargos = round2(cargos + m.monto); continue; }
+    if (!porFactura.has(f.id)) porFactura.set(f.id, { f, pagado: 0 });
+    porFactura.get(f.id).pagado = round2(porFactura.get(f.id).pagado + m.monto);
+  }
+  const facturas = [...porFactura.values()].map(({ f, pagado }) => {
+    // Saldo justo después de este pago (los pagos posteriores no cuentan)
+    let saldo = f.monto, visto = false;
+    for (const m of S.movimientosDe(f)) {
+      if (m.tipo === 'cargo') continue;
+      if (visto && m.loteId !== loteId) break;
+      saldo = round2(saldo - m.monto);
+      if (m.loteId === loteId) visto = true;
+    }
+    return { documento: f.documento, fechaFactura: fmtFecha(f.fechaFactura), monto: f.monto, pagado, saldo: Math.max(0, saldo), tipo: saldo <= 0.004 ? 'Pago total' : 'Abono' };
+  }).sort((a, b) => String(a.documento).localeCompare(String(b.documento), 'es', { numeric: true }));
+  const d = S.docLinea(loteId, codigo);
+  let adjunto = null;
+  if (d.archivo?.id) {
+    const r = await Sync.leerArchivo(d.archivo.id);
+    adjunto = { bytes: Uint8Array.from(atob(r.base64), (c) => c.charCodeAt(0)), tipo: r.tipo };
+  }
+  let desc = '';
+  try { desc = (JSON.parse(l.detalle || '[]').find((y) => String(y.codigo) === String(codigo)) || {}).descripcion || ''; } catch { /* sin detalle */ }
+  const iban = x.prov[l.moneda === 'USD' ? 'ibanUSD' : 'ibanCRC'];
+  const ahora = new Date();
+  const bytes = await crearAvisoPago({
+    sociedad: nombreLegalSociedad(l.sociedad), proveedor: x.prov.nombre, fecha: fmtFecha(l.fecha), comprobante: l.comprobante,
+    documento: d.documento || '', simbolo: l.moneda === 'USD' ? '$' : '¢', facturas, cargos, total: x.total,
+    cuenta: iban ? fmtIBAN(iban) : '', descripcion: desc, fmtNum, adjunto,
+    generado: `${fmtFecha(hoyISO())} ${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}`,
+  });
+  const nombre = `Aviso de pago - ${limpioArchivo(x.prov.nombre).slice(0, 60)} - ${limpioArchivo(l.comprobante)}.pdf`;
+  return new File([bytes], nombre, { type: 'application/pdf' });
 }
 
 function loteDe(idCodificado) {
@@ -562,6 +700,12 @@ function textoArchivo(l) {
     debito: { iban: l.cuentaDebito, descripcion: soc?.descripcionBanco || ('PROVEE ' + S.nombreSociedad(l.sociedad)).toUpperCase() },
     creditos: l.lineas.map((ln) => ({ iban: ln.iban, monto: ln.total, descripcion: ln.descripcion })),
   });
+}
+
+function descargarTxt(l, sufijo = '') {
+  const txt = textoArchivo(l);
+  const soc = S.nombreSociedad(l.sociedad).toUpperCase().replace(/[^A-Z0-9]+/g, '');
+  descargar(`PROVEEDORES_${soc}_${l.moneda}_${l.fecha.split('-').reverse().join('')}${sufijo}.txt`, txt, 'text/plain');
 }
 
 function descargar(nombre, contenido, tipo) {
@@ -684,7 +828,7 @@ function dialogoFactura(id) {
         <div><span>Pagado</span><strong>${money(S.pagado(f), f.moneda)}</strong></div>
         <div><span>Saldo</span><strong>${money(s, f.moneda)}</strong></div>
       </div>
-      ${s > 0.004 && !S.esNorman() ? `<div class="acciones-fila"><button class="btn btn-norman" data-act="pn-abrir" data-v="${f.id}">✔ Autorizado por Norman</button></div>` : ''}
+      ${s > 0.004 && !S.esNorman() ? `<div class="acciones-fila"><button class="btn btn-norman" data-act="pn-abrir" data-v="${f.id}">✔ Pagar ahora</button></div>` : ''}
       <form class="form-grid" data-form="f-fechas" data-v="${f.id}">
         <label>Fecha de factura <input type="date" name="fechaFactura" value="${f.fechaFactura || ''}"></label>
         <label>Vencimiento ${f.venceEstimado ? '<span class="est">EST</span>' : ''}<input type="date" name="fechaVence" value="${f.fechaVence || ''}"></label>
@@ -698,9 +842,9 @@ ${f.revision ? `        <p class="ancho aviso-pruebas">Norman pidió revisar est
         <tbody>${S.movimientosDe(f).map((m) => {
           if (m.tipo !== 'cargo') acumulado = round2(acumulado - m.monto);
           const prog = m.loteId ? S.datos().programaciones[String(m.id).slice(String(m.loteId).length + 1)] : null;
-          const tagNorman = S.esAutorizadoNorman(prog) ? ' <span class="tag-norman">Autorizado por Norman</span>' : '';
+          const tagNorman = S.esAutorizadoNorman(prog) ? ' <span class="tag-norman">Pagar ahora</span>' : '';
           const tipoTxt = String(prog?.nota || '').startsWith(S.NOTA_NC) ? 'Nota de crédito' : (tipos[m.tipo] || m.tipo);
-          return `<tr><td>${fmtFecha(m.fecha) || '<span class="sub">sin fecha</span>'}</td><td>${tipoTxt}${tagNorman}</td><td>${esc(m.comprobante)}</td>
+          return `<tr><td>${fmtFecha(m.fecha) || '<span class="sub">sin fecha</span>'}</td><td>${tipoTxt}${tagNorman}</td><td>${esc(m.comprobante)}${linkComprobante(S.comprobanteDe(m))}</td>
             <td class="num">${money(m.monto, f.moneda)}</td><td class="num">${m.tipo === 'cargo' ? '' : money(acumulado, f.moneda)}</td><td>${esc(m.por)}</td></tr>`;
         }).join('')}</tbody></table></div>` : '<p class="sub">Sin movimientos.</p>'}
       ${s > 0.004 ? `
@@ -724,34 +868,107 @@ function dialogoPagoNorman(id) {
   const s = S.saldo(f);
   const ya = S.programacionDe(f);
   const cab = `<header class="dlg-cab">
-      <div><h2>Autorizado por Norman</h2>
+      <div><h2>Pagar ahora</h2>
         <p class="sub">Factura ${esc(f.documento)} · ${esc(prov.nombre)} · ${esc(S.nombreSociedad(f.sociedad))} · saldo ${money(s, f.moneda)}</p></div>
       <button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>`;
   if (ya) {
     abrirDialogo(`${cab}<div class="dlg-cuerpo">
-      <p class="aviso-pruebas">Esta factura ya está programada por ${esc(ya.por)} por ${money(ya.monto, f.moneda)} para el ${fmtFecha(ya.fechaPago)}. Aplíquela desde «Por aplicar» para no pagarla dos veces.</p>
+      <p class="aviso-pruebas">Esta factura ya está programada por ${esc(ya.por)} por ${money(ya.monto, f.moneda)} para el ${fmtFecha(ya.fechaPago)}${S.envioDe(ya.id) ? ' y ya se envió al banco' : ''}. Aplíquela desde «Por aplicar» para no pagarla dos veces.</p>
       <div class="acciones-fila"><a class="btn primario" href="#/aplicar" data-act="cerrar">Ir a Por aplicar</a></div></div>`);
     return;
   }
   const lote = S.loteDirecto(f, s, hoyISO());
+  const prob = S.problemasLote(lote);
   abrirDialogo(`${cab}
-    <form class="dlg-cuerpo form-grid" data-form="pago-norman" data-v="${f.id}">
+    <form class="dlg-cuerpo form-grid pagar-ahora" data-form="pago-norman" data-v="${f.id}" data-forma="banco">
+      <div class="ancho"><span class="lbl">¿Cómo se paga?</span>
+        <div class="pa-formas">
+          <label class="pa-forma"><input type="radio" name="forma" value="banco" checked data-in="pn-forma"><span><b>Banco (.txt)</b>Genera el archivo para el banco. El comprobante se escribe en «Por aplicar» cuando el banco aplique.</span></label>
+          <label class="pa-forma"><input type="radio" name="forma" value="manual" data-in="pn-forma"><span><b>Manual</b>Transferencia hecha a mano (por ejemplo, cuando Norman lo pide). El comprobante se escribe ya.</span></label>
+        </div></div>
       <label>Monto a pagar <input type="text" name="monto" inputmode="decimal" data-monto value="${fmtNum(s)}" required data-in="pn-monto" data-v="${f.id}">
         <span class="pn-resto" id="pn-resto">${textoResto(f, s)}</span></label>
       <label>Fecha de pago <input type="date" name="fecha" value="${hoyISO()}" required></label>
-      <label class="ancho">Nota <span class="sub-inline">opcional</span> <input type="text" name="nota" placeholder="Ej. pagar hoy, abono acordado"></label>
-      <div class="ancho pn-banco">
-        <strong>Archivo para el banco</strong>
-        <p class="sub">Si paga con archivo, descárguelo y súbalo al banco. Si hace la transferencia a mano, no lo necesita.</p>
+      <label class="ancho">Nota <span class="sub-inline">opcional</span> <input type="text" name="nota" placeholder="Ej. Norman lo pidió por teléfono"></label>
+      <div class="ancho solo-banco pn-banco">
         <label>Descripción en el banco <input type="text" name="descripcion" maxlength="60" value="${esc(lote.lineas[0].descripcion)}"></label>
-        ${S.problemasLote(lote).length ? `<div class="aviso"><strong>Para generar el archivo falta:</strong><ul>${S.problemasLote(lote).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
-        <button class="btn oscuro" type="button" data-act="pn-txt" data-v="${f.id}" ${S.problemasLote(lote).length ? 'disabled' : ''}>Descargar .txt de este pago</button>
+        ${prob.length ? `<div class="aviso"><strong>Para generar el archivo falta:</strong><ul>${prob.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+        <p class="sub">Al tocar el botón se descarga el .txt y el pago queda «Enviado al banco · esperando comprobante» en Por aplicar.</p>
       </div>
-      <label class="ancho">N° de comprobante del banco <input type="text" name="comprobante" required autocomplete="off"></label>
-      <div class="ancho acciones-fila"><button class="btn primario" type="submit">Aplicar pago</button>
+      <label class="ancho solo-manual">N° de comprobante <input type="text" name="comprobante" autocomplete="off"></label>
+      <div class="ancho solo-manual">${campoArchivo('pn|' + f.id, 'Comprobante del banco (PDF o foto) · opcional')}</div>
+      <div class="ancho acciones-fila">
+        <button class="btn oscuro solo-banco" type="submit" ${prob.length ? 'disabled' : ''}>Descargar .txt y enviar al banco</button>
+        <button class="btn primario solo-manual" type="submit">Aplicar pago</button>
         <button class="btn" type="button" data-act="f-abrir" data-v="${f.id}">Volver</button></div>
-      <p class="ancho sub">Queda registrado como «Autorizado por Norman», con su nombre como quien aplicó. Norman lo ve en el Tablero.</p>
     </form>`);
+}
+
+/** Casilla para elegir un comprobante (PDF o foto). El archivo se guarda en memoria hasta aplicar. */
+function campoArchivo(clave, texto) {
+  const a = ui.adj[clave];
+  return `<label class="adjuntar ${a ? 'listo' : ''}">📎 <span>${a ? `<b>${esc(a.name)}</b> · ${Math.max(1, Math.round(a.size / 1024))} KB` : esc(texto)}</span>
+    <input type="file" accept="application/pdf,image/jpeg,image/png" data-in="adj-file" data-k="${esc(clave)}" hidden></label>`;
+}
+
+async function archivoBase64(file) {
+  if (file.size > 8 * 1024 * 1024) throw new Error('El archivo pesa más de 8 MB');
+  return new Promise((ok, mal) => {
+    const fr = new FileReader();
+    fr.onload = () => ok(String(fr.result).split(',')[1]);
+    fr.onerror = () => mal(new Error('No se pudo leer el archivo'));
+    fr.readAsDataURL(file);
+  });
+}
+
+/** Sube un comprobante a Drive y devuelve { id, nombre, tipo }. */
+async function subirComprobante(file, nombre) {
+  const base64 = await archivoBase64(file);
+  const ext = file.type === 'image/png' ? '.png' : file.type === 'image/jpeg' ? '.jpg' : '.pdf';
+  const r = await Sync.subirArchivo({ nombre: (nombre || file.name.replace(/\.[^.]+$/, '')) + ext, tipo: file.type || 'application/pdf', base64 });
+  return { id: r.id, nombre: r.nombre, tipo: r.tipo };
+}
+
+/** Sube el archivo elegido (si hay) y lo anota. No detiene el pago si falla: se puede adjuntar después. */
+async function adjuntarDespues(clave, nombre, anotar) {
+  const file = ui.adj[clave];
+  if (!file) return;
+  delete ui.adj[clave];
+  avisar('Subiendo comprobante…');
+  try { const a = await subirComprobante(file, nombre); const r = anotar(a); if (r?.error) throw new Error(r.error); avisar('Comprobante adjuntado'); render(); }
+  catch (err) { avisar('El pago quedó aplicado, pero no se pudo adjuntar el comprobante: ' + err.message + '. Puede adjuntarlo en «Aplicados recientemente».', 'error'); }
+}
+
+/** Muestra un comprobante guardado (se trae del servicio; no queda guardado en el dispositivo). */
+async function verComprobante(id) {
+  abrirDialogo(`<header class="dlg-cab"><h2>Comprobante</h2><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+    <div class="dlg-cuerpo"><p class="vacio">Abriendo comprobante…</p></div>`);
+  try {
+    const r = await Sync.leerArchivo(id);
+    const bytes = Uint8Array.from(atob(r.base64), (c) => c.charCodeAt(0));
+    mostrarArchivo(new File([bytes], r.nombre, { type: r.tipo }), 'Comprobante', r.nombre);
+  } catch (err) { cerrarDialogo(); avisar(err.message, 'error'); }
+}
+
+/** Enlace «📎 Ver comprobante» (no se imprime). */
+function linkComprobante(a) {
+  if (!a?.id) return '';
+  return ` <button class="btn-link ver-arch no-imprimir" data-act="ver-arch" data-v="${esc(a.id)}" title="${a.individual ? 'Comprobante del proveedor' : 'Comprobante general del débito (uso interno)'}">📎 Ver comprobante</button>`;
+}
+
+/** Vista previa de un archivo (PDF o imagen) con Compartir y Descargar. */
+function mostrarArchivo(archivo, titulo, sub) {
+  if (ui.urlArchivo) URL.revokeObjectURL(ui.urlArchivo);
+  const url = ui.urlArchivo = URL.createObjectURL(archivo);
+  ui.archivoAbierto = archivo;
+  abrirDialogo(`<header class="dlg-cab"><div><h2>${esc(titulo)}</h2><p class="sub">${esc(sub || archivo.name)}</p></div><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+    <div class="dlg-cuerpo ver-comprobante">
+      ${archivo.type.startsWith('image/') ? `<img src="${url}" alt="${esc(titulo)}">` : `<iframe src="${url}" title="${esc(titulo)}"></iframe>`}
+      <div class="acciones-fila">
+        ${puedeCompartirArchivos() ? '<button class="btn primario" data-act="arch-compartir">Compartir (WhatsApp…)</button>' : ''}
+        <button class="btn${puedeCompartirArchivos() ? '' : ' primario'}" data-act="arch-descargar">Descargar</button>
+        <a class="btn" href="${url}" target="_blank" rel="noopener">Abrir en otra pestaña</a></div>
+    </div>`);
 }
 
 /** Debajo del monto: si es abono, cuánto queda; si es el saldo completo, que queda cancelada. */
@@ -771,21 +988,21 @@ function actualizarRestoMov() {
 
 function valoresPagoNorman(form) {
   const d = Object.fromEntries(new FormData(form));
-  return { monto: parseMonto(d.monto), fecha: d.fecha, nota: d.nota, comprobante: d.comprobante, descripcion: d.descripcion };
+  return { forma: d.forma || 'banco', monto: parseMonto(d.monto), fecha: d.fecha, nota: d.nota, comprobante: d.comprobante, descripcion: d.descripcion };
 }
 
 function seccionAutorizados() {
   const lista = S.autorizadosNorman(30);
   if (!lista.length) return '';
   return `<section class="bloque bloque-norman">
-    <h2>Autorizados por Norman <span class="sub-inline">últimos 30 días</span></h2>
-    <p class="sub">Pagos que Norman indicó de palabra y se pagaron de inmediato.</p>
+    <h2>Pagados con «Pagar ahora» <span class="sub-inline">últimos 30 días</span></h2>
+    <p class="sub">Pagos hechos desde la factura, por banco o manual (por ejemplo, cuando Norman lo indica de palabra).</p>
     <div class="tabla-scroll"><table class="tabla">
       <thead><tr><th>Fecha</th><th>Sociedad</th><th>Proveedor</th><th>Factura</th><th class="num">Monto</th><th>Aplicó</th><th>Comprobante</th><th>Nota</th></tr></thead>
       <tbody>${lista.map(({ p, f }) => `<tr data-act="f-abrir" data-v="${f.id}" tabindex="0">
         <td>${fmtFecha(p.fechaPago)}</td><td>${esc(S.nombreSociedad(f.sociedad))}</td><td>${esc(S.proveedor(f.codigo).nombre)}</td>
         <td>${esc(f.documento)}</td><td class="num">${money(p.monto, f.moneda)}</td><td>${esc(p.cerradoPor)}</td>
-        <td>${esc(p.comprobante)}</td><td>${esc(p.nota.slice(S.NOTA_NORMAN.length).replace(/^\s*·\s*/, ''))}</td></tr>`).join('')}</tbody>
+        <td>${esc(p.comprobante)}</td><td>${esc(p.nota.replace(/^(Autorizado por Norman|Pagar ahora)\s*·?\s*/, ''))}</td></tr>`).join('')}</tbody>
     </table></div>
   </section>`;
 }
@@ -1358,11 +1575,11 @@ function datosEstadoCuenta() {
         const ref = m.tipo === 'nc' ? `aplicada a la factura ${f.documento}` : `a la factura ${f.documento}`;
         if (m.tipo === 'cargo') {
           t.cargos = round2(t.cargos + monto);
-          lineas.push({ fecha: m.fecha, tipo: 'cargo', detalle: TIPOS_MOV.cargo + ' (pagados)' + comp, ref, cargo: monto, abono: monto, saldo });
+          lineas.push({ fecha: m.fecha, tipo: 'cargo', detalle: TIPOS_MOV.cargo + ' (pagados)' + comp, ref, cargo: monto, abono: monto, saldo, arch: S.comprobanteDe(m) });
         } else {
           saldo = round2(saldo - monto);
           if (m.tipo === 'nc') t.nc = round2(t.nc + monto); else t.abonos = round2(t.abonos + monto);
-          lineas.push({ fecha: m.fecha, tipo: m.tipo, detalle: (TIPOS_MOV[m.tipo] || m.tipo) + comp, ref, cargo: null, abono: monto, saldo });
+          lineas.push({ fecha: m.fecha, tipo: m.tipo, detalle: (TIPOS_MOV[m.tipo] || m.tipo) + comp, ref, cargo: null, abono: monto, saldo, arch: S.comprobanteDe(m) });
         }
       }
       t.facturado = round2(t.facturado + f.monto);
@@ -1439,7 +1656,7 @@ function vistaEstadoCuenta() {
         <table class="rep-tabla ec-tabla">
           <thead><tr><th class="ec-w-fecha">Fecha</th><th class="ec-w-det">Detalle</th><th class="ec-w-num">Monto</th><th class="ec-w-num">Abonos</th><th class="ec-w-num">Saldo</th></tr></thead>
           ${g.facturas.map(({ lineas }) => `<tbody class="ec-factura">${lineas.map((l) => `<tr class="ec-${l.tipo === 'factura' ? 'fact' : 'mov'} ${l.tipo === 'nc' ? 'ec-nc' : ''}">
-            <td>${fechaCorta(l.fecha)}</td><td class="ec-det">${l.tipo === 'factura' ? esc(l.detalle).replace(' · vence ', '<span class="ec-vence"> · vence ').replace(/(vence [0-9/]+)$/, '$1</span>') : `<span class="ec-flecha">↳</span> ${esc(l.detalle)} <span class="ec-ref">· ${esc(l.ref)}</span>`}</td>
+            <td>${fechaCorta(l.fecha)}</td><td class="ec-det">${l.tipo === 'factura' ? esc(l.detalle).replace(' · vence ', '<span class="ec-vence"> · vence ').replace(/(vence [0-9/]+)$/, '$1</span>') : `<span class="ec-flecha">↳</span> ${esc(l.detalle)} <span class="ec-ref">· ${esc(l.ref)}</span>${linkComprobante(l.arch)}`}</td>
             <td class="num">${l.cargo == null ? '' : cifra(l.cargo)}</td><td class="num">${l.abono == null ? '' : cifra(l.abono)}</td><td class="num">${cifra(l.saldo)}</td></tr>`).join('')}</tbody>`).join('')}
           <tfoot>${filaTotales(`Total ${esc(S.nombreSociedad(g.soc))} · ${g.facturas.length} ${g.facturas.length === 1 ? 'factura' : 'facturas'}`, g.t)}</tfoot>
         </table>
@@ -1702,29 +1919,91 @@ const acciones = {
   },
 
   'a-devolver': (v) => { if (confirm('¿Devolver esta factura a Norman? Saldrá de este lote.')) resultado(S.quitarProgramacion(v, 'Devuelto'), 'Devuelta a Norman'); },
+  'a-forma': (v) => { const i = v.lastIndexOf('|'); ui.forma[decodeURIComponent(v.slice(0, i))] = v.slice(i + 1); render(); },
   'a-txt': (v) => {
     const l = loteDe(v);
+    if (!l) return;
+    const { banco } = partesLote(l);
+    const sub = { ...l, lineas: banco, total: round2(banco.reduce((t, x) => t + x.total, 0)) };
     try {
-      const txt = textoArchivo(l);
-      const soc = S.nombreSociedad(l.sociedad).toUpperCase().replace(/[^A-Z0-9]+/g, '');
-      descargar(`PROVEEDORES_${soc}_${l.moneda}_${l.fecha.split('-').reverse().join('')}.txt`, txt, 'text/plain');
+      const prob = S.problemasLote(sub);
+      if (prob.length) { avisar(prob.join(' '), 'error'); return; }
+      descargarTxt(sub);
+      const r = S.marcarEnviado(banco.flatMap((ln) => ln.items.map(({ p }) => p.id)));
+      if (resultado(r, 'Archivo descargado · quedó «Enviado al banco · esperando comprobante»')) render();
     } catch (err) { avisar(err.message, 'error'); }
+  },
+  'a-txt-otra': (v) => {
+    const l = loteDe(v);
+    if (!l) return;
+    const { enviadas } = partesLote(l), e0 = enviadas[0]?.e;
+    if (!enviadas.length) return;
+    if (!confirm(`Este archivo ya lo generó ${e0?.por || 'alguien'} (${fechaHora(Date.parse(e0?.fecha))}).\n\nSi ya se subió al banco, subirlo otra vez PAGARÍA DOS VECES.\n\n¿Descargarlo de nuevo de todos modos?`)) return;
+    try { descargarTxt({ ...l, lineas: enviadas.map((x) => x.ln) }); } catch (err) { avisar(err.message, 'error'); }
+  },
+  'a-volver': (v) => {
+    const l = loteDe(v);
+    if (!l) return;
+    const { enviadas } = partesLote(l);
+    if (!confirm('¿Volver a pendiente? Úselo solo si el banco rechazó el archivo o no se llegó a subir. Después podrá generar el archivo otra vez.')) return;
+    if (resultado(S.volverPendiente(enviadas.flatMap(({ ln }) => ln.items.map(({ p }) => p.id))), 'Volvió a pendiente')) render();
   },
   'a-ver-txt': (v) => {
     const l = loteDe(v);
     try {
-      const txt = textoArchivo(l);
+      const { banco } = partesLote(l);
+      const txt = textoArchivo({ ...l, lineas: banco });
       abrirDialogo(`<header class="dlg-cab"><h2>Contenido del archivo</h2><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
         <div class="dlg-cuerpo"><pre class="txt">${esc(txt.replace(/ +\r\n/g, '\r\n'))}</pre><p class="sub">Los espacios al final de cada línea no se muestran; el archivo descargado sí los lleva (214 caracteres por línea).</p></div>`);
     } catch (err) { avisar(err.message, 'error'); }
   },
   'a-aplicar': (v) => {
     const l = loteDe(v);
+    if (!l) return;
+    const { enviadas } = partesLote(l);
+    const lineas = enviadas.map((x) => x.ln);
+    const sub = { ...l, lineas, total: round2(lineas.reduce((t, x) => t + x.total, 0)) };
     const comp = document.getElementById('comp-' + v).value.trim();
     const fecha = document.getElementById('fecha-' + v).value;
-    if (!confirm(`¿Aplicar el pago de ${money(l.total, l.moneda)} con el comprobante ${comp || '(vacío)'}?`)) return;
-    resultado(S.aplicarLote(l, { comprobante: comp, fecha }), 'Pago aplicado');
+    if (!comp) { avisar('Escriba el comprobante general del débito', 'error'); return; }
+    if (!confirm(`¿Aplicar el pago de ${money(sub.total, l.moneda)} (${lineas.length} ${lineas.length === 1 ? 'proveedor' : 'proveedores'}) con el comprobante ${comp}?`)) return;
+    const r = S.aplicarLote(sub, { comprobante: comp, fecha });
+    if (!resultado(r, 'Pago aplicado')) return;
+    ui.apAbierto[r.loteId] = true;
+    render();
+    adjuntarDespues('gen|' + l.clave, `Debito ${comp}`, (a) => S.guardarAdjLote(r.loteId, a));
   },
+  'a-aplicar-manual': (v) => {
+    const k = decodeURIComponent(v), i = k.lastIndexOf('|');
+    const l = S.lotesPendientes().find((x) => x.clave === k.slice(0, i)), codigo = k.slice(i + 1);
+    if (!l) return;
+    const ln = partesLote(l).pendientes.find((x) => x.codigo === codigo);
+    if (!ln) return;
+    const comp = document.getElementById('mc-' + v)?.value.trim();
+    if (!comp) { avisar('Escriba el N° de comprobante del pago manual', 'error'); return; }
+    if (!confirm(`¿Aplicar el pago manual a ${ln.prov.nombre} por ${money(ln.total, l.moneda)} con el comprobante ${comp}?`)) return;
+    const r = S.aplicarLote({ ...l, lineas: [ln], total: ln.total }, { comprobante: comp, fecha: hoyISO() });
+    if (!resultado(r, 'Pago manual aplicado')) return;
+    delete ui.forma[k];
+    render();
+    adjuntarDespues('man|' + k, `${limpioArchivo(ln.prov.nombre).slice(0, 40)} ${comp}`, (a) => S.guardarDocLinea(r.loteId, codigo, { archivo: a }));
+  },
+  'ap-toggle': (v) => { ui.apAbierto[v] = !ui.apAbierto[v]; render(); },
+  'ap-aviso': async (v) => {
+    const i = v.indexOf('|'), loteId = v.slice(0, i), codigo = v.slice(i + 1);
+    abrirDialogo(`<header class="dlg-cab"><h2>Aviso de pago</h2><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+      <div class="dlg-cuerpo"><p class="vacio">Preparando el aviso de pago…</p></div>`);
+    try { mostrarArchivo(await avisoPago(loteId, codigo), 'Aviso de pago', 'Revíselo y compártalo con el proveedor.'); }
+    catch (err) { cerrarDialogo(); avisar('No se pudo crear el aviso: ' + err.message, 'error'); }
+  },
+  'ver-arch': (v) => verComprobante(v),
+  'arch-compartir': async () => {
+    const a = ui.archivoAbierto;
+    if (!a) return;
+    try { await navigator.share({ files: [a], title: a.name.replace(/\.[a-z]+$/i, '') }); }
+    catch (err) { if (err.name !== 'AbortError') { descargar(a.name, a); avisar('No se pudo compartir; se descargó el archivo'); } }
+  },
+  'arch-descargar': () => { if (ui.archivoAbierto) descargar(ui.archivoAbierto.name, ui.archivoAbierto); },
   'ir-prov': (v) => { location.hash = '#/proveedores'; setTimeout(() => dialogoProveedor(v), 0); },
 
   'f-soc': (v) => { ui.fact.soc = v; ui.fact.limite = 150; render(); },
@@ -1756,18 +2035,6 @@ const acciones = {
   'r-compartir': () => compartirArchivo(pdfReporte),
   'r-excel': () => { try { excelReporte(); } catch (err) { avisar('No se pudo crear el Excel: ' + err.message, 'error'); } },
   'pn-abrir': (v) => dialogoPagoNorman(v),
-  'pn-txt': (v, el) => {
-    const f = S.factura(v);
-    const x = valoresPagoNorman(el.closest('form'));
-    if (!(x.monto > 0)) { avisar('Monto inválido', 'error'); return; }
-    try {
-      const l = S.loteDirecto(f, x.monto, x.fecha, x.descripcion);
-      const prob = S.problemasLote(l);
-      if (prob.length) { avisar(prob.join(' '), 'error'); return; }
-      const soc = S.nombreSociedad(f.sociedad).toUpperCase().replace(/[^A-Z0-9]+/g, '');
-      descargar(`PROVEEDORES_${soc}_${f.moneda}_${x.fecha.split('-').reverse().join('')}_FACT${String(f.documento).replace(/[^A-Za-z0-9]+/g, '')}.txt`, textoArchivo(l), 'text/plain');
-    } catch (err) { avisar(err.message, 'error'); }
-  },
   'f-nueva': () => dialogoNuevaFactura(),
   'imp-confirmar': () => confirmarImportacion(),
   'ir-sociedad': (v) => { ui.fact.soc = v; ui.fact.est = 'saldo'; ui.fact.limite = 150; location.hash = '#/facturas'; },
@@ -1850,6 +2117,36 @@ document.addEventListener('change', async (e) => {
   const el = e.target, k = el.dataset.in;
   if (!k) return;
   if (k === 'fm-tipo') { actualizarRestoMov(); return; }
+  if (k === 'pn-forma') { el.form.dataset.forma = el.value; return; }
+  if (k === 'adj-file') {
+    const file = el.files[0], lbl = el.closest('.adjuntar');
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) { avisar('El archivo pesa más de 8 MB', 'error'); el.value = ''; return; }
+    ui.adj[el.dataset.k] = file;
+    if (lbl) { lbl.classList.add('listo'); lbl.querySelector('span').innerHTML = `<b>${esc(file.name)}</b> · ${Math.max(1, Math.round(file.size / 1024))} KB`; }
+    return;
+  }
+  if (k === 'ap-doc') {
+    const i = el.dataset.v.indexOf('|');
+    resultado(S.guardarDocLinea(el.dataset.v.slice(0, i), el.dataset.v.slice(i + 1), { documento: el.value.trim() }), 'N° de documento guardado');
+    return;
+  }
+  if (k === 'ap-pdf' || k === 'ap-gen') {
+    const file = el.files[0];
+    el.value = '';
+    if (!file) return;
+    const v = el.dataset.v, i = v.indexOf('|');
+    const loteId = k === 'ap-gen' ? v : v.slice(0, i), codigo = v.slice(i + 1);
+    const l = S.datos().lotes[loteId];
+    avisar('Subiendo comprobante…');
+    try {
+      const nombre = k === 'ap-gen' ? `Debito ${l?.comprobante || ''}` : `${limpioArchivo(S.proveedor(codigo).nombre).slice(0, 40)} ${l?.comprobante || ''}`;
+      const a = await subirComprobante(file, nombre);
+      const r = k === 'ap-gen' ? S.guardarAdjLote(loteId, a) : S.guardarDocLinea(loteId, codigo, { archivo: a });
+      if (resultado(r, 'Comprobante adjuntado')) render();
+    } catch (err) { avisar('No se pudo adjuntar: ' + err.message, 'error'); }
+    return;
+  }
   if (k === 'r-soc') { ui.rep.soc = el.value; render(); return; }
   if (k === 'r-desde') { ui.rep.desde = el.value; render(); return; }
   if (k === 'ec-soc') { ui.ec.soc = el.value; render(); return; }
@@ -1975,8 +2272,23 @@ document.addEventListener('submit', (e) => {
     if (resultado(S.actualizarFactura(f.id, cambios), 'Cambios guardados')) dialogoFactura(f.id);
   } else if (k === 'pago-norman') {
     const f = S.factura(form.dataset.v);
-    const r = S.pagarAutorizadoNorman(f, valoresPagoNorman(form));
-    if (resultado(r, `${r.tipo === 'abono' ? 'Abono' : 'Pago'} aplicado · Autorizado por Norman`)) { cerrarDialogo(); render(); }
+    const x = valoresPagoNorman(form);
+    if (x.forma === 'banco') {
+      const l = S.loteDirecto(f, x.monto, x.fecha, x.descripcion);
+      const prob = S.problemasLote(l);
+      if (prob.length) { avisar(prob.join(' '), 'error'); return; }
+      const r = S.pagarAhoraBanco(f, x);
+      if (r.error) { avisar(r.error, 'error'); return; }
+      try { descargarTxt(r.lote, '_FACT' + String(f.documento).replace(/[^A-Za-z0-9]+/g, '')); } catch (err) { avisar(err.message, 'error'); }
+      avisar('Archivo descargado · el pago quedó en «Por aplicar» esperando el comprobante del banco');
+      cerrarDialogo(); render();
+    } else {
+      if (!String(x.comprobante || '').trim()) { avisar('Escriba el N° de comprobante', 'error'); return; }
+      const r = S.pagarAutorizadoNorman(f, x);
+      if (!resultado(r, `${r.tipo === 'abono' ? 'Abono' : 'Pago'} aplicado`)) return;
+      cerrarDialogo(); render();
+      adjuntarDespues('pn|' + f.id, `${limpioArchivo(S.proveedor(f.codigo).nombre).slice(0, 40)} ${x.comprobante}`, (a) => S.guardarDocLinea(r.loteId, r.codigo, { archivo: a }));
+    }
   } else if (k === 'f-mov') {
     if (resultado(S.registrarMovimiento(form.dataset.v, { tipo: d.tipo, monto: parseMonto(d.monto), fecha: d.fecha, comprobante: d.comprobante }), 'Movimiento registrado')) dialogoFactura(form.dataset.v);
   } else if (k === 'f-crear') {

@@ -63,6 +63,29 @@ const libro = {
 };
 
 const propiedades = {};
+// Google Drive simulado en memoria (para los comprobantes adjuntos)
+const archivosDrive = new Map();
+const carpetasDrive = new Map();
+function carpetaSim(nombre) {
+  return { getName: () => nombre, getUrl: () => 'https://drive.google.com/sim/' + nombre,
+    createFile(blob) {
+      const id = 'f' + randomUUID().slice(0, 8);
+      const a = { id, blob, carpeta: nombre, desc: '' };
+      archivosDrive.set(id, a);
+      return { getId: () => id, setDescription: (t) => { a.desc = t; } };
+    } };
+}
+const iterador = (lista) => { let i = 0; return { hasNext: () => i < lista.length, next: () => lista[i++] }; };
+const drive = {
+  getFoldersByName: (n) => iterador(carpetasDrive.has(n) ? [carpetasDrive.get(n)] : []),
+  createFolder: (n) => { const c = carpetaSim(n); carpetasDrive.set(n, c); return c; },
+  getFileById: (id) => {
+    const a = archivosDrive.get(id);
+    if (!a) throw new Error('No existe');
+    return { getName: () => a.blob.nombre, getParents: () => iterador([carpetasDrive.get(a.carpeta)]),
+      getBlob: () => ({ getContentType: () => a.blob.tipo, getBytes: () => a.blob.bytes }) };
+  },
+};
 const contexto = vm.createContext({
   SpreadsheetApp: { getActive: () => libro, flush() {} },
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
@@ -77,14 +100,24 @@ const contexto = vm.createContext({
     Charset: { UTF_8: 'utf8' },
     computeDigest: (alg, texto) => [...createHash(alg).update(texto, 'utf8').digest()].map((b) => (b > 127 ? b - 256 : b)),
     formatDate: (d) => d.toISOString().slice(0, 10),
+    base64Decode: (t) => [...Buffer.from(t, 'base64')],
+    base64Encode: (b) => Buffer.from(b.map((x) => x & 255)).toString('base64'),
+    newBlob: (bytes, tipo, nombre) => ({ bytes, tipo, nombre }),
   },
   Logger: { log: (m) => console.log('[Apps Script]', m) },
+  DriveApp: drive,
   console,
 });
 vm.runInContext(readFileSync(process.env.LOGICA_JS || raiz + 'js/logica.js', 'utf8'), contexto, { filename: 'Logica.gs' });
 const CLAVE_PRUEBA = 'Prueba-Servicio-2026';
 propiedades.CLAVE_SERVICIO = CLAVE_PRUEBA;
-vm.runInContext(readFileSync(process.env.CODIGO_GS || raiz + 'apps-script/Codigo.gs', 'utf8').replace("'ESCRIBA-AQUI-SU-CONTRASEÑA';", `'${CLAVE_PRUEBA}';`).replace('var MODO_PRUEBAS = true;', `var MODO_PRUEBAS = ${process.env.MODO_PRUEBAS === '1'};`), contexto, { filename: 'Codigo.gs' });
+let codigoGs = readFileSync(process.env.CODIGO_GS || raiz + 'apps-script/Codigo.gs', 'utf8');
+if (process.env.ADJUNTOS === '1') {
+  const linea = "if (p.accion === 'quienSoy') return { ok: true, usuario: publico_(usuario), hoja: libro.getUrl() };";
+  if (!codigoGs.includes(linea)) throw new Error('No se encontró la línea de quienSoy en Codigo.gs');
+  codigoGs = codigoGs.replace(linea, linea + '\n    var extra = adjuntos_(p, usuario); if (extra) return extra;') + '\n' + readFileSync(raiz + 'apps-script/Adjuntos.gs', 'utf8');
+}
+vm.runInContext(codigoGs.replace("'ESCRIBA-AQUI-SU-CONTRASEÑA';", `'${CLAVE_PRUEBA}';`).replace('var MODO_PRUEBAS = true;', `var MODO_PRUEBAS = ${process.env.MODO_PRUEBAS === '1'};`), contexto, { filename: 'Codigo.gs' });
 // Con un .xlsx como segundo argumento, la hoja simulada arranca con ese contenido
 // (como si se hubiera subido a Drive y abierto con Google Sheets).
 if (process.argv[3]) {

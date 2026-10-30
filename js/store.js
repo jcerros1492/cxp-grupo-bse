@@ -100,8 +100,9 @@ function completarLinea(lote, ln) {
 }
 
 export function aplicarLote(lote, { comprobante, fecha }) {
+  const loteId = Sync.nuevoId();
   const r = Sync.ejecutar({
-    tipo: 'aplicarLote', loteId: Sync.nuevoId(), comprobante, fecha, sociedad: lote.sociedad, moneda: lote.moneda,
+    tipo: 'aplicarLote', loteId, comprobante, fecha, sociedad: lote.sociedad, moneda: lote.moneda,
     progIds: lote.lineas.flatMap((ln) => ln.items.map((x) => x.p.id)),
     extras: lote.lineas.filter((ln) => ln.extra > 0).map((ln) => ({ facturaId: ln.items[0].f.id, monto: ln.extra })),
     lineas: lote.lineas.map((ln) => ({ codigo: ln.codigo, total: ln.total, extra: ln.extra, descripcion: ln.descripcion, documentos: ln.items.map((x) => x.f.documento) })),
@@ -110,7 +111,53 @@ export function aplicarLote(lote, { comprobante, fecha }) {
     for (const ln of lote.lineas) delete borradores[lote.clave + '|' + ln.codigo];
     try { localStorage.setItem('cxp-borradores', JSON.stringify(borradores)); } catch { /* sin almacenamiento */ }
   }
-  return r;
+  return { ...r, loteId };
+}
+
+// ---------------------------------------------------------------- Anotaciones compartidas (1.18)
+// Se guardan en la pestaña Config: envío al banco, N° de documento por proveedor y comprobantes adjuntos.
+
+export const anotar = (clave, valor) => Sync.ejecutar({ tipo: 'anotar', clave, valor: valor == null ? '' : typeof valor === 'string' ? valor : JSON.stringify(valor) });
+export function nota(clave) {
+  const v = datos().config[clave]?.valor;
+  if (!v) return null;
+  try { return JSON.parse(v); } catch { return null; }
+}
+
+/** Envío al banco de un pago programado: { por, fecha, grupo } o null. */
+export const envioDe = (progId) => nota('envio:' + progId);
+export function marcarEnviado(progIds) {
+  const grupo = Sync.nuevoId();
+  const v = { por: usuarioActual()?.nombre || '', fecha: new Date().toISOString(), grupo };
+  for (const id of progIds) { const r = anotar('envio:' + id, v); if (r.error) return r; }
+  return { ok: true };
+}
+export function volverPendiente(progIds) {
+  for (const id of progIds) { const r = anotar('envio:' + id, ''); if (r.error) return r; }
+  return { ok: true };
+}
+
+/** Datos de un proveedor dentro de un pago aplicado: { documento, archivo: {id, nombre} }. */
+export const docLinea = (loteId, codigo) => nota(`doc:${loteId}:${codigo}`) || {};
+export const guardarDocLinea = (loteId, codigo, cambios) => anotar(`doc:${loteId}:${codigo}`, { ...docLinea(loteId, codigo), ...cambios });
+/** Comprobante general del débito (solo uso interno): { id, nombre }. */
+export const adjLote = (loteId) => nota('adj:lote:' + loteId);
+export const guardarAdjLote = (loteId, archivo) => anotar('adj:lote:' + loteId, archivo);
+
+/** Comprobante para ver desde un movimiento: el individual del proveedor o, si no hay, el general (interno). */
+export function comprobanteDe(m) {
+  if (!m?.loteId) return null;
+  const f = factura(m.facturaId);
+  const ind = f ? docLinea(m.loteId, f.codigo).archivo : null;
+  if (ind?.id) return { ...ind, individual: true };
+  const gen = adjLote(m.loteId);
+  return gen?.id ? { ...gen, individual: false } : null;
+}
+
+/** Parte de un lote: solo los proveedores indicados. */
+export function subLote(l, codigos) {
+  const lineas = l.lineas.filter((ln) => codigos.includes(ln.codigo));
+  return { ...l, lineas, total: round2(lineas.reduce((t, x) => t + x.total, 0)) };
 }
 
 // ---------------------------------------------------------------- Pago autorizado por Norman
@@ -119,7 +166,8 @@ export function aplicarLote(lote, { comprobante, fecha }) {
 // lote y bitácora como cualquier otro, y la nota de la programación dice "Autorizado por Norman".
 
 export const NOTA_NORMAN = 'Autorizado por Norman';
-export const esAutorizadoNorman = (p) => String(p?.nota || '').startsWith(NOTA_NORMAN);
+export const NOTA_PAGAR_AHORA = 'Pagar ahora';
+export const esAutorizadoNorman = (p) => String(p?.nota || '').startsWith(NOTA_NORMAN) || String(p?.nota || '').startsWith(NOTA_PAGAR_AHORA);
 
 /** Lote de una sola factura (para el .txt del banco y para aplicar). */
 export function loteDirecto(f, monto, fecha, descripcion) {
@@ -133,7 +181,23 @@ export function loteDirecto(f, monto, fecha, descripcion) {
 }
 
 export function pagarAutorizadoNorman(f, { monto, fecha, comprobante, nota, descripcion }) {
-  return pagoDirecto(f, { monto, fecha, comprobante, descripcion, notaProg: NOTA_NORMAN + (nota ? ' · ' + String(nota).trim() : '') });
+  return pagoDirecto(f, { monto, fecha, comprobante, descripcion, notaProg: NOTA_PAGAR_AHORA + ' · manual' + (nota ? ' · ' + String(nota).trim() : '') });
+}
+
+/** Pagar ahora por banco: se programa para hoy, queda «enviado al banco» y se devuelve el lote para el .txt. */
+export function pagarAhoraBanco(f, { monto, fecha, nota, descripcion }) {
+  monto = round2(monto);
+  const ya = programacionDe(f);
+  if (ya) return { error: `Esta factura ya está programada por ${ya.por}. Aplíquela o devuélvala en «Por aplicar» primero.` };
+  if (!(monto > 0)) return { error: 'Monto inválido' };
+  if (monto > saldo(f) + 0.004) return { error: 'El monto es mayor que el saldo' };
+  const progId = Sync.nuevoId();
+  const r = Sync.ejecutar({ tipo: 'programar', fechaPago: fecha, nota: NOTA_PAGAR_AHORA + ' · banco' + (nota ? ' · ' + String(nota).trim() : ''), items: [{ progId, facturaId: f.id, monto }] });
+  if (r.error) return r;
+  const m = marcarEnviado([progId]);
+  if (m.error) return m;
+  if (descripcion != null && String(descripcion).trim()) guardarBorrador([f.sociedad, f.moneda, fecha].join('|'), f.codigo, { descripcion: String(descripcion).trim() });
+  return { ok: true, lote: loteDirecto(f, monto, fecha, descripcion) };
 }
 
 /** Programa y aplica en un solo paso el pago (o abono) de una factura. */
@@ -153,13 +217,14 @@ function pagoDirecto(f, { monto, fecha, comprobante, descripcion, notaProg }) {
   if (r1.error) return r1;
   const lote = loteDirecto(f, monto, fecha, descripcion);
   const ln = lote.lineas[0];
+  const loteId = Sync.nuevoId();
   const r2 = Sync.ejecutar({
-    tipo: 'aplicarLote', loteId: Sync.nuevoId(), comprobante: String(comprobante).trim(), fecha,
+    tipo: 'aplicarLote', loteId, comprobante: String(comprobante).trim(), fecha,
     sociedad: f.sociedad, moneda: f.moneda, progIds: [progId], extras: [],
     lineas: [{ codigo: ln.codigo, total: ln.total, extra: 0, descripcion: ln.descripcion, documentos: [f.documento] }],
   });
   if (r2.error) { Sync.ejecutar({ tipo: 'quitarProgramacion', progId, motivo: 'No se pudo aplicar' }); return r2; }
-  return { ok: true, tipo: saldo(f) <= 0.004 ? 'pago' : 'abono', avisos: r2.avisos || [] };
+  return { ok: true, tipo: saldo(f) <= 0.004 ? 'pago' : 'abono', avisos: r2.avisos || [], loteId, codigo: f.codigo };
 }
 
 /** Pagos autorizados por Norman de los últimos `dias` días, del más reciente al más antiguo. */

@@ -283,6 +283,22 @@ export async function refrescarInicio() {
   } catch { /* sin conexión: se usa lo guardado */ }
 }
 
+/** Sube un comprobante (PDF o imagen) a la carpeta de Drive del servicio. Necesita internet. */
+export async function subirArchivo({ nombre, tipo, base64 }) {
+  if (!navigator.onLine) throw new Error('Para adjuntar comprobantes se necesita internet');
+  const r = await api({ accion: 'subirArchivo', token: estado.sesion?.token, nombre, tipo, base64 });
+  if (!r.ok) throw new Error(/desconocida/i.test(r.error || '') ? 'Falta agregar el bloque de adjuntos en Apps Script (versión 1.18)' : (r.error || 'No se pudo subir el archivo'));
+  return r;
+}
+
+/** Trae un comprobante para verlo (no se guarda en el dispositivo). */
+export async function leerArchivo(id) {
+  if (!navigator.onLine) throw new Error('Para ver comprobantes se necesita internet');
+  const r = await api({ accion: 'leerArchivo', token: estado.sesion?.token, id });
+  if (!r.ok) throw new Error(r.error || 'No se pudo abrir el comprobante');
+  return r;
+}
+
 /** Administración de usuarios (solo administradores). */
 export async function adminUsuarios(datos) {
   const r = await api({ accion: 'adminUsuarios', token: estado.sesion.token, ...datos });
