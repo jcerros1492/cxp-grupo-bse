@@ -752,3 +752,9 @@ input[type=date]::-webkit-date-and-time-value { text-align: left; }
   .ec-tabla .ec-w-fecha { width: 15%; } .ec-tabla .ec-w-det { width: 30%; } .ec-tabla .ec-w-num { width: 18.33%; }
   .ec-tabla.ec-general tr.ec-tot td { font-size: 8.5px !important; letter-spacing: -0.3px; }
 }
+/* Totales con signo de moneda: mismo borde derecho que las cifras de arriba */
+.cifra-total { white-space: nowrap; }
+.cifra { min-width: 118px; }
+@media print { .cifra { min-width: 104px; } }
+@media screen and (max-width: 760px) { .cifra { min-width: 76px; } .rep-tabla tfoot td, .rep-tabla-total td { font-size: 11px; } }
+@media screen and (max-width: 370px) { .cifra { min-width: 64px; } }

@@ -1141,13 +1141,15 @@ function textoRango() {
 function pestanasReportes() {
   const t = ui.rep.tipo;
   return `<div class="rep-pestanas no-imprimir" role="tablist">
-    <button class="rep-pestana ${t === 'cxp' ? 'on' : ''}" data-act="r-tipo" data-v="cxp" role="tab" aria-selected="${t === 'cxp'}">Cuentas por pagar</button>
+    <button class="rep-pestana ${t === 'cxp' ? 'on' : ''}" data-act="r-tipo" data-v="cxp" role="tab" aria-selected="${t === 'cxp'}">Reportes</button>
     <button class="rep-pestana ${t === 'ec' ? 'on' : ''}" data-act="r-tipo" data-v="ec" role="tab" aria-selected="${t === 'ec'}">Estado de cuenta</button>
   </div>`;
 }
 
 /** Número para las tablas de reporte: bloque de ancho fijo, centrado bajo el título y alineado por los decimales. */
 const cifra = (n) => `<span class="cifra">${fmtNum(n)}</span>`;
+/** Total con el signo de la moneda (₡ o $). */
+const cifraM = (n, mon) => `<span class="cifra cifra-total">${money(n, mon)}</span>`;
 
 function vistaReportes() { return pestanasReportes() + (ui.rep.tipo === 'ec' ? vistaEstadoCuenta() : vistaCxp()); }
 
@@ -1204,12 +1206,12 @@ function vistaCxp() {
           <thead><tr><th class="w-doc">N°<span class="larga"> Factura</span></th><th class="c-ff w-ff">Fecha de<br>factura</th><th class="w-fv"><span class="larga">Fecha de<br>vencimiento</span><span class="corta">Vence</span></th><th class="w-dias">Días</th><th class="num w-saldo">Saldo</th><th class="c-mon w-mon">Moneda</th></tr></thead>
           <tbody>${x.facturas.map((f) => `<tr><td>${esc(f.documento)}</td><td class="c-ff">${fmtFecha(f.fechaFactura)}</td><td><span class="larga">${fmtFecha(f.fechaVence)}</span><span class="corta">${fmtFecha(f.fechaVence).replace(/\/20(\d\d)$/, '/$1')}</span></td><td class="c-dias">${celdaDias(f)}</td>
             <td class="num">${cifra(S.saldo(f))}</td><td class="c-mon">${mon.nombre}</td></tr>`).join('')}</tbody>
-          ${R.prov ? '' : `<tfoot><tr class="rep-tot-num"><td></td><td class="c-ff"></td><td></td><td class="rep-tot-junto"><span>Total Cliente · ${x.facturas.length} ${x.facturas.length === 1 ? 'factura' : 'facturas'}</span></td><td class="num">${cifra(x.saldo)}</td><td class="c-mon"></td></tr></tfoot>`}
+          ${R.prov ? '' : `<tfoot><tr class="rep-tot-num"><td></td><td class="c-ff"></td><td></td><td class="rep-tot-junto"><span>Total Cliente · ${x.facturas.length} ${x.facturas.length === 1 ? 'factura' : 'facturas'}</span></td><td class="num">${cifraM(x.saldo, R.mon)}</td><td class="c-mon"></td></tr></tfoot>`}
         </table>
       </section>`).join('')}
-      <table class="rep-tabla rep-tabla-total rep-total-soc"><tbody><tr><td class="w-doc"></td><td class="c-ff w-ff"></td><td class="w-fv"></td><td class="w-dias rep-tot-junto"><span>Total ${esc(S.nombreSociedad(g.soc))} · ${g.cantidad} ${g.cantidad === 1 ? 'factura' : 'facturas'}</span></td><td class="num w-saldo">${cifra(g.saldo)}</td><td class="c-mon w-mon"></td></tr></tbody></table>
+      <table class="rep-tabla rep-tabla-total rep-total-soc"><tbody><tr><td class="w-doc"></td><td class="c-ff w-ff"></td><td class="w-fv"></td><td class="w-dias rep-tot-junto"><span>Total ${esc(S.nombreSociedad(g.soc))} · ${g.cantidad} ${g.cantidad === 1 ? 'factura' : 'facturas'}</span></td><td class="num w-saldo">${cifraM(g.saldo, R.mon)}</td><td class="c-mon w-mon"></td></tr></tbody></table>
     </article>`).join('')}</div>
-  ${!R.soc && grupos.filter((g) => g.cantidad).length > 1 ? `<div class="reporte rep-general"><table class="rep-tabla rep-tabla-total rep-total-soc"><tbody><tr><td class="w-doc"></td><td class="c-ff w-ff"></td><td class="w-fv"></td><td class="w-dias rep-tot-junto"><span>Total todas las sociedades · ${total.n} facturas</span></td><td class="num w-saldo">${cifra(total.saldo)}</td><td class="c-mon w-mon"></td></tr></tbody></table></div>` : ''}`;
+  ${!R.soc && grupos.filter((g) => g.cantidad).length > 1 ? `<div class="reporte rep-general"><table class="rep-tabla rep-tabla-total rep-total-soc"><tbody><tr><td class="w-doc"></td><td class="c-ff w-ff"></td><td class="w-fv"></td><td class="w-dias rep-tot-junto"><span>Total todas las sociedades · ${total.n} facturas</span></td><td class="num w-saldo">${cifraM(total.saldo, R.mon)}</td><td class="c-mon w-mon"></td></tr></tbody></table></div>` : ''}`;
 }
 
 const limpioArchivo = (t) => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 .-]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -1241,7 +1243,7 @@ function pdfReporte() {
   const grupos = datosReporte().filter((g) => g.cantidad);
   const ahora = new Date();
   const doc = crearPdfReporte({
-    titulo: nombreArchivoReporte(), grupos, porProveedor: !!R.prov, rango: textoRango(), moneda: MONEDAS[R.mon].nombre,
+    titulo: nombreArchivoReporte(), simbolo: R.mon === 'USD' ? '$' : '¢', grupos, porProveedor: !!R.prov, rango: textoRango(), moneda: MONEDAS[R.mon].nombre,
     emitido: { fecha: fmtFecha(hoyISO()), hora: `${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}` },
     nombreSociedad: nombreLegalSociedad, nombreCorto: (c) => S.nombreSociedad(c), fmtNum, fmtFecha, dias: diasReporte, saldo: (f) => S.saldo(f),
     total: !R.soc && grupos.length > 1 ? { n: grupos.reduce((t, g) => t + g.cantidad, 0), saldo: round2(grupos.reduce((t, g) => t + g.saldo, 0)) } : null,
@@ -1251,7 +1253,7 @@ function pdfReporte() {
 
 const fechaExcel = (iso) => { if (!iso) return ''; const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); };
 
-function guardarExcel(filas, anchos, nombre, formatos = {}, filtro = null) {
+function guardarExcel(filas, anchos, nombre, formatos = {}, filtro = null, moneda = null) {
   const XLSX = window.XLSX;
   const ws = XLSX.utils.aoa_to_sheet(filas, { cellDates: true });
   ws['!cols'] = anchos.map((wch) => ({ wch }));
@@ -1261,6 +1263,7 @@ function guardarExcel(filas, anchos, nombre, formatos = {}, filtro = null) {
       const celda = ws[XLSX.utils.encode_cell({ r, c })];
       if (!celda) continue;
       if (celda.t === 'd' || celda.v instanceof Date) celda.z = 'dd/mm/yyyy';
+      else if (celda.t === 'n' && moneda && /^Total/.test(String(filas[r]?.find((x) => typeof x === 'string' && /^Total/.test(x)) || ''))) celda.z = `"${moneda}"#,##0.00`;
       else if (celda.t === 'n' && formatos[c]) celda.z = formatos[c];
     }
   }
@@ -1310,7 +1313,8 @@ function excelReporte() {
   for (let r = rango.s.r; r <= rango.e.r; r++) {
     for (const c of [3, 4]) {
       const celda = ws[XLSX.utils.encode_cell({ r, c })];
-      if (celda && celda.t === 'n') celda.z = c === 3 ? '+0;-0;"Hoy"' : '#,##0.00';
+      const esTotal = /^Total/.test(String(filas[r]?.[3] || ''));
+      if (celda && celda.t === 'n') celda.z = c === 3 ? '+0;-0;"Hoy"' : esTotal ? `"${MONEDAS[R.mon].simbolo}"#,##0.00` : '#,##0.00';
     }
   }
   const wb = XLSX.utils.book_new();
@@ -1400,7 +1404,7 @@ function vistaEstadoCuenta() {
   const hay = grupos.length > 0;
   const ahora = new Date();
   const fechaCorta = (iso) => (iso ? `<span class="larga">${fmtFecha(iso)}</span><span class="corta">${fmtFecha(iso).replace(/\/20(\d\d)$/, '/$1')}</span>` : '<span class="sub">sin fecha</span>');
-  const filaTotales = (etq, t, cls = '') => `<tr class="ec-tot ${cls}"><td colspan="2" class="ec-tot-lbl">${etq}</td><td class="num">${cifra(t.facturado + t.cargos)}</td><td class="num">${cifra(t.abonos + t.nc + t.cargos)}</td><td class="num">${cifra(t.saldo)}</td></tr>`;
+  const filaTotales = (etq, t, cls = '') => `<tr class="ec-tot ${cls}"><td colspan="2" class="ec-tot-lbl">${etq}</td><td class="num">${cifraM(t.facturado + t.cargos, E.mon)}</td><td class="num">${cifraM(t.abonos + t.nc + t.cargos, E.mon)}</td><td class="num">${cifraM(t.saldo, E.mon)}</td></tr>`;
   return `
   <div class="titulo-vista no-imprimir"><div><h1>Estado de cuenta</h1><p class="sub">Todos los movimientos de un proveedor: cada factura con su monto, abonos, pagos, notas de crédito y el saldo.</p></div>
     ${botonesSalida('ec', hay, `<button class="btn" data-act="ec-excel" ${hay ? '' : 'disabled'}>Descargar Excel</button>`)}</div>
@@ -1458,7 +1462,7 @@ function excelEstado() {
     filas.push(['', '', '', `Total ${S.nombreSociedad(g.soc)} · ${g.facturas.length} facturas`, round2(g.t.facturado + g.t.cargos), round2(g.t.abonos + g.t.nc + g.t.cargos), g.t.saldo], []);
   }
   if (grupos.length > 1) { const z = totalesEstado(grupos); filas.push(['', '', '', 'Total todas las sociedades', round2(z.facturado + z.cargos), round2(z.abonos + z.nc + z.cargos), z.saldo]); }
-  guardarExcel(filas, [18, 12, 12, 60, 16, 16, 16], nombreArchivoEstado(), { 4: '#,##0.00', 5: '#,##0.00', 6: '#,##0.00' });
+  guardarExcel(filas, [18, 12, 12, 60, 16, 16, 16], nombreArchivoEstado(), { 4: '#,##0.00', 5: '#,##0.00', 6: '#,##0.00' }, null, MONEDAS[E.mon].simbolo);
 }
 
 function pdfEstado() {
@@ -1466,7 +1470,7 @@ function pdfEstado() {
   const grupos = datosEstadoCuenta();
   const ahora = new Date();
   const doc = crearPdfEstadoCuenta({
-    titulo: nombreArchivoEstado(), proveedor: S.proveedor(E.prov).nombre, grupos,
+    titulo: nombreArchivoEstado(), simbolo: E.mon === 'USD' ? '$' : '¢', proveedor: S.proveedor(E.prov).nombre, grupos,
     subtitulo: `${E.soc ? nombreLegalSociedad(E.soc) : 'Todas las sociedades'} · ${MONEDAS[E.mon].nombre}`, rango: textoRangoEstado(),
     emitido: { fecha: fmtFecha(hoyISO()), hora: `${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}` },
     nombreSociedad: nombreLegalSociedad, nombreCorto: (c) => S.nombreSociedad(c), fmtNum, fmtFecha,
@@ -1737,7 +1741,7 @@ const acciones = {
   'r-tipo': (v) => { ui.rep.tipo = v; ui.provDrop = null; render(); },
   'ec-mon': (v) => { ui.ec.mon = v; render(); },
   'ec-alcance': (v) => { ui.ec.alcance = v; render(); },
-  'ec-limpiar': () => { Object.assign(ui.ec, { soc: '', desde: '', hasta: '', alcance: 'saldo' }); ui.provDrop = null; render(); },
+  'ec-limpiar': () => { Object.assign(ui.ec, { prov: '', soc: '', desde: '', hasta: '', alcance: 'saldo' }); ui.provDrop = null; render(); },
   'ec-excel': () => { try { excelEstado(); } catch (err) { avisar('No se pudo crear el Excel: ' + err.message, 'error'); } },
   'ec-pdf': () => { try { const f = pdfEstado(); descargar(f.name, f); } catch (err) { avisar('No se pudo crear el PDF: ' + err.message, 'error'); } },
   'ec-compartir': () => compartirArchivo(pdfEstado),

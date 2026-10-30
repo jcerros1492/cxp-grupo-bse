@@ -10,7 +10,7 @@ const COLS = [0.16, 0.16, 0.17, 0.11, 0.24, 0.16].map((p) => p * UTIL);
 function padCentro(doc, ancho, tam = 8.5) {
   const antes = doc.getFontSize();
   doc.setFontSize(tam);
-  const bloque = doc.getTextWidth('0.000.000.000,00');
+  const bloque = doc.getTextWidth('¢0.000.000.000,00');
   doc.setFontSize(antes);
   return Math.max(1.5, (ancho - bloque) / 2);
 }
@@ -21,6 +21,7 @@ const NEGRO = [17, 17, 17], GRIS = [85, 85, 85], ROJO = [180, 35, 24], VERDE = [
  */
 export function crearPdfReporte(d) {
   const { jsPDF } = window.jspdf;
+  const tot = (n) => (d.simbolo || '') + d.fmtNum(n);
   const doc = new jsPDF({ unit: 'mm', format: 'letter', orientation: 'portrait' });
   doc.setProperties({ title: d.titulo || 'Reporte de Cuentas por Pagar', creator: 'Cuentas por Pagar · Grupo BSE' });
   let y = MM.arriba;
@@ -84,7 +85,7 @@ export function crearPdfReporte(d) {
       });
       const pie = d.porProveedor ? [] : [[
         { content: `Total Cliente · ${x.facturas.length} ${x.facturas.length === 1 ? 'factura' : 'facturas'}`, colSpan: 4, styles: { halign: 'right' } },
-        { content: d.fmtNum(x.saldo), styles: { halign: 'right' } }, '',
+        { content: tot(x.saldo), styles: { halign: 'right' } }, '',
       ]];
       doc.autoTable({
         startY: y, margin: { left: MM.izq, right: MM.der, top: MM.arriba, bottom: MM.abajo },
@@ -104,7 +105,7 @@ export function crearPdfReporte(d) {
       });
       y = doc.lastAutoTable.finalY + 6;
     }
-    filaTotal(`Total ${d.nombreCorto(g.soc)} · ${g.cantidad} ${g.cantidad === 1 ? 'factura' : 'facturas'}`, d.fmtNum(g.saldo), true);
+    filaTotal(`Total ${d.nombreCorto(g.soc)} · ${g.cantidad} ${g.cantidad === 1 ? 'factura' : 'facturas'}`, tot(g.saldo), true);
     y += 3;
   });
   if (d.total) {
@@ -114,7 +115,7 @@ export function crearPdfReporte(d) {
     const xSaldo = MM.izq + COLS[0] + COLS[1] + COLS[2] + COLS[3] + COLS[4] - PAD;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...NEGRO);
     doc.text(`Total todas las sociedades · ${d.total.n} facturas`, MM.izq + COLS[0] + COLS[1] + COLS[2] + COLS[3] - 2, y + 7, { align: 'right' });
-    doc.text(d.fmtNum(d.total.saldo), xSaldo, y + 7, { align: 'right' });
+    doc.text(tot(d.total.saldo), xSaldo, y + 7, { align: 'right' });
   }
   numerarPaginas(doc);
   return doc;
@@ -139,6 +140,7 @@ const COLS_EC = [0.12, 0.43, 0.15, 0.15, 0.15].map((p) => p * UTIL);
  */
 export function crearPdfEstadoCuenta(d) {
   const { jsPDF } = window.jspdf;
+  const tot = (n) => (d.simbolo || '') + d.fmtNum(n);
   const doc = new jsPDF({ unit: 'mm', format: 'letter', orientation: 'portrait' });
   doc.setProperties({ title: d.titulo, creator: 'Cuentas por Pagar · Grupo BSE' });
   let y = MM.arriba;
@@ -167,9 +169,9 @@ export function crearPdfEstadoCuenta(d) {
 
   const totalFila = (etq, t) => [
     { content: etq, colSpan: 2, styles: { halign: 'right' } },
-    { content: d.fmtNum(t.facturado + t.cargos), styles: { halign: 'right', cellPadding: celdaNum } },
-    { content: d.fmtNum(t.abonos + t.nc + t.cargos), styles: { halign: 'right', cellPadding: celdaNum } },
-    { content: d.fmtNum(t.saldo), styles: { halign: 'right', cellPadding: celdaNum } },
+    { content: tot(t.facturado + t.cargos), styles: { halign: 'right', cellPadding: celdaNum } },
+    { content: tot(t.abonos + t.nc + t.cargos), styles: { halign: 'right', cellPadding: celdaNum } },
+    { content: tot(t.saldo), styles: { halign: 'right', cellPadding: celdaNum } },
   ];
 
   for (const g of d.grupos) {
@@ -215,9 +217,9 @@ export function crearPdfEstadoCuenta(d) {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...NEGRO);
     const x2 = MM.izq + COLS_EC[0] + COLS_EC[1];
     doc.text(`Total todas las sociedades · ${d.total.n} facturas`, x2 - 2, y + 7, { align: 'right' });
-    doc.text(d.fmtNum(d.total.facturado + d.total.cargos), x2 + COLS_EC[2] - PAD, y + 7, { align: 'right' });
-    doc.text(d.fmtNum(d.total.abonos + d.total.nc + d.total.cargos), x2 + COLS_EC[2] + COLS_EC[3] - PAD, y + 7, { align: 'right' });
-    doc.text(d.fmtNum(d.total.saldo), x2 + COLS_EC[2] + COLS_EC[3] + COLS_EC[4] - PAD, y + 7, { align: 'right' });
+    doc.text(tot(d.total.facturado + d.total.cargos), x2 + COLS_EC[2] - PAD, y + 7, { align: 'right' });
+    doc.text(tot(d.total.abonos + d.total.nc + d.total.cargos), x2 + COLS_EC[2] + COLS_EC[3] - PAD, y + 7, { align: 'right' });
+    doc.text(tot(d.total.saldo), x2 + COLS_EC[2] + COLS_EC[3] + COLS_EC[4] - PAD, y + 7, { align: 'right' });
   }
   numerarPaginas(doc);
   return doc;
