@@ -3,6 +3,7 @@ import * as S from './store.js';
 import * as Sync from './sync.js';
 import { VERSION, USUARIOS, API_URL } from './config.js';
 import { importarExcel } from './importer.js';
+import { crearPdfReporte } from './reporte-pdf.js';
 import { CAMPOS as CAMPOS_IMP, leerFilas, filaEncabezado, sugerirMapeo, prepararFacturas, detectarGTI } from './importar-facturas.js';
 import { construirArchivo } from './banco.js';
 import {
@@ -1129,8 +1130,11 @@ function vistaReportes() {
   const total = { n: grupos.reduce((t, g) => t + g.cantidad, 0), monto: round2(grupos.reduce((t, g) => t + g.monto, 0)), saldo: round2(grupos.reduce((t, g) => t + g.saldo, 0)) };
   return `
   <div class="titulo-vista no-imprimir"><div><h1>Reportes</h1><p class="sub">Cuentas por pagar con saldo, por fecha de vencimiento. Un reporte por moneda.</p></div>
-    <div class="acciones"><button class="btn" data-act="r-excel" ${total.n ? '' : 'disabled'}>Descargar Excel</button>
-      <button class="btn primario" data-act="r-imprimir" ${total.n ? '' : 'disabled'}>Imprimir o guardar PDF</button></div></div>
+    <div class="acciones rep-acciones">
+      ${puedeCompartirArchivos() ? `<button class="btn primario" data-act="r-compartir" ${total.n ? '' : 'disabled'}>Compartir PDF</button>` : ''}
+      <button class="btn ${puedeCompartirArchivos() ? '' : 'primario'}" data-act="r-pdf" ${total.n ? '' : 'disabled'}>Descargar PDF</button>
+      <button class="btn" data-act="r-excel" ${total.n ? '' : 'disabled'}>Descargar Excel</button>
+      <button class="btn" data-act="r-imprimir" ${total.n ? '' : 'disabled'}>Imprimir</button></div></div>
   <section class="filtros no-imprimir">
     <div class="form-grid rep-filtros">
       <label>Sociedad <select data-in="r-soc"><option value="">Todas las sociedades</option>${socs.map((x) => `<option value="${esc(x)}" ${R.soc === x ? 'selected' : ''}>${esc(S.nombreSociedad(x))}</option>`).join('')}</select></label>
@@ -1181,6 +1185,34 @@ function vistaReportes() {
   ${!R.soc && grupos.filter((g) => g.cantidad).length > 1 ? `<div class="reporte rep-general"><table class="rep-tabla rep-tabla-total rep-total-soc"><tbody><tr><td class="w-doc"></td><td class="c-ff w-ff"></td><td class="w-fv"></td><td class="w-dias rep-tot-junto"><span>Total todas las sociedades · ${total.n} facturas</span></td><td class="num w-saldo">${fmtNum(total.saldo)}</td><td class="c-mon w-mon"></td></tr></tbody></table></div>` : ''}`;
 }
 
+/** Nombre del archivo: "Reporte CxP - DON CORLEONE SA - Todas - Colones - 2026-10-30". */
+function nombreArchivoReporte() {
+  const R = ui.rep;
+  const limpio = (t) => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 .-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const partes = ['Reporte CxP'];
+  if (R.prov) partes.push(limpio(S.proveedor(R.prov).nombre).slice(0, 60));
+  partes.push(R.soc ? limpio(S.nombreSociedad(R.soc)) : 'Todas');
+  partes.push(R.mon === 'USD' ? 'Dolares' : 'Colones', hoyISO());
+  return partes.join(' - ');
+}
+
+function puedeCompartirArchivos() {
+  try { return !!(navigator.canShare && navigator.canShare({ files: [new File(['x'], 'x.pdf', { type: 'application/pdf' })] })); } catch { return false; }
+}
+
+function pdfReporte() {
+  const R = ui.rep;
+  const grupos = datosReporte().filter((g) => g.cantidad);
+  const ahora = new Date();
+  const doc = crearPdfReporte({
+    titulo: nombreArchivoReporte(), grupos, porProveedor: !!R.prov, rango: textoRango(), moneda: MONEDAS[R.mon].nombre,
+    emitido: { fecha: fmtFecha(hoyISO()), hora: `${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}` },
+    nombreSociedad: nombreLegalSociedad, nombreCorto: (c) => S.nombreSociedad(c), fmtNum, fmtFecha, dias: diasReporte, saldo: (f) => S.saldo(f),
+    total: !R.soc && grupos.length > 1 ? { n: grupos.reduce((t, g) => t + g.cantidad, 0), saldo: round2(grupos.reduce((t, g) => t + g.saldo, 0)) } : null,
+  });
+  return new File([doc.output('blob')], nombreArchivoReporte() + '.pdf', { type: 'application/pdf' });
+}
+
 function excelReporte() {
   const R = ui.rep;
   const filas = [];
@@ -1213,9 +1245,8 @@ function excelReporte() {
   }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Reporte');
-  const soc = (R.soc ? S.nombreSociedad(R.soc).replace(/[^A-Za-z0-9]+/g, '') : 'Todas') + (R.prov ? '_' + S.proveedor(R.prov).nombre.replace(/[^A-Za-z0-9]+/g, '').slice(0, 30) : '');
   const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
-  descargar(`Reporte_CxP_${soc}_${R.mon}_${hoy}.xlsx`, new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  descargar(nombreArchivoReporte() + '.xlsx', new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
 }
 
 // ---------------------------------------------------------------- Configuración
@@ -1477,7 +1508,19 @@ const acciones = {
   'r-prov-set': (v) => { ui.rep.prov = v; ui.rep.provAbierto = false; render(); },
   'r-limpiar': () => { Object.assign(ui.rep, { soc: '', prov: '', desde: '', hasta: '', provAbierto: false }); render(); },
   'r-preset': (v) => { const [d, h] = v.split('|'); ui.rep.desde = d; ui.rep.hasta = h; render(); },
-  'r-imprimir': () => window.print(),
+  'r-imprimir': () => {
+    const antes = document.title;
+    document.title = nombreArchivoReporte(); // nombre sugerido al guardar como PDF
+    window.print();
+    setTimeout(() => { document.title = antes; }, 1000);
+  },
+  'r-pdf': () => { try { const f = pdfReporte(); descargar(f.name, f); } catch (err) { avisar('No se pudo crear el PDF: ' + err.message, 'error'); } },
+  'r-compartir': async () => {
+    let archivo;
+    try { archivo = pdfReporte(); } catch (err) { avisar('No se pudo crear el PDF: ' + err.message, 'error'); return; }
+    try { await navigator.share({ files: [archivo], title: archivo.name.replace(/\.pdf$/, '') }); }
+    catch (err) { if (err.name !== 'AbortError') { descargar(archivo.name, archivo); avisar('No se pudo compartir; se descargó el PDF'); } }
+  },
   'r-excel': () => { try { excelReporte(); } catch (err) { avisar('No se pudo crear el Excel: ' + err.message, 'error'); } },
   'pn-abrir': (v) => dialogoPagoNorman(v),
   'pn-txt': (v, el) => {

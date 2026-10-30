@@ -12,6 +12,8 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.16.1 | Número de página («Página 1 de 3») al pie de cada hoja, en el PDF generado y al imprimir. |
+| 1.16.0 | Reportes en PDF generados por la aplicación (jsPDF, sin fecha, título ni dirección del navegador): «Compartir PDF» en el celular (WhatsApp, correo…) y «Descargar PDF». Nombre del archivo con el proveedor, la sociedad, la moneda y la fecha («Reporte CxP - DON CORLEONE S.A. - Todas - Colones - 2026-10-30»), igual en el Excel. «Imprimir» sin encabezados del navegador. |
 | 1.15.7 | Reportes: botón «Limpiar filtros» (sociedad, proveedor y fechas). Proveedor como filtro tipo Excel: lista desplegable con casilla para escribir y la lista se reduce al escribir. En el reporte por proveedor solo va el total de cada sociedad (sin repetir «Total Cliente»). |
 | 1.15.6 | PDF: al imprimir siempre se usa el diseño de escritorio (la fecha de emisión pequeña a la derecha, también desde el celular). Reporte por proveedor: las sociedades siguen en la misma hoja, con el encabezado completo solo al inicio. Proveedor con buscador: se escribe parte del nombre y se elige de la lista. |
 | 1.15.5 | Reporte: «Total Cliente · N facturas» junto al saldo de cada proveedor; total de la sociedad y general también junto al saldo; totales un poco más grandes. Igual en el Excel. |

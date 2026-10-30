@@ -649,3 +649,15 @@ input[type=date]::-webkit-date-and-time-value { text-align: left; }
 .rep-prov-nada { margin: 6px 4px; }
 .rep-limpiar { margin-left: auto; }
 @media screen and (max-width: 760px) { .rep-prov-panel { width: 100%; } .rep-limpiar { margin-left: 0; } }
+
+/* Imprimir: sin encabezado ni pie del navegador (fecha, título y dirección) */
+@media print {
+  @page {
+    size: letter; margin: 0 0 11mm 0;
+    @bottom-center { content: "Página " counter(page) " de " counter(pages); font-family: Helvetica, Arial, sans-serif; font-size: 8pt; color: #555; }
+  }
+  .reporte-hojas .reporte, .rep-general { padding: 12mm 14mm !important; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  .reporte-hojas.seguido .reporte + .reporte { padding-top: 0 !important; }
+  .rep-general { margin: 0 14mm !important; padding: 6px 8px 10px !important; }
+}
+.rep-acciones { display: flex; flex-wrap: wrap; gap: 8px; }
