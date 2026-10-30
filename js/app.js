@@ -1134,7 +1134,9 @@ function vistaReportes() {
   <section class="filtros no-imprimir">
     <div class="form-grid rep-filtros">
       <label>Sociedad <select data-in="r-soc"><option value="">Todas las sociedades</option>${socs.map((x) => `<option value="${esc(x)}" ${R.soc === x ? 'selected' : ''}>${esc(S.nombreSociedad(x))}</option>`).join('')}</select></label>
-      <label>Proveedor <select data-in="r-prov"><option value="">Todos los proveedores</option>${proveedoresReporte().map((p) => `<option value="${esc(p.codigo)}" ${R.prov === p.codigo ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select></label>
+      <label>Proveedor <span class="rep-prov-buscar"><input type="search" data-in="r-provq" list="rep-provs" placeholder="Todos · escriba para buscar" value="${esc(R.prov ? S.proveedor(R.prov).nombre : '')}" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
+        ${R.prov ? '<button type="button" class="btn-limpiar" data-act="r-prov-todos" aria-label="Todos los proveedores">×</button>' : ''}</span>
+        <datalist id="rep-provs">${proveedoresReporte().map((p) => `<option value="${esc(p.nombre)}"></option>`).join('')}</datalist></label>
       <div><span class="lbl">Moneda</span><div class="chips">
         <button class="chip ${R.mon === 'CRC' ? 'on' : ''}" data-act="r-mon" data-v="CRC">Colones</button>
         <button class="chip ${R.mon === 'USD' ? 'on' : ''}" data-act="r-mon" data-v="USD">Dólares</button></div></div>
@@ -1145,15 +1147,15 @@ function vistaReportes() {
       ${preset('Vencidas a hoy', '', hoy)}${preset('Próximos 7 días', hoy, sumarDias(hoy, 7))}${preset('Próximos 30 días', hoy, sumarDias(hoy, 30))}${preset('Todo', '', '')}</div>
   </section>
   ${total.n ? '' : '<p class="vacio grande no-imprimir">No hay facturas con saldo en ese rango.</p>'}
-  <div class="reporte-hojas">${grupos.filter((g) => g.cantidad).map((g) => `
+  <div class="reporte-hojas ${R.prov ? 'seguido' : ''}">${grupos.filter((g) => g.cantidad).map((g, i) => `
     <article class="reporte">
-      <header class="rep-cab">
+      ${R.prov && i > 0 ? `<header class="rep-cab rep-cab-corta"><h2 class="rep-soc">${esc(nombreLegalSociedad(g.soc))}</h2></header>` : `<header class="rep-cab">
         <div><h2 class="rep-soc">${esc(nombreLegalSociedad(g.soc))}</h2>
           <p class="rep-titulo">Reporte de Cuentas por Pagar</p>
           <p class="rep-rango">${textoRango()} · ${mon.nombre}</p>
           <p class="rep-leyenda">Días: <span class="d-venc">−</span> vencida hace esos días · <span class="d-porv">+</span> faltan esos días para vencer</p></div>
         <div class="rep-emitido">Emitido<br><strong>${fmtFecha(hoy)}</strong><br>${String(emitido.getHours()).padStart(2, '0')}:${String(emitido.getMinutes()).padStart(2, '0')}</div>
-      </header>
+      </header>`}
       ${g.proveedores.map((x) => `
       <section class="rep-prov">
         <h3 class="rep-prov-nombre">${esc(x.prov.nombre)}</h3>
@@ -1449,6 +1451,7 @@ const acciones = {
   'f-mas': () => { ui.fact.limite += 300; render(); },
   'f-abrir': (v) => dialogoFactura(v),
   'r-mon': (v) => { ui.rep.mon = v; render(); },
+  'r-prov-todos': () => { ui.rep.prov = ''; render(); },
   'r-preset': (v) => { const [d, h] = v.split('|'); ui.rep.desde = d; ui.rep.hasta = h; render(); },
   'r-imprimir': () => window.print(),
   'r-excel': () => { try { excelReporte(); } catch (err) { avisar('No se pudo crear el Excel: ' + err.message, 'error'); } },
@@ -1531,7 +1534,14 @@ document.addEventListener('change', async (e) => {
   if (!k) return;
   if (k === 'fm-tipo') { actualizarRestoMov(); return; }
   if (k === 'r-soc') { ui.rep.soc = el.value; render(); return; }
-  if (k === 'r-prov') { ui.rep.prov = el.value; render(); return; }
+  if (k === 'r-provq') {
+    const t = el.value.trim().toLowerCase();
+    if (!t) { ui.rep.prov = ''; render(); return; }
+    const lista = proveedoresReporte();
+    const p = lista.find((x) => x.nombre.toLowerCase() === t) || (lista.filter((x) => x.nombre.toLowerCase().includes(t)).length === 1 ? lista.find((x) => x.nombre.toLowerCase().includes(t)) : null);
+    if (p) { ui.rep.prov = p.codigo; render(); } else avisar('Elija el proveedor de la lista que aparece al escribir', 'error');
+    return;
+  }
   if (k === 'r-desde') { ui.rep.desde = el.value; render(); return; }
   if (k === 'r-hasta') { ui.rep.hasta = el.value; render(); return; }
   if (k === 'p-sel') {

@@ -291,7 +291,7 @@ pre.txt { font-family: var(--mono); font-size: 12px; background: var(--tinta); c
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 96px; z-index: 50; background: var(--tinta); color: #fff; padding: 12px 18px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.2); max-width: min(560px, calc(100vw - 32px)); font-size: 14px; }
 .toast.error { background: var(--rojo); }
 
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
   .cabecera { padding: 0 12px; position: static; }
   .contenido { padding: 16px 12px 160px; }
   .fila-fact { grid-template-columns: 36px 1fr auto; grid-template-areas: "ck doc saldo" "ck venc venc" "ck apagar apagar"; row-gap: 4px; padding: 10px 12px; }
@@ -307,7 +307,7 @@ pre.txt { font-family: var(--mono); font-size: 12px; background: var(--tinta); c
    Las tablas se convierten en tarjetas: una por fila, con el nombre
    de cada dato a la izquierda (etiquetarTablas en app.js).
    ================================================================ */
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
   body { font-size: 15px; }
   .cabecera { position: static; padding: env(safe-area-inset-top, 0px) max(12px, env(safe-area-inset-right, 0px)) 6px max(12px, env(safe-area-inset-left, 0px)); }
   .cabecera-interior { gap: 6px 12px; min-height: 0; padding-top: 8px; }
@@ -374,7 +374,7 @@ pre.txt { font-family: var(--mono); font-size: 12px; background: var(--tinta); c
   .toast { bottom: calc(110px + env(safe-area-inset-bottom, 0px)); }
 }
 
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
   /* Encabezado ordenado: marca y usuario arriba; menú en cuadrícula pareja abajo */
   .cabecera-interior { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; padding-top: 10px; }
   .marca { grid-column: 1; grid-row: 1; }
@@ -395,7 +395,7 @@ pre.txt { font-family: var(--mono); font-size: 12px; background: var(--tinta); c
 @keyframes latir { from { opacity: .35; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .red.sync::before { animation: none; } }
 
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
   .marca img { height: 36px; }
   .marca-grupo { font-size: 22px; }
   .marca-sub { font-size: 11.5px; }
@@ -412,7 +412,7 @@ pre.txt { font-family: var(--mono); font-size: 12px; background: var(--tinta); c
 .imp-emisor strong { display: block; overflow-wrap: anywhere; }
 .imp-emisor .sub { display: block; font-size: 12.5px; margin: 2px 0 0; }
 .imp-emisor select { width: 100%; min-width: 0; }
-@media (max-width: 760px) { .imp-emisor { grid-template-columns: 1fr; } }
+@media screen and (max-width: 760px) { .imp-emisor { grid-template-columns: 1fr; } }
 
 /* Pago autorizado por Norman */
 .btn-norman { margin-bottom: 14px; background: #FFF4E5; border-color: #E8B26A; color: #8A4B00; font-weight: 600; }
@@ -422,14 +422,14 @@ pre.txt { font-family: var(--mono); font-size: 12px; background: var(--tinta); c
 .pn-banco .sub { margin: 0; }
 .pn-banco .btn { justify-self: start; }
 .bloque-norman { border-left: 4px solid #E8B26A; }
-@media (max-width: 760px) { .btn-norman { width: 100%; } .pn-banco .btn { justify-self: stretch; } }
+@media screen and (max-width: 760px) { .btn-norman { width: 100%; } .pn-banco .btn { justify-self: stretch; } }
 
 /* Teléfonos angostos (iPhone SE y similares) */
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
   .cabecera-interior { grid-template-columns: minmax(0, 1fr) auto; }
   .marca { min-width: 0; overflow: hidden; }
 }
-@media (max-width: 370px) {
+@media screen and (max-width: 370px) {
   .marca { gap: 7px; }
   .marca img { height: 30px; }
   .marca-grupo { font-size: 18px; }
@@ -473,7 +473,7 @@ input[type=date]::-webkit-date-and-time-value { text-align: left; }
 .rep-venc { font-size: 11px; color: #B42318; font-weight: 600; }
 .rep-total { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 18px; border-top: 2px solid #111; padding-top: 10px; font-size: 15px; }
 .rep-total-general { background: #fff; border: 2px solid #111; border-radius: var(--radio); padding: 14px 18px; }
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
   .reporte { padding: 16px 14px; }
   .rep-soc { font-size: 19px; }
   .rep-cab { flex-direction: column; }
@@ -504,20 +504,20 @@ input[type=date]::-webkit-date-and-time-value { text-align: left; }
 .rep-leyenda { font-size: 11.5px; color: #555; margin: 6px 0 0; }
 .rep-leyenda .d-venc, .rep-leyenda .d-porv { min-width: 0; padding: 0 6px; font-size: 11px; }
 .rep-tot-lbl { white-space: nowrap; }
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
   .reporte { padding: 14px 10px; }
   .rep-tabla th, .rep-tabla td { padding: 4px 2px; }
   .rep-tabla th { font-size: 11px; }
 }
 .rep-tabla .corta { display: none; }
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
   .rep-tabla .larga { display: none; }
   .rep-tabla .corta { display: inline; }
   .rep-tabla td { font-size: 11px; }
   .rep-tabla td.num { letter-spacing: -0.2px; }
 }
 @media print { .rep-tabla .larga { display: inline; } .rep-tabla .corta { display: none; } }
-@media (max-width: 370px) { .rep-tabla .c-monto { display: none; } }
+@media screen and (max-width: 370px) { .rep-tabla .c-monto { display: none; } }
 @media print { .rep-tabla .c-monto { display: table-cell; } }
 
 /* Columnas con el mismo ancho en todas las tablas del reporte (quedan alineadas) */
@@ -535,7 +535,7 @@ input[type=date]::-webkit-date-and-time-value { text-align: left; }
 .rep-tabla-total td { border-bottom: 0; padding-top: 10px; font-size: 14.5px; font-weight: 800; }
 .rep-general { padding-top: 8px; padding-bottom: 14px; border: 2px solid #111; }
 .rep-general .rep-tabla-total { border-top: 0; margin-top: 0; }
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
   .rep-tabla .w-doc { width: 24%; }
   .rep-tabla .w-fv { width: 22%; }
   .rep-tabla .w-dias { width: 14%; }
@@ -543,7 +543,7 @@ input[type=date]::-webkit-date-and-time-value { text-align: left; }
   .rep-tabla .w-saldo { width: 20%; }
   .rep-tabla-total td { font-size: 12px; }
 }
-@media (max-width: 370px) {
+@media screen and (max-width: 370px) {
   .rep-tabla .w-doc { width: 28%; }
   .rep-tabla .w-fv { width: 26%; }
   .rep-tabla .w-dias { width: 18%; }
@@ -573,16 +573,16 @@ input[type=date]::-webkit-date-and-time-value { text-align: left; }
   .rep-tabla .w-doc { width: 13%; } .rep-tabla .w-ff { width: 13%; } .rep-tabla .w-fv { width: 14%; } .rep-tabla .w-dias { width: 9%; }
   .rep-tabla .w-monto { width: 19%; } .rep-tabla .w-saldo { width: 19%; } .rep-tabla .w-mon { width: 13%; }
 }
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
   .rep-tabla .w-doc { width: 22%; } .rep-tabla .w-fv { width: 20%; } .rep-tabla .w-dias { width: 14%; }
   .rep-tabla .w-monto { width: 22%; } .rep-tabla .w-saldo { width: 22%; }
   .rep-tabla tbody td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 3px; }
 }
-@media (max-width: 370px) {
+@media screen and (max-width: 370px) {
   .rep-tabla .w-doc { width: 27%; } .rep-tabla .w-fv { width: 25%; } .rep-tabla .w-dias { width: 18%; } .rep-tabla .w-saldo { width: 30%; }
 }
 .rep-tabla tbody td.num.c-monto, .rep-tabla tbody td.num.c-monto ~ td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 26px; }
-@media (max-width: 760px) { .rep-tabla tbody td.num.c-monto, .rep-tabla tbody td.num.c-monto ~ td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 3px; } }
+@media screen and (max-width: 760px) { .rep-tabla tbody td.num.c-monto, .rep-tabla tbody td.num.c-monto ~ td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 3px; } }
 
 /* Sin columna Monto: el saldo ya incluye abonos y notas de crédito */
 .rep-tabla .w-doc { width: 16%; }
@@ -596,15 +596,15 @@ input[type=date]::-webkit-date-and-time-value { text-align: left; }
   .rep-tabla .w-doc { width: 16%; } .rep-tabla .w-ff { width: 16%; } .rep-tabla .w-fv { width: 17%; } .rep-tabla .w-dias { width: 11%; }
   .rep-tabla .w-saldo { width: 24%; } .rep-tabla .w-mon { width: 16%; }
 }
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
   .rep-tabla .w-doc { width: 27%; } .rep-tabla .w-fv { width: 25%; } .rep-tabla .w-dias { width: 18%; } .rep-tabla .w-saldo { width: 30%; }
   .rep-tabla tbody td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 3px; }
 }
 .rep-tabla td.c-mon { text-align: center; padding-left: 0; }
 .rep-tabla tbody td:nth-child(7) { text-align: inherit; }
 .rep-tabla tbody td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 44px; }
-@media (max-width: 760px) { .rep-tabla tbody td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 6px; } }
-@media (max-width: 760px) { .rep-tabla tbody td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 16px; } }
+@media screen and (max-width: 760px) { .rep-tabla tbody td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 6px; } }
+@media screen and (max-width: 760px) { .rep-tabla tbody td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 16px; } }
 
 /* Totales junto al saldo y un poco más grandes */
 .rep-tot-junto { position: relative; }
@@ -615,8 +615,22 @@ input[type=date]::-webkit-date-and-time-value { text-align: left; }
   .rep-tabla tfoot td { font-size: 14px; }
   .rep-tabla-total td { font-size: 15.5px; }
 }
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
   .rep-tabla tfoot td { font-size: 12.5px; }
   .rep-tabla-total td { font-size: 13.5px; }
 }
-@media (max-width: 760px) { .rep-tot-junto > span { white-space: normal; width: 62vw; line-height: 1.2; } }
+@media screen and (max-width: 760px) { .rep-tot-junto > span { white-space: normal; width: 62vw; line-height: 1.2; } }
+
+/* Reporte por proveedor: las sociedades siguen en la misma hoja */
+@media print { .reporte-hojas.seguido .reporte { break-after: auto; margin-bottom: 18px; } }
+.reporte-hojas.seguido .reporte + .reporte { margin-top: 0; }
+.rep-prov-buscar { display: flex; gap: 6px; align-items: center; }
+.rep-prov-buscar input { flex: 1 1 auto; min-width: 0; }
+.rep-prov-buscar .btn-limpiar { border: 1px solid var(--borde-fuerte); background: var(--superficie); border-radius: 8px; min-width: 38px; min-height: 38px; font-size: 18px; cursor: pointer; color: var(--tenue); }
+.rep-cab-corta { border-bottom-width: 1px; padding-bottom: 6px; margin-bottom: 10px; }
+.rep-cab-corta .rep-soc { font-size: 19px; }
+@media print {
+  .reporte-hojas.seguido .reporte { break-inside: avoid; }
+  .rep-cab-corta { break-after: avoid; }
+  .rep-prov-nombre { break-after: avoid; }
+}
