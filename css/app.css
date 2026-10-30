@@ -555,3 +555,68 @@ input[type=date]::-webkit-date-and-time-value { text-align: left; }
   .rep-tabla-total td { font-size: 13.5px; }
   .rep-general { border: 2px solid #111; padding: 6px 8px 10px; break-inside: avoid; }
 }
+
+/* Reporte compacto para hoja carta: encabezados centrados y columnas más angostas */
+.rep-tabla th { text-align: center; vertical-align: bottom; line-height: 1.25; }
+.rep-tabla th.num { text-align: center; }
+.rep-tabla td.w-doc, .rep-tabla tbody td:nth-child(1), .rep-tabla tbody td:nth-child(2), .rep-tabla tbody td:nth-child(3), .rep-tabla tbody td:nth-child(4), .rep-tabla tbody td:nth-child(7) { text-align: center; }
+.rep-tabla tbody td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 14px; }
+.rep-tabla tfoot td.rep-tot-lbl, .rep-tabla-total td.rep-tot-lbl { text-align: left; }
+.rep-tabla .w-doc { width: 13%; }
+.rep-tabla .w-ff { width: 13%; }
+.rep-tabla .w-fv { width: 14%; }
+.rep-tabla .w-dias { width: 9%; }
+.rep-tabla .w-monto { width: 19%; }
+.rep-tabla .w-saldo { width: 19%; }
+.rep-tabla .w-mon { width: 13%; padding-left: 6px; }
+@media print {
+  .rep-tabla .w-doc { width: 13%; } .rep-tabla .w-ff { width: 13%; } .rep-tabla .w-fv { width: 14%; } .rep-tabla .w-dias { width: 9%; }
+  .rep-tabla .w-monto { width: 19%; } .rep-tabla .w-saldo { width: 19%; } .rep-tabla .w-mon { width: 13%; }
+}
+@media (max-width: 760px) {
+  .rep-tabla .w-doc { width: 22%; } .rep-tabla .w-fv { width: 20%; } .rep-tabla .w-dias { width: 14%; }
+  .rep-tabla .w-monto { width: 22%; } .rep-tabla .w-saldo { width: 22%; }
+  .rep-tabla tbody td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 3px; }
+}
+@media (max-width: 370px) {
+  .rep-tabla .w-doc { width: 27%; } .rep-tabla .w-fv { width: 25%; } .rep-tabla .w-dias { width: 18%; } .rep-tabla .w-saldo { width: 30%; }
+}
+.rep-tabla tbody td.num.c-monto, .rep-tabla tbody td.num.c-monto ~ td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 26px; }
+@media (max-width: 760px) { .rep-tabla tbody td.num.c-monto, .rep-tabla tbody td.num.c-monto ~ td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 3px; } }
+
+/* Sin columna Monto: el saldo ya incluye abonos y notas de crédito */
+.rep-tabla .w-doc { width: 16%; }
+.rep-tabla .w-ff { width: 16%; }
+.rep-tabla .w-fv { width: 17%; }
+.rep-tabla .w-dias { width: 11%; }
+.rep-tabla .w-saldo { width: 24%; }
+.rep-tabla .w-mon { width: 16%; }
+.rep-tabla tbody td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 34px; }
+@media print {
+  .rep-tabla .w-doc { width: 16%; } .rep-tabla .w-ff { width: 16%; } .rep-tabla .w-fv { width: 17%; } .rep-tabla .w-dias { width: 11%; }
+  .rep-tabla .w-saldo { width: 24%; } .rep-tabla .w-mon { width: 16%; }
+}
+@media (max-width: 760px) {
+  .rep-tabla .w-doc { width: 27%; } .rep-tabla .w-fv { width: 25%; } .rep-tabla .w-dias { width: 18%; } .rep-tabla .w-saldo { width: 30%; }
+  .rep-tabla tbody td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 3px; }
+}
+.rep-tabla td.c-mon { text-align: center; padding-left: 0; }
+.rep-tabla tbody td:nth-child(7) { text-align: inherit; }
+.rep-tabla tbody td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 44px; }
+@media (max-width: 760px) { .rep-tabla tbody td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 6px; } }
+@media (max-width: 760px) { .rep-tabla tbody td.num, .rep-tabla tfoot td.num, .rep-tabla-total td.num { padding-right: 16px; } }
+
+/* Totales junto al saldo y un poco más grandes */
+.rep-tot-junto { position: relative; }
+.rep-tot-junto > span { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); white-space: nowrap; text-align: right; }
+.rep-tabla tfoot td { font-size: 14.5px; font-weight: 800; padding-top: 6px; padding-bottom: 6px; }
+.rep-tabla-total td { font-size: 16px; }
+@media print {
+  .rep-tabla tfoot td { font-size: 14px; }
+  .rep-tabla-total td { font-size: 15.5px; }
+}
+@media (max-width: 760px) {
+  .rep-tabla tfoot td { font-size: 12.5px; }
+  .rep-tabla-total td { font-size: 13.5px; }
+}
+@media (max-width: 760px) { .rep-tot-junto > span { white-space: normal; width: 62vw; line-height: 1.2; } }

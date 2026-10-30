@@ -21,7 +21,7 @@ const ui = {
   fact: { soc: '', mon: '', est: 'saldo', q: '', limite: 150 },
   canc: { soc: '', mon: '', q: '', limite: 100 },
   prov: { q: '', filtro: '', abierto: null },
-  rep: { soc: '', mon: 'CRC', desde: '', hasta: '' },
+  rep: { soc: '', prov: '', mon: 'CRC', desde: '', hasta: '' },
 };
 
 // ---------------------------------------------------------------- Navegación
@@ -1074,7 +1074,7 @@ function nombreLegalSociedad(clave) {
 function datosReporte() {
   const R = ui.rep;
   const socs = R.soc ? [R.soc] : Object.keys(S.sociedades());
-  const lista = S.conSaldo().filter((f) => f.moneda === R.mon && socs.includes(f.sociedad)
+  const lista = S.conSaldo().filter((f) => f.moneda === R.mon && socs.includes(f.sociedad) && (!R.prov || f.codigo === R.prov)
     && (!R.desde || (f.fechaVence || '') >= R.desde) && (!R.hasta || (f.fechaVence || '') <= R.hasta));
   return socs.map((soc) => {
     const facts = lista.filter((f) => f.sociedad === soc);
@@ -1102,6 +1102,14 @@ function celdaDias(f) {
   return d < 0 ? `<span class="d-venc">−${fmtNum(-d).replace(/,00$/, '')}</span>` : `<span class="d-porv">+${fmtNum(d).replace(/,00$/, '')}</span>`;
 }
 
+/** Proveedores con saldo en la moneda (y sociedad) elegidas, para el filtro. */
+function proveedoresReporte() {
+  const R = ui.rep;
+  const cods = new Set(S.conSaldo().filter((f) => f.moneda === R.mon && (!R.soc || f.sociedad === R.soc)).map((f) => f.codigo));
+  if (R.prov) cods.add(R.prov);
+  return [...cods].map((c) => S.proveedor(c)).sort((a, b) => a.nombre.localeCompare(b.nombre));
+}
+
 function textoRango() {
   const R = ui.rep;
   if (R.desde && R.hasta) return `Facturas con vencimiento del ${fmtFecha(R.desde)} al ${fmtFecha(R.hasta)}`;
@@ -1126,6 +1134,7 @@ function vistaReportes() {
   <section class="filtros no-imprimir">
     <div class="form-grid rep-filtros">
       <label>Sociedad <select data-in="r-soc"><option value="">Todas las sociedades</option>${socs.map((x) => `<option value="${esc(x)}" ${R.soc === x ? 'selected' : ''}>${esc(S.nombreSociedad(x))}</option>`).join('')}</select></label>
+      <label>Proveedor <select data-in="r-prov"><option value="">Todos los proveedores</option>${proveedoresReporte().map((p) => `<option value="${esc(p.codigo)}" ${R.prov === p.codigo ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select></label>
       <div><span class="lbl">Moneda</span><div class="chips">
         <button class="chip ${R.mon === 'CRC' ? 'on' : ''}" data-act="r-mon" data-v="CRC">Colones</button>
         <button class="chip ${R.mon === 'USD' ? 'on' : ''}" data-act="r-mon" data-v="USD">Dólares</button></div></div>
@@ -1149,15 +1158,15 @@ function vistaReportes() {
       <section class="rep-prov">
         <h3 class="rep-prov-nombre">${esc(x.prov.nombre)}</h3>
         <table class="rep-tabla">
-          <thead><tr><th class="w-doc">N°<span class="larga"> Factura</span></th><th class="c-ff w-ff">Fecha de factura</th><th class="w-fv"><span class="larga">Fecha de vencimiento</span><span class="corta">Vence</span></th><th class="num w-dias">Días</th><th class="num c-monto w-monto">Monto</th><th class="num w-saldo">Saldo</th><th class="c-mon w-mon">Moneda</th></tr></thead>
+          <thead><tr><th class="w-doc">N°<span class="larga"> Factura</span></th><th class="c-ff w-ff">Fecha de<br>factura</th><th class="w-fv"><span class="larga">Fecha de<br>vencimiento</span><span class="corta">Vence</span></th><th class="num w-dias">Días</th><th class="num w-saldo">Saldo</th><th class="c-mon w-mon">Moneda</th></tr></thead>
           <tbody>${x.facturas.map((f) => `<tr><td>${esc(f.documento)}</td><td class="c-ff">${fmtFecha(f.fechaFactura)}</td><td><span class="larga">${fmtFecha(f.fechaVence)}</span><span class="corta">${fmtFecha(f.fechaVence).replace(/\/20(\d\d)$/, '/$1')}</span></td><td class="num">${celdaDias(f)}</td>
-            <td class="num c-monto">${fmtNum(f.monto)}</td><td class="num">${fmtNum(S.saldo(f))}</td><td class="c-mon">${mon.nombre}</td></tr>`).join('')}</tbody>
-          <tfoot><tr class="rep-tot-num"><td class="rep-tot-lbl">Total · ${x.facturas.length} ${x.facturas.length === 1 ? 'factura' : 'facturas'}</td><td class="c-ff"></td><td></td><td></td><td class="num c-monto">${fmtNum(x.monto)}</td><td class="num">${fmtNum(x.saldo)}</td><td class="c-mon"></td></tr></tfoot>
+            <td class="num">${fmtNum(S.saldo(f))}</td><td class="c-mon">${mon.nombre}</td></tr>`).join('')}</tbody>
+          <tfoot><tr class="rep-tot-num"><td></td><td class="c-ff"></td><td></td><td class="rep-tot-junto"><span>Total Cliente · ${x.facturas.length} ${x.facturas.length === 1 ? 'factura' : 'facturas'}</span></td><td class="num">${fmtNum(x.saldo)}</td><td class="c-mon"></td></tr></tfoot>
         </table>
       </section>`).join('')}
-      <table class="rep-tabla rep-tabla-total rep-total-soc"><tbody><tr><td class="w-doc rep-tot-lbl">Total ${esc(S.nombreSociedad(g.soc))} · ${g.cantidad} ${g.cantidad === 1 ? 'factura' : 'facturas'}</td><td class="c-ff w-ff"></td><td class="w-fv"></td><td class="w-dias"></td><td class="num c-monto w-monto">${fmtNum(g.monto)}</td><td class="num w-saldo">${fmtNum(g.saldo)}</td><td class="c-mon w-mon"></td></tr></tbody></table>
+      <table class="rep-tabla rep-tabla-total rep-total-soc"><tbody><tr><td class="w-doc"></td><td class="c-ff w-ff"></td><td class="w-fv"></td><td class="w-dias rep-tot-junto"><span>Total ${esc(S.nombreSociedad(g.soc))} · ${g.cantidad} ${g.cantidad === 1 ? 'factura' : 'facturas'}</span></td><td class="num w-saldo">${fmtNum(g.saldo)}</td><td class="c-mon w-mon"></td></tr></tbody></table>
     </article>`).join('')}</div>
-  ${!R.soc && grupos.filter((g) => g.cantidad).length > 1 ? `<div class="reporte rep-general"><table class="rep-tabla rep-tabla-total rep-total-soc"><tbody><tr><td class="w-doc rep-tot-lbl">Total todas las sociedades · ${total.n} facturas</td><td class="c-ff w-ff"></td><td class="w-fv"></td><td class="w-dias"></td><td class="num c-monto w-monto">${fmtNum(total.monto)}</td><td class="num w-saldo">${fmtNum(total.saldo)}</td><td class="c-mon w-mon"></td></tr></tbody></table></div>` : ''}`;
+  ${!R.soc && grupos.filter((g) => g.cantidad).length > 1 ? `<div class="reporte rep-general"><table class="rep-tabla rep-tabla-total rep-total-soc"><tbody><tr><td class="w-doc"></td><td class="c-ff w-ff"></td><td class="w-fv"></td><td class="w-dias rep-tot-junto"><span>Total todas las sociedades · ${total.n} facturas</span></td><td class="num w-saldo">${fmtNum(total.saldo)}</td><td class="c-mon w-mon"></td></tr></tbody></table></div>` : ''}`;
 }
 
 function excelReporte() {
@@ -1168,19 +1177,31 @@ function excelReporte() {
     filas.push([nombreLegalSociedad(g.soc)], ['Reporte de Cuentas por Pagar'], [`${textoRango()} · ${MONEDAS[R.mon].nombre}`], [`Emitido: ${fmtFecha(hoy)}`], []);
     for (const x of g.proveedores) {
       filas.push([x.prov.nombre]);
-      filas.push(['N° Factura', 'Fecha de factura', 'Fecha de vencimiento', 'Días (− vencida / + por vencer)', 'Monto', 'Saldo', 'Moneda']);
-      for (const f of x.facturas) filas.push([String(f.documento), fmtFecha(f.fechaFactura), fmtFecha(f.fechaVence), diasReporte(f) ?? '', f.monto, round2(S.saldo(f)), MONEDAS[R.mon].nombre]);
-      filas.push(['Total ' + x.prov.nombre, '', '', '', x.monto, x.saldo, '']);
+      filas.push(['N° Factura', 'Fecha de factura', 'Fecha de vencimiento', 'Días (− vencida / + por vencer)', 'Saldo', 'Moneda']);
+      for (const f of x.facturas) filas.push([String(f.documento), fmtFecha(f.fechaFactura), fmtFecha(f.fechaVence), diasReporte(f) ?? '', round2(S.saldo(f)), MONEDAS[R.mon].nombre]);
+      filas.push(['', '', '', `Total Cliente · ${x.facturas.length} ${x.facturas.length === 1 ? 'factura' : 'facturas'}`, x.saldo, '']);
       filas.push([]);
     }
-    filas.push([`Total ${S.nombreSociedad(g.soc)}`, '', '', '', g.monto, g.saldo, ''], [], []);
+    filas.push(['', '', '', `Total ${S.nombreSociedad(g.soc)} · ${g.cantidad} ${g.cantidad === 1 ? 'factura' : 'facturas'}`, g.saldo, ''], [], []);
+  }
+  const conDatos = datosReporte().filter((x) => x.cantidad);
+  if (!R.soc && conDatos.length > 1) {
+    filas.push(['', '', '', `Total todas las sociedades · ${conDatos.reduce((t, g) => t + g.cantidad, 0)} facturas`, round2(conDatos.reduce((t, g) => t + g.saldo, 0)), '']);
   }
   const XLSX = window.XLSX;
   const ws = XLSX.utils.aoa_to_sheet(filas);
-  ws['!cols'] = [{ wch: 44 }, { wch: 16 }, { wch: 20 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 10 }];
+  ws['!cols'] = [{ wch: 44 }, { wch: 16 }, { wch: 20 }, { wch: 34 }, { wch: 18 }, { wch: 10 }];
+  // Formato: montos con miles y céntimos; días con signo (+ por vencer, − vencida)
+  const rango = XLSX.utils.decode_range(ws['!ref']);
+  for (let r = rango.s.r; r <= rango.e.r; r++) {
+    for (const c of [3, 4]) {
+      const celda = ws[XLSX.utils.encode_cell({ r, c })];
+      if (celda && celda.t === 'n') celda.z = c === 3 ? '+0;-0;"Hoy"' : '#,##0.00';
+    }
+  }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Reporte');
-  const soc = R.soc ? S.nombreSociedad(R.soc).replace(/[^A-Za-z0-9]+/g, '') : 'Todas';
+  const soc = (R.soc ? S.nombreSociedad(R.soc).replace(/[^A-Za-z0-9]+/g, '') : 'Todas') + (R.prov ? '_' + S.proveedor(R.prov).nombre.replace(/[^A-Za-z0-9]+/g, '').slice(0, 30) : '');
   const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
   descargar(`Reporte_CxP_${soc}_${R.mon}_${hoy}.xlsx`, new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
 }
@@ -1510,6 +1531,7 @@ document.addEventListener('change', async (e) => {
   if (!k) return;
   if (k === 'fm-tipo') { actualizarRestoMov(); return; }
   if (k === 'r-soc') { ui.rep.soc = el.value; render(); return; }
+  if (k === 'r-prov') { ui.rep.prov = el.value; render(); return; }
   if (k === 'r-desde') { ui.rep.desde = el.value; render(); return; }
   if (k === 'r-hasta') { ui.rep.hasta = el.value; render(); return; }
   if (k === 'p-sel') {

@@ -12,6 +12,9 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.15.5 | Reporte: «Total Cliente · N facturas» junto al saldo de cada proveedor; total de la sociedad y general también junto al saldo; totales un poco más grandes. Igual en el Excel. |
+| 1.15.4 | Reporte solo con Saldo (sin Monto), porque ya descuenta abonos y notas de crédito; también en PDF y Excel. Columna Moneda centrada. |
+| 1.15.3 | Reportes: filtro por proveedor (en una sociedad o en todas); encabezados centrados, fechas en dos líneas y columnas más compactas para hoja carta; Excel con formato de miles y céntimos, días con signo y total de todas las sociedades. |
 | 1.15.2 | Reporte bien alineado: todas las tablas de proveedores usan los mismos anchos de columna, y el total de la sociedad (y el general) va como fila alineada bajo Monto y Saldo. |
 | 1.15.1 | Reportes: columna «Días» respecto a hoy, en rojo y negativo si está vencida y en verde y positivo si falta para vencer («Hoy» si vence hoy), con leyenda; también en el Excel como número. En el celular la tabla cabe sin deslizar (fecha corta; en pantallas muy angostas se oculta Monto y queda Saldo). |
 | 1.15.0 | Menú «Reportes»: cuentas por pagar con saldo por sociedad (o todas) y por moneda, filtradas por fecha de vencimiento (desde–hasta y atajos), agrupadas por proveedor con subtotales; encabezado con la sociedad, «Reporte de Cuentas por Pagar», rango y fecha de emisión; imprimir o guardar PDF (una hoja por sociedad) y Excel. En «Registrar abono o nota de crédito» se ve en vivo cuánto saldo queda. Los montos se seleccionan completos al tocarlos y completan los céntimos al salir. |
