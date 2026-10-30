@@ -450,3 +450,108 @@ input[type=date]::-webkit-date-and-time-value { text-align: left; }
 
 .acciones-rev { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .fila-fact.programada .apagar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* ---------------------------------------------------------------- Reportes */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.lbl { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.rep-presets .lbl { display: inline; margin: 0 4px 0 0; color: var(--tenue); font-weight: 500; }
+.rep-filtros { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); align-items: end; }
+.reporte { background: #fff; color: #111; border: 1px solid var(--borde); border-radius: var(--radio); padding: 28px 30px; margin-bottom: 18px; }
+.rep-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 2px solid #111; padding-bottom: 12px; margin-bottom: 16px; }
+.rep-soc { font-size: 24px; font-weight: 800; margin: 0; letter-spacing: .2px; text-transform: uppercase; }
+.rep-titulo { font-size: 16px; font-weight: 600; margin: 4px 0 2px; }
+.rep-rango { font-size: 14px; color: #444; margin: 0; }
+.rep-emitido { text-align: right; font-size: 12.5px; color: #444; white-space: nowrap; }
+.rep-emitido strong { font-size: 14px; color: #111; }
+.rep-prov { margin-bottom: 16px; break-inside: avoid; }
+.rep-prov-nombre { font-size: 15px; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; margin: 0 0 6px; }
+.rep-tabla { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.rep-tabla th { text-align: left; font-weight: 600; font-size: 12px; color: #444; border-bottom: 1px solid #999; padding: 4px 6px; }
+.rep-tabla td { padding: 4px 6px; border-bottom: 1px solid #e3e3e3; }
+.rep-tabla .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rep-tabla tfoot td { font-weight: 700; border-top: 1px solid #111; border-bottom: 0; }
+.rep-venc { font-size: 11px; color: #B42318; font-weight: 600; }
+.rep-total { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 18px; border-top: 2px solid #111; padding-top: 10px; font-size: 15px; }
+.rep-total-general { background: #fff; border: 2px solid #111; border-radius: var(--radio); padding: 14px 18px; }
+@media (max-width: 760px) {
+  .reporte { padding: 16px 14px; }
+  .rep-soc { font-size: 19px; }
+  .rep-cab { flex-direction: column; }
+  .rep-emitido { text-align: left; }
+  .rep-tabla { font-size: 12.5px; }
+  .rep-tabla .c-ff, .rep-tabla .c-mon { display: none; }
+  .rep-tabla { font-size: 11.5px; }
+  .d-venc, .d-porv, .d-hoy { min-width: 0; padding: 1px 6px; font-size: 11.5px; }
+  .rep-tabla th, .rep-tabla td { padding: 4px 3px; }
+}
+@media print {
+  @page { size: letter; margin: 14mm; }
+  body { background: #fff !important; }
+  .cabecera, .pie, .no-imprimir, .aviso-version, .toast, #avisos, dialog { display: none !important; }
+  .contenido { padding: 0 !important; max-width: none !important; }
+  .reporte { border: 0; border-radius: 0; padding: 0; margin: 0; break-after: page; }
+  .reporte:last-child { break-after: auto; }
+  .rep-tabla .c-ff, .rep-tabla .c-mon { display: table-cell; }
+  .rep-tabla { font-size: 13px; }
+  .reporte { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .rep-total-general { break-inside: avoid; }
+}
+
+.d-venc, .d-porv, .d-hoy { display: inline-block; min-width: 46px; text-align: center; font-weight: 700; border-radius: 999px; padding: 1px 8px; font-size: 12.5px; }
+.d-venc { color: #B42318; background: #FDECEA; }
+.d-porv { color: #17643A; background: #E8F5EE; }
+.d-hoy { color: #8A4B00; background: #FFF4E5; }
+.rep-leyenda { font-size: 11.5px; color: #555; margin: 6px 0 0; }
+.rep-leyenda .d-venc, .rep-leyenda .d-porv { min-width: 0; padding: 0 6px; font-size: 11px; }
+.rep-tot-lbl { white-space: nowrap; }
+@media (max-width: 760px) {
+  .reporte { padding: 14px 10px; }
+  .rep-tabla th, .rep-tabla td { padding: 4px 2px; }
+  .rep-tabla th { font-size: 11px; }
+}
+.rep-tabla .corta { display: none; }
+@media (max-width: 760px) {
+  .rep-tabla .larga { display: none; }
+  .rep-tabla .corta { display: inline; }
+  .rep-tabla td { font-size: 11px; }
+  .rep-tabla td.num { letter-spacing: -0.2px; }
+}
+@media print { .rep-tabla .larga { display: inline; } .rep-tabla .corta { display: none; } }
+@media (max-width: 370px) { .rep-tabla .c-monto { display: none; } }
+@media print { .rep-tabla .c-monto { display: table-cell; } }
+
+/* Columnas con el mismo ancho en todas las tablas del reporte (quedan alineadas) */
+.rep-tabla { table-layout: fixed; }
+.rep-tabla .w-doc { width: 13%; }
+.rep-tabla .w-ff { width: 15%; }
+.rep-tabla .w-fv { width: 19%; }
+.rep-tabla .w-dias { width: 9%; }
+.rep-tabla .w-monto { width: 16%; }
+.rep-tabla .w-saldo { width: 16%; }
+.rep-tabla .w-mon { width: 12%; padding-left: 12px; }
+.rep-tabla td { overflow: visible; }
+.rep-tot-lbl { white-space: nowrap; }
+.rep-tabla-total { margin-top: 6px; border-top: 2px solid #111; }
+.rep-tabla-total td { border-bottom: 0; padding-top: 10px; font-size: 14.5px; font-weight: 800; }
+.rep-general { padding-top: 8px; padding-bottom: 14px; border: 2px solid #111; }
+.rep-general .rep-tabla-total { border-top: 0; margin-top: 0; }
+@media (max-width: 760px) {
+  .rep-tabla .w-doc { width: 24%; }
+  .rep-tabla .w-fv { width: 22%; }
+  .rep-tabla .w-dias { width: 14%; }
+  .rep-tabla .w-monto { width: 20%; }
+  .rep-tabla .w-saldo { width: 20%; }
+  .rep-tabla-total td { font-size: 12px; }
+}
+@media (max-width: 370px) {
+  .rep-tabla .w-doc { width: 28%; }
+  .rep-tabla .w-fv { width: 26%; }
+  .rep-tabla .w-dias { width: 18%; }
+  .rep-tabla .w-saldo { width: 28%; }
+}
+@media print {
+  .rep-tabla .w-doc { width: 13%; } .rep-tabla .w-ff { width: 15%; } .rep-tabla .w-fv { width: 19%; } .rep-tabla .w-dias { width: 9%; }
+  .rep-tabla .w-monto { width: 16%; } .rep-tabla .w-saldo { width: 16%; } .rep-tabla .w-mon { width: 12%; }
+  .rep-tabla-total td { font-size: 13.5px; }
+  .rep-general { border: 2px solid #111; padding: 6px 8px 10px; break-inside: avoid; }
+}
