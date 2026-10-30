@@ -17,6 +17,28 @@ export function fmtNum(n) {
   return nf.format(round2(n)).replace(/\s/g, '.').replace(/ /g, '.');
 }
 
+/**
+ * Monto escrito en un campo de la aplicación: puntos de miles y coma para céntimos ("1.000.000,50").
+ * A diferencia de parseNum, "1.000" es mil (no 1).
+ */
+export function parseMonto(texto) {
+  if (typeof texto === 'number') return texto;
+  const s = String(texto ?? '').replace(/[^\d,]/g, '').replace(',', '.').replace(/,/g, '');
+  return s && s !== '.' ? Number(s) : NaN;
+}
+
+/** Da formato mientras se escribe: "1000000,5" → "1.000.000,5" (máximo 2 céntimos). */
+export function formatearMontoEscrito(texto) {
+  let s = String(texto ?? '').replace(/[^\d,]/g, '');
+  const i = s.indexOf(',');
+  let ent = i < 0 ? s : s.slice(0, i);
+  const dec = i < 0 ? null : s.slice(i + 1).replace(/,/g, '').slice(0, 2);
+  ent = ent.replace(/^0+(?=\d)/, '');
+  if (dec !== null && !ent) ent = '0';
+  ent = ent.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return dec === null ? ent : ent + ',' + dec;
+}
+
 /** Lee un número escrito por una persona: "1.234,56", "1234.56", "1,234.56", "$ 500" */
 export function parseNum(texto) {
   if (typeof texto === 'number') return texto;

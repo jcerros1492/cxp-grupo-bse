@@ -133,16 +133,21 @@ export function loteDirecto(f, monto, fecha, descripcion) {
 }
 
 export function pagarAutorizadoNorman(f, { monto, fecha, comprobante, nota, descripcion }) {
+  return pagoDirecto(f, { monto, fecha, comprobante, descripcion, notaProg: NOTA_NORMAN + (nota ? ' · ' + String(nota).trim() : '') });
+}
+
+/** Programa y aplica en un solo paso el pago (o abono) de una factura. */
+function pagoDirecto(f, { monto, fecha, comprobante, descripcion, notaProg }) {
   monto = round2(monto);
   const ya = programacionDe(f);
-  if (ya) return { error: `Esta factura ya está programada por ${ya.por}. Aplíquela en «Por aplicar».` };
+  if (ya) return { error: `Esta factura ya está programada por ${ya.por}. Aplíquela o devuélvala en «Por aplicar» primero.` };
   if (!(monto > 0)) return { error: 'Monto inválido' };
   if (monto > saldo(f) + 0.004) return { error: 'El monto es mayor que el saldo' };
   if (!fecha) return { error: 'Falta la fecha de pago' };
   if (!String(comprobante || '').trim()) return { error: 'Falta el número de comprobante' };
   const progId = Sync.nuevoId();
   const r1 = Sync.ejecutar({
-    tipo: 'programar', fechaPago: fecha, nota: NOTA_NORMAN + (nota ? ' · ' + String(nota).trim() : ''),
+    tipo: 'programar', fechaPago: fecha, nota: notaProg,
     items: [{ progId, facturaId: f.id, monto }],
   });
   if (r1.error) return r1;
@@ -184,7 +189,22 @@ export function problemasLote(lote) {
 // ---------------------------------------------------------------- Facturas y catálogos
 
 export const nuevaFactura = (campos) => Sync.ejecutar({ tipo: 'nuevaFactura', factura: { id: Sync.nuevoId(), ...campos } });
-export const registrarMovimiento = (facturaId, m) => Sync.ejecutar({ tipo: 'movimiento', movId: Sync.nuevoId(), facturaId, ...m });
+/**
+ * Abono o nota de crédito registrado desde la ventana de la factura.
+ * El script publicado no acepta la operación "movimiento" (su tipo se confunde con el del abono),
+ * así que se registra como un pago de una sola factura programado y aplicado a la vez.
+ */
+export const NOTA_NC = 'Nota de crédito';
+export const NOTA_MANUAL = 'Registrado en la factura';
+export function registrarMovimiento(facturaId, m) {
+  const f = factura(facturaId);
+  if (!f) return { error: 'La factura no existe' };
+  const nc = m.tipo === 'nc';
+  return pagoDirecto(f, {
+    monto: m.monto, fecha: m.fecha, comprobante: m.comprobante, notaProg: nc ? NOTA_NC : NOTA_MANUAL,
+    descripcion: nc ? `Nota de credito ${m.comprobante || ''}` : undefined,
+  });
+}
 export const actualizarFactura = (id, cambios) => Sync.ejecutar({ tipo: 'editarFactura', id, cambios });
 export const guardarProveedor = (codigo, datosProv, nuevo) => Sync.ejecutar({ tipo: 'guardarProveedor', codigo, datos: datosProv, nuevo });
 export const guardarSociedad = (clave, d) => Sync.ejecutar({ tipo: 'guardarSociedad', clave, datos: d });

@@ -13,7 +13,7 @@ export const USUARIOS = [
 ];
 
 // Versión de la aplicación: se muestra abajo en cada pantalla para confirmar qué versión está publicada.
-export const VERSION = '1.13.1';
+export const VERSION = '1.13.3';
 
 // Cada cuántos segundos se buscan cambios de los demás mientras la página está abierta.
 export const SEGUNDOS_SINCRONIZAR = 20;

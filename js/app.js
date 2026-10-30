@@ -6,7 +6,7 @@ import { importarExcel } from './importer.js';
 import { CAMPOS as CAMPOS_IMP, leerFilas, filaEncabezado, sugerirMapeo, prepararFacturas, detectarGTI } from './importar-facturas.js';
 import { construirArchivo } from './banco.js';
 import {
-  money, fmtNum, parseNum, fechaHora, fmtFecha, hoyISO, esc, errorIBAN, fmtIBAN, sumarDias, round2, MONEDAS,
+  money, fmtNum, parseNum, parseMonto, formatearMontoEscrito, fechaHora, fmtFecha, hoyISO, esc, errorIBAN, fmtIBAN, sumarDias, round2, MONEDAS,
 } from './util.js';
 
 const $app = document.getElementById('app');
@@ -381,7 +381,7 @@ function filaProgramar(f) {
     <span class="venc">${f.fechaVence ? fmtFecha(f.fechaVence) : ''} ${etiquetaDias(f)}</span>
     <span class="saldo">${money(s, f.moneda)}</span>
     <span class="apagar">${sel ? `<label><span class="vh">Monto a pagar de la factura ${esc(f.documento)}</span>
-      <span class="input-moneda"><span>${MONEDAS[f.moneda].simbolo}</span><input type="text" inputmode="decimal" value="${esc(ui.prog.sel.get(f.id))}" data-in="p-monto" data-v="${f.id}"></span></label>
+      <span class="input-moneda"><span>${MONEDAS[f.moneda].simbolo}</span><input type="text" inputmode="decimal" data-monto value="${esc(ui.prog.sel.get(f.id))}" data-in="p-monto" data-v="${f.id}"></span></label>
       <span class="tipo-pago" id="tipo-${f.id}"></span>` : ''}</span>
   </div>`;
 }
@@ -396,7 +396,7 @@ function actualizarBarra() {
     const f = S.factura(id);
     if (!f) continue;
     n++;
-    const m = parseNum(txt), s = S.saldo(f);
+    const m = parseMonto(txt), s = S.saldo(f);
     const $tipo = document.getElementById('tipo-' + id);
     const $in = document.querySelector(`[data-in="p-monto"][data-v="${id}"]`);
     let tipo = '', malo = false;
@@ -496,7 +496,7 @@ function tarjetaLote(l) {
         <td class="facts">${ln.items.map(({ p, f }) => `<div>${esc(f.documento)}: ${money(p.monto, f.moneda)}${p.monto < S.saldo(f) - 0.004 ? ' <span class="tag-abono">abono</span>' : ''}
             <button class="btn-link" data-act="a-devolver" data-v="${p.id}" title="Devolver a Norman">devolver</button></div>`).join('')}</td>
         <td class="mono">${ln.iban ? `${fmtIBAN(ln.iban)} ${errorIBAN(ln.iban) ? '<span class="malo">inválido</span>' : ''}` : `<a href="#/proveedores" data-act="ir-prov" data-v="${esc(ln.codigo)}" class="malo">Agregar IBAN</a>`}</td>
-        <td class="num"><input class="mini" type="text" inputmode="decimal" value="${ln.extra ? fmtNum(ln.extra) : ''}" placeholder="0,00" data-in="a-extra" data-lote="${id}" data-v="${esc(ln.codigo)}" aria-label="Intereses u otros cargos para ${esc(ln.prov.nombre)}"></td>
+        <td class="num"><input class="mini" type="text" inputmode="decimal" data-monto value="${ln.extra ? fmtNum(ln.extra) : ''}" placeholder="0,00" data-in="a-extra" data-lote="${id}" data-v="${esc(ln.codigo)}" aria-label="Intereses u otros cargos para ${esc(ln.prov.nombre)}"></td>
         <td><input type="text" value="${esc(ln.descripcion)}" data-in="a-desc" data-lote="${id}" data-v="${esc(ln.codigo)}" aria-label="Descripción para ${esc(ln.prov.nombre)}"></td>
         <td class="num"><strong>${money(ln.total, l.moneda)}</strong></td></tr>`).join('')}</tbody>
     </table></div>
@@ -668,16 +668,17 @@ ${f.revision ? `        <p class="ancho aviso-pruebas">Norman pidió revisar est
           if (m.tipo !== 'cargo') acumulado = round2(acumulado - m.monto);
           const prog = m.loteId ? S.datos().programaciones[String(m.id).slice(String(m.loteId).length + 1)] : null;
           const tagNorman = S.esAutorizadoNorman(prog) ? ' <span class="tag-norman">Autorizado por Norman</span>' : '';
-          return `<tr><td>${fmtFecha(m.fecha) || '<span class="sub">sin fecha</span>'}</td><td>${tipos[m.tipo] || m.tipo}${tagNorman}</td><td>${esc(m.comprobante)}</td>
+          const tipoTxt = String(prog?.nota || '').startsWith(S.NOTA_NC) ? 'Nota de crédito' : (tipos[m.tipo] || m.tipo);
+          return `<tr><td>${fmtFecha(m.fecha) || '<span class="sub">sin fecha</span>'}</td><td>${tipoTxt}${tagNorman}</td><td>${esc(m.comprobante)}</td>
             <td class="num">${money(m.monto, f.moneda)}</td><td class="num">${m.tipo === 'cargo' ? '' : money(acumulado, f.moneda)}</td><td>${esc(m.por)}</td></tr>`;
         }).join('')}</tbody></table></div>` : '<p class="sub">Sin movimientos.</p>'}
       ${s > 0.004 ? `
       <h3>Registrar abono o nota de crédito</h3>
       <form class="form-grid" data-form="f-mov" data-v="${f.id}">
         <label>Tipo <select name="tipo"><option value="abono">Abono / pago</option><option value="nc">Nota de crédito</option></select></label>
-        <label>Monto <input type="text" name="monto" inputmode="decimal" value="${fmtNum(s)}"></label>
+        <label>Monto <input type="text" name="monto" inputmode="decimal" data-monto value="${fmtNum(s)}"></label>
         <label>Fecha <input type="date" name="fecha" value="${hoyISO()}"></label>
-        <label>N° comprobante o de nota <input type="text" name="comprobante"></label>
+        <label>N° comprobante o de nota <input type="text" name="comprobante" required autocomplete="off"></label>
         <div class="ancho"><button class="btn primario" type="submit">Registrar</button></div>
       </form>` : ''}
     </div>`);
@@ -703,8 +704,8 @@ function dialogoPagoNorman(id) {
   const lote = S.loteDirecto(f, s, hoyISO());
   abrirDialogo(`${cab}
     <form class="dlg-cuerpo form-grid" data-form="pago-norman" data-v="${f.id}">
-      <label>Monto a pagar <input type="text" name="monto" inputmode="decimal" value="${fmtNum(s)}" required>
-        <span class="ayuda">Si es menor que el saldo, queda como abono.</span></label>
+      <label>Monto a pagar <input type="text" name="monto" inputmode="decimal" data-monto value="${fmtNum(s)}" required data-in="pn-monto" data-v="${f.id}">
+        <span class="pn-resto" id="pn-resto">${textoResto(f, s)}</span></label>
       <label>Fecha de pago <input type="date" name="fecha" value="${hoyISO()}" required></label>
       <label class="ancho">Nota <span class="sub-inline">opcional</span> <input type="text" name="nota" placeholder="Ej. pagar hoy, abono acordado"></label>
       <div class="ancho pn-banco">
@@ -721,9 +722,18 @@ function dialogoPagoNorman(id) {
     </form>`);
 }
 
+/** Debajo del monto: si es abono, cuánto queda; si es el saldo completo, que queda cancelada. */
+function textoResto(f, monto) {
+  const s = S.saldo(f);
+  if (!(monto > 0)) return '<span class="pn-mal">Escriba el monto a pagar.</span>';
+  if (monto > s + 0.004) return `<span class="pn-mal">Es mayor que el saldo (${money(s, f.moneda)}).</span>`;
+  if (monto >= s - 0.004) return '<span class="pn-ok">Pago total: la factura queda cancelada.</span>';
+  return `<span class="pn-abono">Abono de ${money(monto, f.moneda)} · queda un saldo de <strong>${money(round2(s - monto), f.moneda)}</strong></span>`;
+}
+
 function valoresPagoNorman(form) {
   const d = Object.fromEntries(new FormData(form));
-  return { monto: parseNum(d.monto), fecha: d.fecha, nota: d.nota, comprobante: d.comprobante, descripcion: d.descripcion };
+  return { monto: parseMonto(d.monto), fecha: d.fecha, nota: d.nota, comprobante: d.comprobante, descripcion: d.descripcion };
 }
 
 function seccionAutorizados() {
@@ -892,7 +902,7 @@ function dialogoNuevaFactura() {
       <label>Fecha de factura <input type="date" name="fechaFactura" value="${hoyISO()}" required data-in="nf-fecha"></label>
       <label>Plazo (días) <input type="number" name="plazo" value="30" min="0" data-in="nf-plazo"></label>
       <label>Vencimiento <input type="date" name="fechaVence" value="${sumarDias(hoyISO(), 30)}" id="nf-vence"></label>
-      <label>Monto <input name="monto" inputmode="decimal" required></label>
+      <label>Monto <input type="text" name="monto" inputmode="decimal" data-monto required autocomplete="off"></label>
       <label class="ancho">Observaciones <input name="observaciones"></label>
       <div class="ancho"><button class="btn primario" type="submit">Guardar factura</button></div>
     </form>`);
@@ -1217,7 +1227,7 @@ const acciones = {
   'p-todas': (v) => { for (const id of v.split(',')) { const f = S.factura(id); if (!S.programacionDe(f) && !ui.prog.sel.has(id)) ui.prog.sel.set(id, fmtNum(S.saldo(f))); } render(); },
   'p-quitar': (v) => { if (confirm('¿Quitar este pago de lo programado?')) resultado(S.quitarProgramacion(v, 'Quitado por Norman'), 'Pago quitado'); },
   'p-enviar': () => {
-    const items = [...ui.prog.sel].map(([facturaId, txt]) => ({ facturaId, monto: parseNum(txt) }));
+    const items = [...ui.prog.sel].map(([facturaId, txt]) => ({ facturaId, monto: parseMonto(txt) }));
     const r = S.programarPagos(items, ui.prog.fecha);
     if (r.error) { avisar(r.error, 'error'); return; }
     ui.prog.sel.clear();
@@ -1279,11 +1289,26 @@ const acciones = {
 };
 
 let tBusqueda;
+/** Puntos de miles mientras se escribe, sin mover el cursor. Un "." tecleado se toma como coma de céntimos. */
+function formatearCampoMonto(el, e) {
+  let v = el.value, pos = el.selectionStart ?? v.length;
+  if (e.data === '.' && pos > 0 && v[pos - 1] === '.') v = v.slice(0, pos - 1) + ',' + v.slice(pos);
+  const antes = v.slice(0, pos).replace(/[^\d,]/g, '').length; // dígitos y coma antes del cursor
+  const nuevo = formatearMontoEscrito(v);
+  if (nuevo === el.value) return;
+  el.value = nuevo;
+  let i = 0, cuenta = 0;
+  while (i < nuevo.length && cuenta < antes) { if (/[\d,]/.test(nuevo[i])) cuenta++; i++; }
+  try { el.setSelectionRange(i, i); } catch { /* sin cursor */ }
+}
+
 document.addEventListener('input', (e) => {
   const el = e.target, k = el.dataset.in;
+  if (el.matches?.('[data-monto]')) formatearCampoMonto(el, e);
   if (!k) return;
   if (k === 'p-monto') { ui.prog.sel.set(el.dataset.v, el.value); actualizarBarra(); return; }
   if (k === 'iban') { validarCampoIBAN(el); return; }
+  if (k === 'pn-monto') { const r = document.getElementById('pn-resto'); if (r) r.innerHTML = textoResto(S.factura(el.dataset.v), parseMonto(el.value)); return; }
   if (k === 'nf-fecha' || k === 'nf-plazo') {
     const form = el.form;
     const ff = form.fechaFactura.value, pl = Number(form.plazo.value) || 0;
@@ -1326,7 +1351,7 @@ document.addEventListener('change', async (e) => {
   if (k === 'a-extra' || k === 'a-desc') {
     const clave = decodeURIComponent(el.dataset.lote);
     if (k === 'a-extra') {
-      const n = el.value.trim() ? parseNum(el.value) : 0;
+      const n = el.value.trim() ? parseMonto(el.value) : 0;
       if (!(n >= 0)) { avisar('Monto de intereses inválido', 'error'); return; }
       S.guardarBorrador(clave, el.dataset.v, { extra: round2(n), descripcion: undefined });
     } else S.guardarBorrador(clave, el.dataset.v, { descripcion: el.value });
@@ -1410,11 +1435,11 @@ document.addEventListener('submit', (e) => {
     const r = S.pagarAutorizadoNorman(f, valoresPagoNorman(form));
     if (resultado(r, `${r.tipo === 'abono' ? 'Abono' : 'Pago'} aplicado · Autorizado por Norman`)) { cerrarDialogo(); render(); }
   } else if (k === 'f-mov') {
-    if (resultado(S.registrarMovimiento(form.dataset.v, { tipo: d.tipo, monto: parseNum(d.monto), fecha: d.fecha, comprobante: d.comprobante }), 'Movimiento registrado')) dialogoFactura(form.dataset.v);
+    if (resultado(S.registrarMovimiento(form.dataset.v, { tipo: d.tipo, monto: parseMonto(d.monto), fecha: d.fecha, comprobante: d.comprobante }), 'Movimiento registrado')) dialogoFactura(form.dataset.v);
   } else if (k === 'f-crear') {
     const codigo = (d.proveedor.match(/·\s*(\S+)$/) || [])[1];
     if (!codigo || !S.datos().proveedores[codigo]) { avisar('Elija el proveedor de la lista (o créelo en Proveedores)', 'error'); return; }
-    const monto = parseNum(d.monto);
+    const monto = parseMonto(d.monto);
     if (!(monto > 0)) { avisar('Monto inválido', 'error'); return; }
     const r = S.nuevaFactura({ sociedad: d.sociedad, codigo, documento: d.documento.trim(), moneda: d.moneda, fechaFactura: d.fechaFactura, fechaVence: d.fechaVence || sumarDias(d.fechaFactura, 30), monto, observaciones: d.observaciones });
     if (resultado(r, 'Factura guardada')) cerrarDialogo();
