@@ -68,7 +68,7 @@ export function lotesPendientes() {
   const mapa = new Map();
   for (const p of programacionesPendientes()) {
     const f = factura(p.facturaId);
-    if (!f) continue;
+    if (!f || f.revision) continue; // en revisión: espera a que la marquen como revisada
     const clave = [f.sociedad, f.moneda, p.fechaPago].join('|');
     if (!mapa.has(clave)) mapa.set(clave, { clave, sociedad: f.sociedad, moneda: f.moneda, fecha: p.fechaPago, lineas: new Map() });
     const lote = mapa.get(clave);
@@ -200,6 +200,11 @@ export function registrarMovimiento(facturaId, m) {
   const f = factura(facturaId);
   if (!f) return { error: 'La factura no existe' };
   const nc = m.tipo === 'nc';
+  // Nota de crédito: movimiento propio de la factura (no pasa por el banco ni por Lotes).
+  if (nc) {
+    if (!String(m.comprobante || '').trim()) return { error: 'Falta el número de la nota de crédito' };
+    return Sync.ejecutar({ tipo: 'movimiento', tipoMov: 'nc', movId: Sync.nuevoId(), facturaId, monto: round2(m.monto), fecha: m.fecha, comprobante: String(m.comprobante).trim() });
+  }
   return pagoDirecto(f, {
     monto: m.monto, fecha: m.fecha, comprobante: m.comprobante, notaProg: nc ? NOTA_NC : NOTA_MANUAL,
     descripcion: nc ? `Nota de credito ${m.comprobante || ''}` : undefined,

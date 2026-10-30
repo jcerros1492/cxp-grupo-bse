@@ -447,3 +447,6 @@ pre.txt { font-family: var(--mono); font-size: 12px; background: var(--tinta); c
 /* iPhone: el campo de fecha no se sale del ancho */
 input[type=date] { min-width: 0; max-width: 100%; width: 100%; box-sizing: border-box; display: block; -webkit-appearance: none; appearance: none; }
 input[type=date]::-webkit-date-and-time-value { text-align: left; }
+
+.acciones-rev { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.fila-fact.programada .apagar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

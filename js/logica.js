@@ -244,6 +244,7 @@ var Logica = (function () {
 
     /** Abono, pago o nota de crédito manual: { movId, facturaId, tipo, monto, fecha, comprobante, nota } */
     movimiento: function (d, op, ctx, marcar) {
+      op = Object.assign({}, op, { tipo: op.tipoMov || op.tipo }); // tipo del movimiento: abono, pago o nc (1.14)
       var f = d.facturas[op.facturaId];
       var monto = round2(op.monto);
       if (!f) return { error: 'La factura no existe' };

@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.14.0 | Notas de crédito como movimiento propio de la factura (no pasan por Lotes ni Programaciones); requiere agregar una línea en Apps Script (ver abajo). «Programar pagos» solo para Norman. Revisión: Norman pide revisar con el monto y la fecha; el pago queda retenido en «Por aplicar» hasta que Jonathan, Fernando o Daniel lo marquen «Revisado» (pasa al lote para pagar) o lo devuelvan a Norman con el motivo. |
 | 1.13.3 | Puntos de miles mientras se escribe en todos los montos (Autorizado por Norman, Programar pagos, abono o nota de crédito en la factura, Nueva factura e intereses en Por aplicar); la coma es para céntimos y un punto tecleado se toma como coma. Corrección: «Registrar abono o nota de crédito» en la factura no se guardaba (el script rechazaba la operación); ahora se registra como un pago aplicado de esa factura, sin cambiar Apps Script, y el comprobante es obligatorio. |
 | 1.13.2 | En «Autorizado por Norman», debajo del monto se ve en vivo si es pago total o abono y cuánto saldo queda. El campo de fecha ya no se sale del ancho en iPhone. |
 | 1.13.1 | En el celular se ve la hora de sincronización («● Sincronizado 20:52») debajo del usuario. «GRUPO BSE» siempre en una línea; encabezado ajustado para teléfonos angostos. |
@@ -36,6 +37,18 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 | 1.0.0 | Primera versión: programar pagos, aplicar y archivo para el banco. |
 
 > Al publicar una versión, `VERSION` en `js/config.js` y `version.json` deben decir lo mismo: así las computadoras con la versión anterior ven el aviso para actualizar.
+
+## Cambio en Apps Script para la versión 1.14
+
+Para guardar las notas de crédito como movimiento propio, en el script de Google busque la línea
+
+    movimiento: function (d, op, ctx, marcar) {
+
+y agregue justo debajo:
+
+    op = Object.assign({}, op, { tipo: op.tipoMov || op.tipo }); // tipo del movimiento: abono, pago o nc (1.14)
+
+Guarde e implemente una versión nueva (**Implementar → Gestionar implementaciones → lápiz → Versión: Nueva versión**). La URL no cambia.
 
 ## Flujo de trabajo
 

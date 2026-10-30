@@ -81,7 +81,7 @@ const contexto = vm.createContext({
   Logger: { log: (m) => console.log('[Apps Script]', m) },
   console,
 });
-vm.runInContext(readFileSync(raiz + 'js/logica.js', 'utf8'), contexto, { filename: 'Logica.gs' });
+vm.runInContext(readFileSync(process.env.LOGICA_JS || raiz + 'js/logica.js', 'utf8'), contexto, { filename: 'Logica.gs' });
 const CLAVE_PRUEBA = 'Prueba-Servicio-2026';
 propiedades.CLAVE_SERVICIO = CLAVE_PRUEBA;
 vm.runInContext(readFileSync(process.env.CODIGO_GS || raiz + 'apps-script/Codigo.gs', 'utf8').replace("'ESCRIBA-AQUI-SU-CONTRASEÑA';", `'${CLAVE_PRUEBA}';`).replace('var MODO_PRUEBAS = true;', `var MODO_PRUEBAS = ${process.env.MODO_PRUEBAS === '1'};`), contexto, { filename: 'Codigo.gs' });

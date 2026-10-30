@@ -37,7 +37,7 @@ const RUTAS = {
 
 function menuPara(usuario) {
   if (usuario?.rol === 'aprueba') return ['tablero', 'programar', 'facturas', 'canceladas'];
-  return ['tablero', 'aplicar', 'programar', 'facturas', 'canceladas', 'proveedores', 'config'];
+  return ['tablero', 'aplicar', 'facturas', 'canceladas', 'proveedores', 'config']; // Programar pagos: solo Norman
 }
 
 function rutaActual() {
@@ -71,10 +71,11 @@ function indicadorConexion() {
 
 function render() {
   const u = S.usuarioActual();
-  const ruta = rutaActual();
+  let ruta = rutaActual();
+  if (S.usuarioActual() && !menuPara(S.usuarioActual()).includes(ruta) && ruta !== 'tablero') ruta = 'tablero';
   const foco = guardarFoco();
   $nav.innerHTML = u ? menuPara(u).map((r) => {
-    const n = r === 'aplicar' ? S.programacionesPendientes().length + porRevisar().length : 0;
+    const n = r === 'aplicar' ? S.programacionesPendientes().filter((p) => !S.factura(p.facturaId)?.revision).length + porRevisar().length : 0;
     return `<a href="#/${r}" class="${r === ruta ? 'activo' : ''}" ${r === ruta ? 'aria-current="page"' : ''}>${RUTAS[r].titulo}${n ? ` <span class="burbuja">${n}</span>` : ''}</a>`;
   }).join('') : '';
   $user.innerHTML = u
@@ -369,7 +370,9 @@ function filaProgramar(f) {
       <span class="doc">Fact. ${esc(f.documento)}</span>
       <span class="venc">${f.fechaVence ? fmtFecha(f.fechaVence) : ''} ${etiquetaDias(f)}</span>
       <span class="saldo">${money(s, f.moneda)}</span>
-      <span class="apagar"><span class="estado prog">Programada ${money(prog.monto, f.moneda)} · ${fmtFecha(prog.fechaPago)}</span></span>
+      <span class="apagar"><span class="estado prog">Programada ${money(prog.monto, f.moneda)} · ${fmtFecha(prog.fechaPago)}</span>
+        ${f.revision ? `<button class="btn-revision on" data-act="p-revisar" data-v="${f.id}" title="${esc(f.observaciones || 'Pidió revisar')}">En revisión · quitar</button>`
+          : `<button class="btn-revision" data-act="p-revisar" data-v="${f.id}">Pedir revisión</button>`}</span>
     </div>`;
   }
   return `<div class="fila-fact ${sel ? 'marcada' : ''}" data-fila="${f.id}">
@@ -425,31 +428,54 @@ function seccionRevisar() {
   return `<section class="lote revisar">
     <header class="lote-cab">
       <div><span class="eyebrow">Pedido por Norman</span><h2>Facturas para revisar</h2>
-        <span class="sub">${lista.length} ${lista.length === 1 ? 'factura' : 'facturas'} · cuando estén revisadas, márquelas para que Norman pueda programarlas</span></div>
+        <span class="sub">${lista.length} ${lista.length === 1 ? 'factura' : 'facturas'} · verifique que el registro esté bien y que no se haya pagado antes. Si todo está bien, márquela como revisada y pasa a pagarse aquí en «Por aplicar».</span></div>
     </header>
     <div class="tabla-scroll"><table class="tabla">
-      <thead><tr><th>Sociedad</th><th>Proveedor</th><th>Factura</th><th>Vence</th><th class="num">Saldo</th><th>Nota</th><th></th></tr></thead>
-      <tbody>${lista.map((f) => `<tr>
+      <thead><tr><th>Sociedad</th><th>Proveedor</th><th>Factura</th><th class="num">Saldo</th><th class="num">A pagar</th><th>Qué revisar</th><th></th></tr></thead>
+      <tbody>${lista.map((f) => {
+        const p = S.programacionDe(f);
+        return `<tr>
         <td>${esc(S.nombreSociedad(f.sociedad))}</td><td>${esc(S.proveedor(f.codigo).nombre)}</td>
         <td><a href="#/aplicar" data-act="f-abrir" data-v="${f.id}">${esc(f.documento)}</a></td>
-        <td class="nowrap">${fmtFecha(f.fechaVence)} ${etiquetaDias(f)}</td>
         <td class="num">${money(S.saldo(f), f.moneda)}</td>
-        <td>${esc(f.observaciones)}</td>
-        <td><button class="btn chico" data-act="revisado" data-v="${f.id}">Revisado</button></td></tr>`).join('')}</tbody>
+        <td class="num">${p ? `${money(p.monto, f.moneda)}<div class="sub">${fmtFecha(p.fechaPago)}</div>` : '<span class="sub">sin programar</span>'}</td>
+        <td>${esc(f.observaciones) || '<span class="sub">—</span>'}</td>
+        <td class="acciones-rev"><button class="btn chico primario" data-act="revisado" data-v="${f.id}">✓ Revisado</button>
+          ${p ? `<button class="btn chico" data-act="rev-devolver" data-v="${f.id}">Devolver a Norman</button>` : ''}</td></tr>`;
+      }).join('')}</tbody>
     </table></div>
   </section>`;
 }
 
 function dialogoPedirRevision(id) {
   const f = S.factura(id);
+  const prog = S.programacionDe(f);
+  const s = S.saldo(f);
+  const marcado = ui.prog.sel.get(f.id);
   abrirDialogo(`
     <header class="dlg-cab"><div><h2>Pedir revisión · Factura ${esc(f.documento)}</h2>
-      <p class="sub">${esc(S.proveedor(f.codigo).nombre)} · ${esc(S.nombreSociedad(f.sociedad))} · saldo ${money(S.saldo(f), f.moneda)}</p></div>
+      <p class="sub">${esc(S.proveedor(f.codigo).nombre)} · ${esc(S.nombreSociedad(f.sociedad))} · saldo ${money(s, f.moneda)}</p></div>
       <button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
     <form class="dlg-cuerpo form-grid" data-form="pedir-revision" data-v="${f.id}">
-      <label class="ancho">¿Qué hay que revisar? (opcional) <input name="nota" value="${esc(f.observaciones)}" placeholder="Ej. confirmar el monto con el proveedor"></label>
-      <p class="ancho sub">Jonathan, Fernando y Daniel la verán en «Por aplicar».</p>
+      ${prog ? `<p class="ancho sub">Ya está programada por ${money(prog.monto, f.moneda)} para el ${fmtFecha(prog.fechaPago)}. No se paga hasta que la revisen.</p>`
+        : `<label>Monto a pagar <input type="text" name="monto" inputmode="decimal" data-monto value="${esc(marcado || fmtNum(s))}" required></label>
+      <label>Fecha de pago <input type="date" name="fecha" value="${ui.prog.fecha || hoyISO()}" required></label>`}
+      <label class="ancho">¿Qué hay que revisar? <span class="sub-inline">opcional</span> <input name="nota" value="${esc(f.observaciones)}" placeholder="Ej. ¿ya se pagó? confirmar el monto"></label>
+      <p class="ancho sub">Jonathan, Fernando y Daniel la verán en «Por aplicar». Cuando la marquen como revisada, queda lista para pagar.</p>
       <div class="ancho"><button class="btn primario" type="submit">Pedir revisión</button></div>
+    </form>`);
+}
+
+function dialogoDevolverRevision(id) {
+  const f = S.factura(id);
+  abrirDialogo(`
+    <header class="dlg-cab"><div><h2>Devolver a Norman · Factura ${esc(f.documento)}</h2>
+      <p class="sub">${esc(S.proveedor(f.codigo).nombre)} · ${esc(S.nombreSociedad(f.sociedad))}</p></div>
+      <button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+    <form class="dlg-cuerpo form-grid" data-form="devolver-revision" data-v="${f.id}">
+      <label class="ancho">¿Qué encontró? <input name="motivo" required placeholder="Ej. ya estaba pagada, el monto no coincide"></label>
+      <p class="ancho sub">El pago sale de «Por aplicar» y no se paga. Norman ve el motivo en las observaciones de la factura.</p>
+      <div class="ancho"><button class="btn primario" type="submit">Devolver</button></div>
     </form>`);
 }
 
@@ -1190,7 +1216,11 @@ const acciones = {
     if (f.revision) resultado(S.actualizarFactura(v, { revision: false }), 'Se quitó la revisión');
     else dialogoPedirRevision(v);
   },
-  revisado: (v) => resultado(S.actualizarFactura(v, { revision: false }), 'Factura revisada: Norman ya la puede programar'),
+  revisado: (v) => {
+    const f = S.factura(v);
+    resultado(S.actualizarFactura(v, { revision: false }), S.programacionDe(f) ? 'Revisada: ya está lista para pagar en «Por aplicar»' : 'Revisada');
+  },
+  'rev-devolver': (v) => dialogoDevolverRevision(v),
   'c-soc': (v) => { ui.canc.soc = v; ui.canc.limite = 100; render(); },
   'c-mas': () => { ui.canc.limite += 300; render(); },
   actualizar: () => actualizarApp(),
@@ -1391,8 +1421,21 @@ document.addEventListener('submit', (e) => {
       btn.textContent = 'Entrar';
     });
   } else if (k === 'pedir-revision') {
-    const nota = d.nota.trim();
-    if (resultado(S.actualizarFactura(form.dataset.v, { revision: true, observaciones: nota }), 'Revisión pedida')) cerrarDialogo();
+    const id = form.dataset.v, nota = d.nota.trim();
+    const f = S.factura(id);
+    if (!S.programacionDe(f)) {
+      const monto = parseMonto(d.monto);
+      if (!(monto > 0) || monto > S.saldo(f) + 0.004) { avisar('Revise el monto: debe ser mayor que cero y no más que el saldo', 'error'); return; }
+      const r = S.programarPagos([{ facturaId: id, monto }], d.fecha);
+      if (r.error) { avisar(r.error, 'error'); return; }
+      ui.prog.sel.delete(id);
+    }
+    if (resultado(S.actualizarFactura(id, { revision: true, observaciones: nota }), 'Revisión pedida: no se paga hasta que la revisen')) { cerrarDialogo(); render(); }
+  } else if (k === 'devolver-revision') {
+    const id = form.dataset.v, motivo = d.motivo.trim();
+    const p = S.programacionDe(S.factura(id));
+    if (p) { const r = S.quitarProgramacion(p.id, 'Revisión: ' + motivo); if (r.error) { avisar(r.error, 'error'); return; } }
+    if (resultado(S.actualizarFactura(id, { revision: false, observaciones: 'Revisión: ' + motivo }), 'Devuelta a Norman')) { cerrarDialogo(); render(); }
   } else if (k === 'u-crear') {
     Sync.adminUsuarios({ op: 'crear', usuario: d.usuario.trim().toLowerCase(), nombre: d.nombre.trim(), rol: d.rol })
       .then((r) => { form.reset(); mostrarPin(d.nombre.trim(), r.pin); })
