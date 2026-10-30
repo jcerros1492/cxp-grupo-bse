@@ -113,6 +113,60 @@ export function aplicarLote(lote, { comprobante, fecha }) {
   return r;
 }
 
+// ---------------------------------------------------------------- Pago autorizado por Norman
+// Norman indica de palabra que se pague o abone una factura y se paga de inmediato.
+// Por dentro es un pago programado y aplicado en el mismo momento: queda con comprobante,
+// lote y bitácora como cualquier otro, y la nota de la programación dice "Autorizado por Norman".
+
+export const NOTA_NORMAN = 'Autorizado por Norman';
+export const esAutorizadoNorman = (p) => String(p?.nota || '').startsWith(NOTA_NORMAN);
+
+/** Lote de una sola factura (para el .txt del banco y para aplicar). */
+export function loteDirecto(f, monto, fecha, descripcion) {
+  const lote = { clave: 'directo|' + f.id, sociedad: f.sociedad, moneda: f.moneda, fecha };
+  const ln = completarLinea(lote, { codigo: f.codigo, items: [{ p: { id: null, monto: round2(monto) }, f }] });
+  if (descripcion != null && String(descripcion).trim()) ln.descripcion = String(descripcion).trim();
+  lote.lineas = [ln];
+  lote.total = ln.total;
+  lote.cuentaDebito = datos().sociedades[f.sociedad]?.[f.moneda === 'USD' ? 'cuentaUSD' : 'cuentaCRC'] || '';
+  return lote;
+}
+
+export function pagarAutorizadoNorman(f, { monto, fecha, comprobante, nota, descripcion }) {
+  monto = round2(monto);
+  const ya = programacionDe(f);
+  if (ya) return { error: `Esta factura ya está programada por ${ya.por}. Aplíquela en «Por aplicar».` };
+  if (!(monto > 0)) return { error: 'Monto inválido' };
+  if (monto > saldo(f) + 0.004) return { error: 'El monto es mayor que el saldo' };
+  if (!fecha) return { error: 'Falta la fecha de pago' };
+  if (!String(comprobante || '').trim()) return { error: 'Falta el número de comprobante' };
+  const progId = Sync.nuevoId();
+  const r1 = Sync.ejecutar({
+    tipo: 'programar', fechaPago: fecha, nota: NOTA_NORMAN + (nota ? ' · ' + String(nota).trim() : ''),
+    items: [{ progId, facturaId: f.id, monto }],
+  });
+  if (r1.error) return r1;
+  const lote = loteDirecto(f, monto, fecha, descripcion);
+  const ln = lote.lineas[0];
+  const r2 = Sync.ejecutar({
+    tipo: 'aplicarLote', loteId: Sync.nuevoId(), comprobante: String(comprobante).trim(), fecha,
+    sociedad: f.sociedad, moneda: f.moneda, progIds: [progId], extras: [],
+    lineas: [{ codigo: ln.codigo, total: ln.total, extra: 0, descripcion: ln.descripcion, documentos: [f.documento] }],
+  });
+  if (r2.error) { Sync.ejecutar({ tipo: 'quitarProgramacion', progId, motivo: 'No se pudo aplicar' }); return r2; }
+  return { ok: true, tipo: saldo(f) <= 0.004 ? 'pago' : 'abono', avisos: r2.avisos || [] };
+}
+
+/** Pagos autorizados por Norman de los últimos `dias` días, del más reciente al más antiguo. */
+export function autorizadosNorman(dias = 30) {
+  const desde = new Date(Date.now() - dias * 864e5).toISOString();
+  return Object.values(datos().programaciones)
+    .filter((p) => esAutorizadoNorman(p) && p.estado === 'aplicado' && String(p.creado) >= desde)
+    .map((p) => ({ p, f: factura(p.facturaId) }))
+    .filter((x) => x.f)
+    .sort((a, b) => String(b.p.creado).localeCompare(String(a.p.creado)));
+}
+
 /** Revisa que el lote se pueda pasar al banco. Devuelve la lista de problemas. */
 export function problemasLote(lote) {
   const out = [];

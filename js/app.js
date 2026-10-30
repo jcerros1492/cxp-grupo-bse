@@ -653,6 +653,7 @@ function dialogoFactura(id) {
         <div><span>Pagado</span><strong>${money(S.pagado(f), f.moneda)}</strong></div>
         <div><span>Saldo</span><strong>${money(s, f.moneda)}</strong></div>
       </div>
+      ${s > 0.004 && !S.esNorman() ? `<div class="acciones-fila"><button class="btn btn-norman" data-act="pn-abrir" data-v="${f.id}">✔ Autorizado por Norman</button></div>` : ''}
       <form class="form-grid" data-form="f-fechas" data-v="${f.id}">
         <label>Fecha de factura <input type="date" name="fechaFactura" value="${f.fechaFactura || ''}"></label>
         <label>Vencimiento ${f.venceEstimado ? '<span class="est">EST</span>' : ''}<input type="date" name="fechaVence" value="${f.fechaVence || ''}"></label>
@@ -665,7 +666,9 @@ ${f.revision ? `        <p class="ancho aviso-pruebas">Norman pidió revisar est
         <thead><tr><th>Fecha</th><th>Tipo</th><th>Comprobante</th><th class="num">Monto</th><th class="num">Saldo después</th><th>Registró</th></tr></thead>
         <tbody>${S.movimientosDe(f).map((m) => {
           if (m.tipo !== 'cargo') acumulado = round2(acumulado - m.monto);
-          return `<tr><td>${fmtFecha(m.fecha) || '<span class="sub">sin fecha</span>'}</td><td>${tipos[m.tipo] || m.tipo}</td><td>${esc(m.comprobante)}</td>
+          const prog = m.loteId ? S.datos().programaciones[String(m.id).slice(String(m.loteId).length + 1)] : null;
+          const tagNorman = S.esAutorizadoNorman(prog) ? ' <span class="tag-norman">Autorizado por Norman</span>' : '';
+          return `<tr><td>${fmtFecha(m.fecha) || '<span class="sub">sin fecha</span>'}</td><td>${tipos[m.tipo] || m.tipo}${tagNorman}</td><td>${esc(m.comprobante)}</td>
             <td class="num">${money(m.monto, f.moneda)}</td><td class="num">${m.tipo === 'cargo' ? '' : money(acumulado, f.moneda)}</td><td>${esc(m.por)}</td></tr>`;
         }).join('')}</tbody></table></div>` : '<p class="sub">Sin movimientos.</p>'}
       ${s > 0.004 ? `
@@ -678,6 +681,65 @@ ${f.revision ? `        <p class="ancho aviso-pruebas">Norman pidió revisar est
         <div class="ancho"><button class="btn primario" type="submit">Registrar</button></div>
       </form>` : ''}
     </div>`);
+}
+
+// ---------------------------------------------------------------- Pago autorizado por Norman
+
+function dialogoPagoNorman(id) {
+  const f = S.factura(id);
+  const prov = S.proveedor(f.codigo);
+  const s = S.saldo(f);
+  const ya = S.programacionDe(f);
+  const cab = `<header class="dlg-cab">
+      <div><h2>Autorizado por Norman</h2>
+        <p class="sub">Factura ${esc(f.documento)} · ${esc(prov.nombre)} · ${esc(S.nombreSociedad(f.sociedad))} · saldo ${money(s, f.moneda)}</p></div>
+      <button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>`;
+  if (ya) {
+    abrirDialogo(`${cab}<div class="dlg-cuerpo">
+      <p class="aviso-pruebas">Esta factura ya está programada por ${esc(ya.por)} por ${money(ya.monto, f.moneda)} para el ${fmtFecha(ya.fechaPago)}. Aplíquela desde «Por aplicar» para no pagarla dos veces.</p>
+      <div class="acciones-fila"><a class="btn primario" href="#/aplicar" data-act="cerrar">Ir a Por aplicar</a></div></div>`);
+    return;
+  }
+  const lote = S.loteDirecto(f, s, hoyISO());
+  abrirDialogo(`${cab}
+    <form class="dlg-cuerpo form-grid" data-form="pago-norman" data-v="${f.id}">
+      <label>Monto a pagar <input type="text" name="monto" inputmode="decimal" value="${fmtNum(s)}" required>
+        <span class="ayuda">Si es menor que el saldo, queda como abono.</span></label>
+      <label>Fecha de pago <input type="date" name="fecha" value="${hoyISO()}" required></label>
+      <label class="ancho">Nota <span class="sub-inline">opcional</span> <input type="text" name="nota" placeholder="Ej. pagar hoy, abono acordado"></label>
+      <div class="ancho pn-banco">
+        <strong>Archivo para el banco</strong>
+        <p class="sub">Si paga con archivo, descárguelo y súbalo al banco. Si hace la transferencia a mano, no lo necesita.</p>
+        <label>Descripción en el banco <input type="text" name="descripcion" maxlength="60" value="${esc(lote.lineas[0].descripcion)}"></label>
+        ${S.problemasLote(lote).length ? `<div class="aviso"><strong>Para generar el archivo falta:</strong><ul>${S.problemasLote(lote).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+        <button class="btn oscuro" type="button" data-act="pn-txt" data-v="${f.id}" ${S.problemasLote(lote).length ? 'disabled' : ''}>Descargar .txt de este pago</button>
+      </div>
+      <label class="ancho">N° de comprobante del banco <input type="text" name="comprobante" required autocomplete="off"></label>
+      <div class="ancho acciones-fila"><button class="btn primario" type="submit">Aplicar pago</button>
+        <button class="btn" type="button" data-act="f-abrir" data-v="${f.id}">Volver</button></div>
+      <p class="ancho sub">Queda registrado como «Autorizado por Norman», con su nombre como quien aplicó. Norman lo ve en el Tablero.</p>
+    </form>`);
+}
+
+function valoresPagoNorman(form) {
+  const d = Object.fromEntries(new FormData(form));
+  return { monto: parseNum(d.monto), fecha: d.fecha, nota: d.nota, comprobante: d.comprobante, descripcion: d.descripcion };
+}
+
+function seccionAutorizados() {
+  const lista = S.autorizadosNorman(30);
+  if (!lista.length) return '';
+  return `<section class="bloque bloque-norman">
+    <h2>Autorizados por Norman <span class="sub-inline">últimos 30 días</span></h2>
+    <p class="sub">Pagos que Norman indicó de palabra y se pagaron de inmediato.</p>
+    <div class="tabla-scroll"><table class="tabla">
+      <thead><tr><th>Fecha</th><th>Sociedad</th><th>Proveedor</th><th>Factura</th><th class="num">Monto</th><th>Aplicó</th><th>Comprobante</th><th>Nota</th></tr></thead>
+      <tbody>${lista.map(({ p, f }) => `<tr data-act="f-abrir" data-v="${f.id}" tabindex="0">
+        <td>${fmtFecha(p.fechaPago)}</td><td>${esc(S.nombreSociedad(f.sociedad))}</td><td>${esc(S.proveedor(f.codigo).nombre)}</td>
+        <td>${esc(f.documento)}</td><td class="num">${money(p.monto, f.moneda)}</td><td>${esc(p.cerradoPor)}</td>
+        <td>${esc(p.comprobante)}</td><td>${esc(p.nota.slice(S.NOTA_NORMAN.length).replace(/^\s*·\s*/, ''))}</td></tr>`).join('')}</tbody>
+    </table></div>
+  </section>`;
 }
 
 // ---------------------------------------------------------------- Importar facturas
@@ -950,7 +1012,8 @@ function vistaTablero() {
         </div>`).join('')}</div>
       <p class="sub">EST: ${pend.filter((f) => f.venceEstimado).length} facturas con saldo usan vencimiento estimado (factura + 30 días).</p>
     </section>
-  </div>`;
+  </div>
+  ${seccionAutorizados()}`;
 }
 
 // ---------------------------------------------------------------- Configuración
@@ -1191,6 +1254,19 @@ const acciones = {
   'f-soc': (v) => { ui.fact.soc = v; ui.fact.limite = 150; render(); },
   'f-mas': () => { ui.fact.limite += 300; render(); },
   'f-abrir': (v) => dialogoFactura(v),
+  'pn-abrir': (v) => dialogoPagoNorman(v),
+  'pn-txt': (v, el) => {
+    const f = S.factura(v);
+    const x = valoresPagoNorman(el.closest('form'));
+    if (!(x.monto > 0)) { avisar('Monto inválido', 'error'); return; }
+    try {
+      const l = S.loteDirecto(f, x.monto, x.fecha, x.descripcion);
+      const prob = S.problemasLote(l);
+      if (prob.length) { avisar(prob.join(' '), 'error'); return; }
+      const soc = S.nombreSociedad(f.sociedad).toUpperCase().replace(/[^A-Z0-9]+/g, '');
+      descargar(`PROVEEDORES_${soc}_${f.moneda}_${x.fecha.split('-').reverse().join('')}_FACT${String(f.documento).replace(/[^A-Za-z0-9]+/g, '')}.txt`, textoArchivo(l), 'text/plain');
+    } catch (err) { avisar(err.message, 'error'); }
+  },
   'f-nueva': () => dialogoNuevaFactura(),
   'imp-confirmar': () => confirmarImportacion(),
   'ir-sociedad': (v) => { ui.fact.soc = v; ui.fact.est = 'saldo'; ui.fact.limite = 150; location.hash = '#/facturas'; },
@@ -1329,6 +1405,10 @@ document.addEventListener('submit', (e) => {
     const f = S.factura(form.dataset.v);
     const cambios = { fechaFactura: d.fechaFactura || '', observaciones: d.observaciones, fechaVence: d.fechaVence || '' };
     if (resultado(S.actualizarFactura(f.id, cambios), 'Cambios guardados')) dialogoFactura(f.id);
+  } else if (k === 'pago-norman') {
+    const f = S.factura(form.dataset.v);
+    const r = S.pagarAutorizadoNorman(f, valoresPagoNorman(form));
+    if (resultado(r, `${r.tipo === 'abono' ? 'Abono' : 'Pago'} aplicado · Autorizado por Norman`)) { cerrarDialogo(); render(); }
   } else if (k === 'f-mov') {
     if (resultado(S.registrarMovimiento(form.dataset.v, { tipo: d.tipo, monto: parseNum(d.monto), fecha: d.fecha, comprobante: d.comprobante }), 'Movimiento registrado')) dialogoFactura(form.dataset.v);
   } else if (k === 'f-crear') {

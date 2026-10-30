@@ -409,3 +409,13 @@ pre.txt { font-family: var(--mono); font-size: 12px; background: var(--tinta); c
 .imp-emisor .sub { display: block; font-size: 12.5px; margin: 2px 0 0; }
 .imp-emisor select { width: 100%; min-width: 0; }
 @media (max-width: 760px) { .imp-emisor { grid-template-columns: 1fr; } }
+
+/* Pago autorizado por Norman */
+.btn-norman { margin-bottom: 14px; background: #FFF4E5; border-color: #E8B26A; color: #8A4B00; font-weight: 600; }
+.btn-norman:hover { background: #FFE9CC; }
+.tag-norman { display: inline-block; background: #FFF4E5; color: #8A4B00; border: 1px solid #E8B26A; border-radius: 999px; padding: 0 8px; font-size: 11.5px; font-weight: 600; margin-left: 4px; white-space: nowrap; }
+.pn-banco { display: grid; gap: 8px; padding: 12px; border: 1px dashed var(--borde); border-radius: 10px; background: var(--fondo, #F4F5F7); }
+.pn-banco .sub { margin: 0; }
+.pn-banco .btn { justify-self: start; }
+.bloque-norman { border-left: 4px solid #E8B26A; }
+@media (max-width: 760px) { .btn-norman { width: 100%; } .pn-banco .btn { justify-self: stretch; } }
