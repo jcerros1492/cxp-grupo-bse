@@ -103,7 +103,9 @@ function render() {
     const t = document.createElement('template');
     t.innerHTML = html;
     etiquetarTablas(t.content);
+    const ediciones = capturarEdiciones();
     parchar($app, t.content);
+    restaurarEdiciones(ediciones);
   } else {
     $app.innerHTML = html;
   }
@@ -128,11 +130,42 @@ function parchar(viejo, nuevo) {
   copiarAtributos(x, y, x === activo);
   if (x !== activo) parchar(x, y);
 }
+/** Selector único de un campo: por id, por data-in (+data-v / data-k / data-lote) o por formulario + nombre. */
 function selectorDe(el) {
   if (el.id) return '#' + CSS.escape(el.id);
-  if (el.dataset.in) return `[data-in="${el.dataset.in}"]` + (el.dataset.v ? `[data-v="${CSS.escape(el.dataset.v)}"]` : '');
-  if (el.name) return `${el.tagName.toLowerCase()}[name="${CSS.escape(el.name)}"]`;
+  const f = el.form;
+  if (el.name && f?.dataset.form) return `form[data-form="${CSS.escape(f.dataset.form)}"]${f.dataset.v != null ? `[data-v="${CSS.escape(f.dataset.v)}"]` : ''} [name="${CSS.escape(el.name)}"]`;
+  if (el.dataset.in) {
+    return `[data-in="${CSS.escape(el.dataset.in)}"]` + ['v', 'k', 'lote'].map((a) => el.dataset[a] != null ? `[data-${a}="${CSS.escape(el.dataset[a])}"]` : '').join('');
+  }
   return null;
+}
+
+/**
+ * Lo escrito y aún no guardado (el valor ya no es el que vino de los datos). Al redibujar por una
+ * sincronización se vuelve a poner, para que no se borre. Si el dato guardado cambió, gana el nuevo.
+ */
+function capturarEdiciones() {
+  const out = [];
+  for (const el of $app.querySelectorAll('input, select, textarea')) {
+    if (el.type === 'file' || el.type === 'hidden') continue;
+    const sucio = el.type === 'checkbox' || el.type === 'radio' ? el.checked !== el.defaultChecked
+      : el.tagName === 'SELECT' ? [...el.options].some((o) => o.selected !== o.defaultSelected)
+      : el.value !== el.defaultValue;
+    if (!sucio) continue;
+    const sel = selectorDe(el);
+    if (sel) out.push({ sel, valor: el.value, checked: el.checked, base: el.tagName === 'SELECT' ? null : el.defaultValue });
+  }
+  return out;
+}
+function restaurarEdiciones(lista) {
+  for (const x of lista) {
+    let el;
+    try { el = $app.querySelector(x.sel); } catch { continue; }
+    if (!el || el === document.activeElement) continue;
+    if (x.base != null && el.defaultValue !== x.base) continue; // el dato cambió mientras tanto
+    if (el.type === 'checkbox' || el.type === 'radio') el.checked = x.checked; else el.value = x.valor;
+  }
 }
 function copiarAtributos(x, y, esActivo) {
   for (const { name } of [...x.attributes]) if (!y.hasAttribute(name)) x.removeAttribute(name);
@@ -146,11 +179,10 @@ function copiarAtributos(x, y, esActivo) {
 function guardarFoco() {
   const el = document.activeElement;
   if (!el || !$app.contains(el) || !el.matches('input, select, textarea')) return null;
-  let sel = null;
-  if (el.id) sel = '#' + CSS.escape(el.id);
-  else if (el.dataset.in) sel = `[data-in="${el.dataset.in}"]` + (el.dataset.v ? `[data-v="${CSS.escape(el.dataset.v)}"]` : '');
-  else if (el.name && el.form?.dataset.form) sel = `[data-form="${el.form.dataset.form}"] [name="${el.name}"]`;
-  return { sel, valor: el.value, ini: el.selectionStart, fin: el.selectionEnd };
+  const sel = selectorDe(el);
+  let ini = null, fin = null;
+  try { ini = el.selectionStart; fin = el.selectionEnd; } catch { /* campo sin selección */ }
+  return { sel, valor: el.value, ini, fin };
 }
 function restaurarFoco(f) {
   if (!f?.sel) return;
