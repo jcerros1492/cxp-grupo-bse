@@ -378,14 +378,18 @@ pre.txt { font-family: var(--mono); font-size: 12px; background: var(--tinta); c
   /* Encabezado ordenado: marca y usuario arriba; menú en cuadrícula pareja abajo */
   .cabecera-interior { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; padding-top: 10px; }
   .marca { grid-column: 1; grid-row: 1; }
-  #usuario { grid-column: 2; grid-row: 1; justify-content: flex-end; flex-wrap: nowrap; }
+  #usuario { grid-column: 2; grid-row: 1; flex-direction: column; align-items: flex-end; justify-content: center; flex-wrap: nowrap; gap: 4px; }
+  #usuario .red { order: 2; }
+  .marca-grupo { white-space: nowrap; }
+  .marca-sub { white-space: nowrap; }
   #nav { grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
   #nav a { display: flex; align-items: center; justify-content: center; text-align: center; min-height: 44px; padding: 6px 4px; font-size: 12.5px; line-height: 1.2; border-radius: 10px; }
   #nav a .burbuja { margin-left: 4px; }
   .usuario-info { padding: 4px 10px 4px 4px; background: #223140; border-radius: 999px; gap: 8px; }
   .usuario-info strong { font-size: 13px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
-  .red.ok, .red.sync { font-size: 0; padding: 0; width: 28px; height: 28px; justify-content: center; border-radius: 50%; }
-  .red.ok::before, .red.sync::before { width: 10px; height: 10px; }
+  /* Hora de sincronización: línea pequeña debajo del usuario */
+  #usuario .red { font-size: 11px; font-weight: 600; padding: 2px 9px; gap: 5px; background: transparent; white-space: nowrap; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; }
+  #usuario .red::before { width: 7px; height: 7px; flex: none; }
   .red.sync::before { animation: latir 1s ease-in-out infinite alternate; }
 }
 @keyframes latir { from { opacity: .35; } to { opacity: 1; } }
@@ -419,3 +423,18 @@ pre.txt { font-family: var(--mono); font-size: 12px; background: var(--tinta); c
 .pn-banco .btn { justify-self: start; }
 .bloque-norman { border-left: 4px solid #E8B26A; }
 @media (max-width: 760px) { .btn-norman { width: 100%; } .pn-banco .btn { justify-self: stretch; } }
+
+/* Teléfonos angostos (iPhone SE y similares) */
+@media (max-width: 760px) {
+  .cabecera-interior { grid-template-columns: minmax(0, 1fr) auto; }
+  .marca { min-width: 0; overflow: hidden; }
+}
+@media (max-width: 370px) {
+  .marca { gap: 7px; }
+  .marca img { height: 30px; }
+  .marca-grupo { font-size: 18px; }
+  .marca-sub { font-size: 10.5px; }
+  .usuario-info strong { max-width: 74px; }
+  #usuario .red { font-size: 10.5px; padding: 2px 4px; }
+  #nav a { font-size: 11.5px; }
+}

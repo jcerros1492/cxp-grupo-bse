@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.13.1 | En el celular se ve la hora de sincronización («● Sincronizado 20:52») debajo del usuario. «GRUPO BSE» siempre en una línea; encabezado ajustado para teléfonos angostos. |
 | 1.13.0 | Pago «Autorizado por Norman»: desde la ventana de la factura se paga o abona de inmediato lo que Norman indica de palabra, con `.txt` solo para ese pago (o transferencia manual) y comprobante. Por dentro es un pago programado y aplicado a la vez, con nota «Autorizado por Norman». El Tablero muestra los de los últimos 30 días y los movimientos llevan la etiqueta. Si la factura ya estaba programada, avisa y manda a «Por aplicar». |
 | 1.12.2 | Escritura más ágil en el celular: al buscar solo se actualiza la lista y el campo de búsqueda no se vuelve a dibujar (el teclado no se reinicia); búsqueda sin autocorrección; la tecla «Buscar» muestra los resultados y cierra el teclado. |
 | 1.12.1 | «Grupo BSE» en grande en el encabezado, con «Cuentas por Pagar» debajo. |
