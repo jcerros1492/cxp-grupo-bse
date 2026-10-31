@@ -2552,19 +2552,22 @@ document.getElementById('pie').textContent = `Cuentas por Pagar · Grupo BSE · 
 
 // ---------------------------------------------------------------- Aviso de versión nueva
 
-let avisoVersion = false;
+let avisoVersion = false, revisandoVersion = false;
 async function revisarVersion() {
-  if (avisoVersion || !navigator.onLine) return;
+  // El celular avisa «volvió a la pantalla» y «tiene el foco» casi a la vez: una sola revisión a la vez.
+  if (avisoVersion || revisandoVersion || !navigator.onLine) return;
+  revisandoVersion = true;
   try {
     const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
     if (!r.ok) return;
     const { version } = await r.json();
     if (version && version !== VERSION) mostrarAvisoVersion(version);
-  } catch { /* sin conexión */ }
+  } catch { /* sin conexión */ } finally { revisandoVersion = false; }
 }
 
 function mostrarAvisoVersion(version) {
   avisoVersion = true;
+  if (document.querySelector('.aviso-version')) return; // ya hay un aviso a la vista
   const b = document.createElement('div');
   b.className = 'aviso-version';
   b.setAttribute('role', 'status');
