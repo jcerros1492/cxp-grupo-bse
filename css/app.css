@@ -842,3 +842,7 @@ label.adjuntar { align-items: center !important; }
 .imp-ibans label { font-size: 12.5px; font-weight: 600; display: flex; flex-direction: column; gap: 3px; }
 .imp-ibans input { min-height: 36px; padding: 6px 9px; }
 @media screen and (max-width: 760px) { .imp-ibans { grid-template-columns: 1fr; } }
+/* 1.19.1 · el bloque de cifras mide lo que la cifra más larga del reporte (queda centrado bajo el título);
+   los totales comparten el borde derecho y, si son más largos, crecen hacia la izquierda */
+.reporte-hojas .cifra { display: inline-flex; justify-content: flex-end; white-space: nowrap; min-width: 0; width: var(--cifra, 104px); }
+.reporte-hojas.midiendo .cifra { width: auto; }

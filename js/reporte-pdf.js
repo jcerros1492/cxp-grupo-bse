@@ -6,11 +6,14 @@ const ANCHO = 215.9, ALTO = 279.4;
 const UTIL = ANCHO - MM.izq - MM.der;
 // Mismas proporciones que el reporte en pantalla: N°, F. factura, F. vencimiento, Días, Saldo, Moneda
 const COLS = [0.16, 0.16, 0.17, 0.11, 0.24, 0.16].map((p) => p * UTIL);
-/** Margen derecho para que un bloque de cifras quede centrado bajo su título y alineado por los decimales. */
-function padCentro(doc, ancho, tam = 8.5) {
+/**
+ * Margen derecho para que el bloque de cifras quede centrado bajo su título y alineado por los decimales.
+ * El ancho del bloque es el de la cifra más larga del reporte (antes era fijo y las cifras se corrían a la derecha).
+ */
+function padCentro(doc, ancho, muestras = [], tam = 8.5) {
   const antes = doc.getFontSize();
-  doc.setFontSize(tam);
-  const bloque = doc.getTextWidth('¢0.000.000.000,00');
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(tam);
+  const bloque = Math.max(doc.getTextWidth('0,00'), ...muestras.map((t) => doc.getTextWidth(String(t))));
   doc.setFontSize(antes);
   return Math.max(1.5, (ancho - bloque) / 2);
 }
@@ -26,7 +29,7 @@ export function crearPdfReporte(d) {
   doc.setProperties({ title: d.titulo || 'Reporte de Cuentas por Pagar', creator: 'Cuentas por Pagar · Grupo BSE' });
   let y = MM.arriba;
   const espacio = (alto) => { if (y + alto > ALTO - MM.abajo) { doc.addPage(); y = MM.arriba; } };
-  const PAD = padCentro(doc, COLS[4]);
+  const PAD = padCentro(doc, COLS[4], d.grupos.flatMap((g) => g.proveedores.flatMap((x) => x.facturas.map((f) => d.fmtNum(d.saldo(f))))));
 
   const encabezado = (soc) => {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(...NEGRO);
@@ -145,7 +148,7 @@ export function crearPdfEstadoCuenta(d) {
   doc.setProperties({ title: d.titulo, creator: 'Cuentas por Pagar · Grupo BSE' });
   let y = MM.arriba;
   const espacio = (alto) => { if (y + alto > ALTO - MM.abajo) { doc.addPage(); y = MM.arriba; } };
-  const PAD = padCentro(doc, COLS_EC[2]);
+  const PAD = padCentro(doc, COLS_EC[2], d.grupos.flatMap((g) => g.facturas.flatMap(({ lineas }) => lineas.flatMap((l) => [l.cargo, l.abono, l.saldo].filter((v) => v != null).map((v) => d.fmtNum(v))))));
   const celdaNum = { top: 1.2, bottom: 1.2, left: 1.5, right: PAD };
 
   // Encabezado

@@ -1486,6 +1486,21 @@ function pestanasReportes() {
 
 /** Número para las tablas de reporte: bloque de ancho fijo, centrado bajo el título y alineado por los decimales. */
 const cifra = (n) => `<span class="cifra">${fmtNum(n)}</span>`;
+/**
+ * Ancho del bloque de cifras = la cifra más larga del reporte (medida en pantalla), para que quede
+ * centrado bajo «Saldo». Los totales usan el mismo borde derecho y, si son más largos, crecen a la izquierda.
+ */
+function ajustarCifras() {
+  for (const h of document.querySelectorAll('.reporte-hojas')) {
+    h.classList.add('midiendo');
+    let max = 0;
+    for (const el of h.querySelectorAll('.cifra:not(.cifra-total)')) max = Math.max(max, el.getBoundingClientRect().width);
+    h.classList.remove('midiendo');
+    if (max) h.style.setProperty('--cifra', Math.ceil(max + 1) + 'px'); else h.style.removeProperty('--cifra');
+  }
+}
+let tCifras;
+window.addEventListener('resize', () => { clearTimeout(tCifras); tCifras = setTimeout(ajustarCifras, 150); });
 /** Total con el signo de la moneda (₡ o $). */
 const cifraM = (n, mon) => `<span class="cifra cifra-total">${money(n, mon)}</span>`;
 
@@ -1959,6 +1974,7 @@ function etiquetarTablas(raiz = document) {
 function despuesDeRender(ruta) {
   etiquetarTablas($app);
   if (ruta === 'programar') actualizarBarra();
+  if (ruta === 'reportes') ajustarCifras();
   if (ruta === 'reportes') { const f = document.querySelector('[data-in="r-provfiltro"]'); if (f?.value) f.dispatchEvent(new Event('input', { bubbles: true })); }
   if (ruta === 'config') document.querySelectorAll('[data-in="iban"]').forEach(validarCampoIBAN);
 }

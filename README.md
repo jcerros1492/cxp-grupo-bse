@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.19.1 | Reportes y estado de cuenta: el bloque de cifras mide lo que la cifra más larga del reporte, así queda centrado bajo «Saldo» (en pantalla, celular y PDF); los totales comparten el borde derecho. |
 | 1.19.0 | **Cuentas IBAN de proveedores.** «Agregar IBAN» en Por aplicar abre una ventana ahí mismo (la cuenta de la moneda del pago primero, alias y vista de la descripción); al guardar ya se puede generar el archivo. Al importar de GTI, los proveedores nuevos pueden traer su IBAN (opcional). Aviso en el Tablero y en Proveedores de los que tienen facturas por pagar sin la cuenta de esa moneda, filtro «Falta IBAN» con la marca «falta», y marca «sin IBAN» para Norman en Programar pagos. Indica «Banco de Costa Rica» en cuentas del BCR. |
 | 1.18.3 | Al guardar una sociedad (o la cédula del empleado), los campos muestran lo guardado con su formato, aunque el valor no haya cambiado. |
 | 1.18.2 | Lo que se escribe y aún no se guarda (por ejemplo en Configuración → Sociedades) ya no se borra cuando la aplicación sincroniza; cada campo se reconoce por su propio formulario (antes se confundían los de distintas sociedades). |
