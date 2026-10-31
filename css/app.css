@@ -846,3 +846,22 @@ label.adjuntar { align-items: center !important; }
    los totales comparten el borde derecho y, si son más largos, crecen hacia la izquierda */
 .reporte-hojas .cifra { display: inline-flex; justify-content: flex-end; white-space: nowrap; min-width: 0; width: var(--cifra, 104px); }
 .reporte-hojas.midiendo .cifra { width: auto; }
+
+/* 1.19.2 · botones de salida de los reportes: en computadora como antes; en el celular,
+   «Compartir PDF» grande y azul, y las demás opciones en una fila con ícono */
+.sal-fila { display: contents; }
+.sal-ico { display: none; }
+.sal-ico svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sal-ico svg circle { fill: currentColor; stroke: none; }
+.sal-corto { display: none; }
+@media screen and (max-width: 760px) {
+  .rep-acciones { display: flex; flex-direction: column; gap: 8px; }
+  .titulo-vista .rep-acciones .btn { width: auto; }
+  .rep-acciones .sal-grande { width: 100% !important; min-height: 50px; font-size: 16px; gap: 8px; }
+  .rep-acciones .sal-grande .sal-ico { display: inline-flex; }
+  .sal-fila { display: flex; gap: 8px; }
+  .sal-fila .btn.sal { flex: 1 1 0; min-width: 0; flex-direction: column; gap: 3px; min-height: 60px; padding: 6px 2px; font-size: 12.5px; }
+  .sal-fila .sal-ico { display: inline-flex; }
+  .sal-fila .sal-largo { display: none; }
+  .sal-fila .sal-corto { display: block; }
+}

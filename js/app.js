@@ -1506,13 +1506,28 @@ const cifraM = (n, mon) => `<span class="cifra cifra-total">${money(n, mon)}</sp
 
 function vistaReportes() { return pestanasReportes() + (ui.rep.tipo === 'ec' ? vistaEstadoCuenta() : vistaCxp()); }
 
+/** Íconos de los botones de salida (en el celular se ven sobre el texto corto). */
+const ICO = {
+  compartir: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
+  pdf: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
+  excel: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M4 15h16M10 4v16"/></svg>',
+  lista: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg>',
+  imprimir: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V4h10v5M7 17H5a1 1 0 0 1-1-1v-5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v5a1 1 0 0 1-1 1h-2"/><rect x="7" y="14" width="10" height="6"/></svg>',
+};
+/** Botón de salida: texto completo en computadora; ícono y texto corto en el celular. */
+const botonSalida = (act, largo, corto, ico, hay, extra = '') =>
+  `<button class="btn sal" data-act="${act}" ${extra} ${hay ? '' : 'disabled'} title="${esc(largo)}"><span class="sal-ico">${ICO[ico]}</span><span class="sal-largo">${largo}</span><span class="sal-corto">${corto}</span></button>`;
+
 function botonesSalida(prefijo, hay, extrasExcel) {
   const compartir = puedeCompartirArchivos();
   return `<div class="acciones rep-acciones">
-      ${compartir ? `<button class="btn primario" data-act="${prefijo}-compartir" ${hay ? '' : 'disabled'}>Compartir PDF</button>` : ''}
-      <button class="btn ${compartir ? '' : 'primario'}" data-act="${prefijo}-pdf" ${hay ? '' : 'disabled'}>Descargar PDF</button>
-      ${extrasExcel}
-      <button class="btn" data-act="r-imprimir" data-v="${prefijo}" ${hay ? '' : 'disabled'}>Imprimir</button></div>`;
+      ${compartir ? `<button class="btn primario sal-grande" data-act="${prefijo}-compartir" ${hay ? '' : 'disabled'}><span class="sal-ico">${ICO.compartir}</span>Compartir PDF</button>` : ''}
+      <div class="sal-fila">
+        ${compartir ? botonSalida(`${prefijo}-pdf`, 'Descargar PDF', 'PDF', 'pdf', hay)
+          : `<button class="btn primario sal-grande" data-act="${prefijo}-pdf" ${hay ? '' : 'disabled'}><span class="sal-ico">${ICO.pdf}</span>Descargar PDF</button>`}
+        ${extrasExcel}
+        ${botonSalida('r-imprimir', 'Imprimir', 'Imprimir', 'imprimir', hay, `data-v="${prefijo}"`)}
+      </div></div>`;
 }
 
 function vistaCxp() {
@@ -1526,8 +1541,7 @@ function vistaCxp() {
   const total = { n: grupos.reduce((t, g) => t + g.cantidad, 0), monto: round2(grupos.reduce((t, g) => t + g.monto, 0)), saldo: round2(grupos.reduce((t, g) => t + g.saldo, 0)) };
   return `
   <div class="titulo-vista no-imprimir"><div><h1>Cuentas por pagar</h1><p class="sub">Facturas con saldo, por fecha de vencimiento. Un reporte por moneda.</p></div>
-    ${botonesSalida('r', total.n, `<button class="btn" data-act="r-excel" ${total.n ? '' : 'disabled'} title="Agrupado por proveedor, con totales">Excel reporte</button>
-      <button class="btn" data-act="r-excel-lista" ${total.n ? '' : 'disabled'} title="Una fila por factura, con filtros">Excel lista</button>`)}</div>
+    ${botonesSalida('r', total.n, botonSalida('r-excel', 'Excel reporte', 'Excel', 'excel', total.n) + botonSalida('r-excel-lista', 'Excel lista', 'Lista', 'lista', total.n))}</div>
   <section class="filtros no-imprimir">
     <div class="form-grid rep-filtros">
       <label>Sociedad <select data-in="r-soc"><option value="">Todas las sociedades</option>${socs.map((x) => `<option value="${esc(x)}" ${R.soc === x ? 'selected' : ''}>${esc(S.nombreSociedad(x))}</option>`).join('')}</select></label>
@@ -1760,7 +1774,7 @@ function vistaEstadoCuenta() {
   const filaTotales = (etq, t, cls = '') => `<tr class="ec-tot ${cls}"><td colspan="2" class="ec-tot-lbl">${etq}</td><td class="num">${cifraM(t.facturado + t.cargos, E.mon)}</td><td class="num">${cifraM(t.abonos + t.nc + t.cargos, E.mon)}</td><td class="num">${cifraM(t.saldo, E.mon)}</td></tr>`;
   return `
   <div class="titulo-vista no-imprimir"><div><h1>Estado de cuenta</h1><p class="sub">Todos los movimientos de un proveedor: cada factura con su monto, abonos, pagos, notas de crédito y el saldo.</p></div>
-    ${botonesSalida('ec', hay, `<button class="btn" data-act="ec-excel" ${hay ? '' : 'disabled'}>Descargar Excel</button>`)}</div>
+    ${botonesSalida('ec', hay, botonSalida('ec-excel', 'Descargar Excel', 'Excel', 'excel', hay))}</div>
   <section class="filtros no-imprimir">
     <div class="form-grid rep-filtros">
       ${dropProveedor('ec', E.prov, proveedoresEstado(), 'Elija un proveedor')}
