@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.19.5 | Programar pagos en el celular: al marcar una factura ya no se abre el teclado (queda marcada por el total; el teclado sale solo si se toca el monto para cambiarlo). En computadora el cursor sigue saltando al monto. |
 | 1.19.4 | En el celular, el resumen de Facturas, Canceladas y Programar pagos va en un recuadro con los saldos más grandes y en azul. En computadora no cambia. |
 | 1.19.3 | El aviso «Hay una versión nueva» sale una sola vez (en el celular salía repetido al volver a la aplicación). |
 | 1.19.2 | Reportes en el celular: «Compartir PDF» grande y azul (abre el menú de compartir del teléfono: WhatsApp, correo…) y debajo, en una fila con íconos, PDF, Excel, Lista e Imprimir. En computadora no cambia. |

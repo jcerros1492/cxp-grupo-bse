@@ -2338,7 +2338,8 @@ document.addEventListener('change', async (e) => {
     const f = S.factura(el.dataset.v);
     if (el.checked) ui.prog.sel.set(f.id, fmtNum(S.saldo(f))); else ui.prog.sel.delete(f.id);
     render();
-    if (el.checked) document.querySelector(`[data-in="p-monto"][data-v="${f.id}"]`)?.select();
+    // En computadora el cursor salta al monto para cambiarlo; en el celular no, para que no se abra el teclado.
+    if (el.checked && matchMedia('(hover: hover) and (pointer: fine)').matches) document.querySelector(`[data-in="p-monto"][data-v="${f.id}"]`)?.select();
     return;
   }
   if (k === 'p-venc') { ui.prog.vencidas = el.checked; render(); return; }
