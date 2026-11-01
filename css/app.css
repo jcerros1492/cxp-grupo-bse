@@ -865,3 +865,15 @@ label.adjuntar { align-items: center !important; }
   .sal-fila .sal-largo { display: none; }
   .sal-fila .sal-corto { display: block; }
 }
+
+/* 1.19.4 · resumen de las listas (Facturas, Canceladas, Programar): en el celular, recuadro con los montos en azul */
+.resumen-lista .rl-n { margin-right: 5px; }
+.resumen-lista .rl-m b { font-weight: 400; }
+@media screen and (max-width: 760px) {
+  .resumen-lista { background: var(--superficie); border: 1px solid var(--borde); border-left: 4px solid var(--azul); border-radius: 10px; padding: 9px 12px; margin: 4px 0 12px; }
+  .resumen-lista .rl-n { display: block; font-size: 13px; font-weight: 600; color: var(--tenue); margin: 0; }
+  .resumen-lista .rl-m { display: flex; flex-wrap: wrap; gap: 2px 16px; margin-top: 2px; }
+  .resumen-lista .rl-m b { font-size: 18px; font-weight: 700; color: var(--azul); }
+  .resumen-lista .rl-m i { display: none; }
+}
+@media not screen and (max-width: 760px) { .resumen-lista:not(.sin-punto) .rl-n::after { content: ' ·'; } }

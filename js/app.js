@@ -231,6 +231,11 @@ function etiquetaEstado(e) {
   return `<span class="estado ${cls}">${e}</span>`;
 }
 
+/** Resumen de una lista: en computadora una línea gris; en el celular, recuadro con los montos en azul. */
+const resumenLista = (texto, t, conPunto = true) => {
+  const m = [t.CRC ? money(t.CRC, 'CRC') : '', t.USD ? money(t.USD, 'USD') : ''].filter(Boolean);
+  return `<div class="resumen-lista ${conPunto ? '' : 'sin-punto'}"><span class="rl-n">${texto}</span><span class="rl-m">${m.length ? m.map((x) => `<b>${x}</b>`).join('<i> · </i>') : '—'}</span></div>`;
+};
 const totalesTxt = (t) => [t.CRC ? money(t.CRC, 'CRC') : '', t.USD ? money(t.USD, 'USD') : ''].filter(Boolean).join(' · ') || '—';
 
 // ---------------------------------------------------------------- Inicio
@@ -369,7 +374,7 @@ function vistaProgramar() {
     </div>
   </div>
 
-  <p class="resumen-lista">${lista.length} facturas con saldo · ${totalesTxt(S.totales(lista))}</p>
+  ${resumenLista(`${lista.length} facturas con saldo`, S.totales(lista))}
 
   <div class="grupos">
     ${ordenados.length ? ordenados.map(grupoProveedor).join('') : '<p class="vacio">No hay facturas con saldo para estos filtros.</p>'}
@@ -828,7 +833,7 @@ function vistaFacturas() {
       <label>Moneda <select data-in="f-mon"><option value="">Ambas</option><option value="CRC" ${F.mon === 'CRC' ? 'selected' : ''}>Colones</option><option value="USD" ${F.mon === 'USD' ? 'selected' : ''}>Dólares</option></select></label>
     </div>
   </div>
-  <p class="resumen-lista">${total} facturas · saldo ${totalesTxt(t)}</p>
+  ${resumenLista(`${total} facturas · saldo`, t, false)}
   <div class="tabla-scroll"><table class="tabla clic">
     <thead><tr><th>Sociedad</th><th>Proveedor</th><th>Factura</th><th>Fecha</th><th>Vence</th><th class="num">Monto</th><th class="num">Saldo</th><th>Estado</th></tr></thead>
     <tbody>${lista.map((f) => `<tr data-act="f-abrir" data-v="${f.id}" tabindex="0">
@@ -872,7 +877,7 @@ function vistaCanceladas() {
       <label>Moneda <select data-in="c-mon"><option value="">Ambas</option><option value="CRC" ${C.mon === 'CRC' ? 'selected' : ''}>Colones</option><option value="USD" ${C.mon === 'USD' ? 'selected' : ''}>Dólares</option></select></label>
     </div>
   </div>
-  <p class="resumen-lista">${total} facturas canceladas · ${totalesTxt(t)}</p>
+  ${resumenLista(`${total} facturas canceladas`, t)}
   <div class="tabla-scroll"><table class="tabla clic">
     <thead><tr><th>Sociedad</th><th>Proveedor</th><th>Factura</th><th>Fecha factura</th><th class="num">Monto</th><th>Pagada el</th><th>Comprobante</th></tr></thead>
     <tbody>${lista.map(({ f, pago }) => `<tr data-act="f-abrir" data-v="${f.id}" tabindex="0">
