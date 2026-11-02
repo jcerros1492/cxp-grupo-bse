@@ -237,9 +237,23 @@ export async function entrarDirecto(usuario) {
 
 // ---------------------------------------------------------------- Sesiones guardadas en este dispositivo
 
-const CLAVE_SESIONES = 'cxp-sesiones';
+// 1.20.4: clave nueva. Las sesiones guardadas antes podían haber quedado trocadas entre usuarios;
+// se descartan una vez (al tocar el nombre se entra de nuevo solo, sin PIN).
+const CLAVE_SESIONES = 'cxp-sesiones-2';
+try { localStorage.removeItem('cxp-sesiones'); } catch { /* sin almacenamiento */ }
 function sesionesGuardadas() {
-  try { return JSON.parse(localStorage.getItem(CLAVE_SESIONES) || '{}'); } catch { return {}; }
+  try {
+    const g = JSON.parse(localStorage.getItem(CLAVE_SESIONES) || '{}');
+    for (const k of Object.keys(g)) if (g[k]?.usuario !== k) delete g[k]; // nunca una sesión guardada bajo otro nombre
+    return g;
+  } catch { return {}; }
+}
+const token0 = (s) => s?.token || '';
+function olvidarSesionToken(token) {
+  if (!token) return;
+  const g = sesionesGuardadas();
+  for (const k of Object.keys(g)) if (g[k]?.token === token) delete g[k];
+  try { localStorage.setItem(CLAVE_SESIONES, JSON.stringify(g)); } catch { /* sin almacenamiento */ }
 }
 function guardarSesionUsuario(s) {
   if (!s?.usuario) return;
@@ -360,14 +374,21 @@ export async function sincronizar() {
   notificar();
   // Solo los cambios de este usuario (si otra pestaña dejó cambios de otra persona, los envía esa persona).
   const enviadas = estado.pendientes.filter((op) => !op.hechoPor || op.hechoPor === estado.sesion.usuario).slice(0, 100);
+  // La respuesta puede llegar cuando ya se cambió de usuario: solo se toma la sesión si sigue siendo la misma.
+  const token = estado.sesion.token;
+  const misma = () => !!estado.sesion && estado.sesion.token === token;
   try {
-    const r = await api({ accion: 'sync', token: estado.sesion.token, desde: estado.desde, epoca: estado.epoca, ops: enviadas });
+    const r = await api({ accion: 'sync', token, desde: estado.desde, epoca: estado.epoca, ops: enviadas });
     if (!r.ok) {
-      if (r.auth === false) { olvidarSesionUsuario(estado.sesion?.usuario); await borrarTodo(); avisar(r.error, 'error'); return; }
-      if (r.debeCambiar) { estado.sesion.debeCambiar = true; guardarLocal(); return; }
+      if (r.auth === false) {
+        olvidarSesionToken(token);
+        if (misma()) { await borrarTodo(); avisar(r.error, 'error'); }
+        return;
+      }
+      if (r.debeCambiar) { if (misma()) { estado.sesion.debeCambiar = true; guardarLocal(); } return; }
       throw new Error(r.error || 'Error del servicio');
     }
-    recibir(r);
+    recibir(r, misma());
     estado.red = 'ok';
     estado.error = '';
     if (estado.pendientes.length) programarSync(100);
@@ -376,11 +397,12 @@ export async function sincronizar() {
     estado.error = e.name === 'AbortError' ? 'El servicio tardó demasiado en responder' : e.message;
   } finally {
     sincronizando = false;
+    if (estado.sesion && !misma()) programarSync(100); // se cambió de usuario mientras tanto: sincronizar ya con el nuevo
     notificar();
   }
 }
 
-function recibir(r) {
+function recibir(r, mismaSesion = true) {
   const procesadas = new Set((r.resultados || []).map((x) => x.opId));
   const mensajes = [];
   for (const x of r.resultados || []) {
@@ -401,7 +423,16 @@ function recibir(r) {
   estado.desde = r.ahora;
   estado.epoca = r.epoca || '';
   estado.ultimoSync = Date.now();
-  if (r.usuario) Object.assign(estado.sesion, r.usuario);
+  if (r.usuario && mismaSesion) {
+    if (r.usuario.usuario === estado.sesion.usuario) Object.assign(estado.sesion, r.usuario);
+    else {
+      // La sesión guardada estaba trocada (el acceso era de otra persona): se olvida y se vuelve a elegir usuario.
+      olvidarSesionToken(token0(estado.sesion));
+      olvidarSesionUsuario(estado.sesion.usuario);
+      estado.sesion = null;
+      mensajes.push(['Se reinició el acceso de este usuario. Toque su nombre para entrar de nuevo.', 'aviso']);
+    }
+  }
   if (r.usuarios) guardarUsuarios(r.usuarios);
   actualizarModo(r.modoPruebas);
   recomputar();
