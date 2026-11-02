@@ -866,17 +866,12 @@ label.adjuntar { align-items: center !important; }
   .sal-fila .sal-corto { display: block; }
 }
 
-/* 1.19.4 · resumen de las listas (Facturas, Canceladas, Programar): en el celular, recuadro con los montos en azul */
-.resumen-lista .rl-n { margin-right: 5px; }
-.resumen-lista .rl-m b { font-weight: 400; }
-@media screen and (max-width: 760px) {
-  .resumen-lista { background: var(--superficie); border: 1px solid var(--borde); border-left: 4px solid var(--azul); border-radius: 10px; padding: 9px 12px; margin: 4px 0 12px; }
-  .resumen-lista .rl-n { display: block; font-size: 13px; font-weight: 600; color: var(--tenue); margin: 0; }
-  .resumen-lista .rl-m { display: flex; flex-wrap: wrap; gap: 2px 16px; margin-top: 2px; }
-  .resumen-lista .rl-m b { font-size: 18px; font-weight: 700; color: var(--azul); }
-  .resumen-lista .rl-m i { display: none; }
-}
-@media not screen and (max-width: 760px) { .resumen-lista:not(.sin-punto) .rl-n::after { content: ' ·'; } }
+/* 1.19.4 / 1.20.3 · resumen de las listas (Facturas, Canceladas, Programar): recuadro con los montos en azul, en computadora y celular */
+.resumen-lista { background: var(--superficie); border: 1px solid var(--borde); border-left: 4px solid var(--azul); border-radius: 10px; padding: 9px 14px; margin: 4px 0 12px; color: var(--tenue); }
+.resumen-lista .rl-n { display: block; font-size: 13px; font-weight: 600; color: var(--tenue); margin: 0; }
+.resumen-lista .rl-m { display: flex; flex-wrap: wrap; gap: 2px 18px; margin-top: 2px; }
+.resumen-lista .rl-m b { font-size: 18px; font-weight: 700; color: var(--azul); }
+.resumen-lista .rl-m i { display: none; }
 /* 1.20 · proveedor con varios códigos */
 .unir-prov { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; background: var(--ambar-fondo); border: 1px solid #E8B26A; border-radius: 9px; padding: 10px 12px; font-size: 14px; }
 .unir-prov .sub { margin: 0; font-size: 13px; }
@@ -892,3 +887,11 @@ label.adjuntar { align-items: center !important; }
 .campo-fecha .cf-x { right: 36px; }
 .campo-fecha .cf-cal svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 .campo-fecha .cf-nativo { position: absolute; right: 4px; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
+
+/* 1.20.3 · pantalla de inicio: los cuatro usuarios en una sola fila, solo el nombre */
+.centro:has(.usuarios) { max-width: 980px; }
+.usuarios { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.tarjeta-usuario { padding: 22px 12px; }
+.tarjeta-usuario strong { font-size: 15.5px; }
+@media screen and (max-width: 760px) { .usuarios { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media screen and (min-width: 761px) { .resumen-lista .rl-m b { font-size: 20px; } .resumen-lista .rl-n { font-size: 13.5px; } }

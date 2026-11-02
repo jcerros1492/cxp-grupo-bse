@@ -255,7 +255,7 @@ function vistaLogin() {
     <div class="usuarios">${lista.map((u) => `
       <button class="tarjeta-usuario" data-act="elegir" data-v="${esc(u.usuario)}">
         <span class="avatar grande ${colorUsuario(u.usuario)}" aria-hidden="true">${iniciales(u.nombre)}</span>
-        <strong>${esc(u.nombre)}</strong><small>${esc(ROLES[u.rol] || u.rol)}</small>
+        <strong>${esc(u.nombre)}</strong>
       </button>`).join('')}</div>
   </section>`;
 }

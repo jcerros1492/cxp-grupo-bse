@@ -7,13 +7,13 @@ export const API_URL = 'https://script.google.com/macros/s/AKfycbxBud0gvtSXjPFC9
 // la lista de la hoja de Google (pestaña Usuarios), que se administra desde Configuración.
 export const USUARIOS = [
   { usuario: 'jonathan', nombre: 'Jonathan Cerros', rol: 'admin' },
-  { usuario: 'fernando', nombre: 'Fernando', rol: 'aplica' },
+  { usuario: 'fernando', nombre: 'Fernando Valenciano', rol: 'aplica' },
   { usuario: 'norman', nombre: 'Norman Alpízar', rol: 'aprueba' },
   { usuario: 'daniel', nombre: 'Daniel Barquero', rol: 'aplica' },
 ];
 
 // Versión de la aplicación: se muestra abajo en cada pantalla para confirmar qué versión está publicada.
-export const VERSION = '1.20.2';
+export const VERSION = '1.20.3';
 
 // Cada cuántos segundos se buscan cambios de los demás mientras la página está abierta.
 export const SEGUNDOS_SINCRONIZAR = 20;
