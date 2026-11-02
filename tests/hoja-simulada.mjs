@@ -117,6 +117,15 @@ if (process.env.ADJUNTOS === '1') {
   if (!codigoGs.includes(linea)) throw new Error('No se encontró la línea de quienSoy en Codigo.gs');
   codigoGs = codigoGs.replace(linea, linea + '\n    var extra = adjuntos_(p, usuario); if (extra) return extra;') + '\n' + readFileSync(process.env.ADJUNTOS_GS || raiz + 'apps-script/Adjuntos.gs', 'utf8');
 }
+if (process.env.RECIBIDAS === '1') {
+  // Las dos líneas de la guía de instalación (1.21) y el archivo nuevo Recibidas.gs
+  const ping = "if (p.accion === 'ping') return { ok: true };";
+  const extra = 'var extra = adjuntos_(p, usuario); if (extra) return extra;';
+  if (!codigoGs.includes(ping) || !codigoGs.includes(extra)) throw new Error('Faltan las líneas de ping / adjuntos en Codigo.gs');
+  codigoGs = codigoGs.replace(ping, ping + "\n    if (p.accion === 'recibirFacturas') return recibirFacturas_(libro, p);")
+    .replace(extra, extra + '\n    var rec = recibidas_(p, usuario); if (rec) return rec;')
+    + '\n' + readFileSync(raiz + 'apps-script/Recibidas.gs', 'utf8');
+}
 vm.runInContext(codigoGs.replace("'ESCRIBA-AQUI-SU-CONTRASEÑA';", `'${CLAVE_PRUEBA}';`).replace('var MODO_PRUEBAS = true;', `var MODO_PRUEBAS = ${process.env.MODO_PRUEBAS === '1'};`), contexto, { filename: 'Codigo.gs' });
 // Con un .xlsx como segundo argumento, la hoja simulada arranca con ese contenido
 // (como si se hubiera subido a Drive y abierto con Google Sheets).

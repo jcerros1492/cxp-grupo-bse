@@ -25,7 +25,7 @@ export const CAMPOS = [
 ];
 
 /** Cédulas jurídicas conocidas de las sociedades (por su nombre corto). */
-export const CEDULAS_SOCIEDAD = { 3101006847: 'Santa Eduviges', 3101006133: 'La Hilda' };
+export const CEDULAS_SOCIEDAD = { 3101006847: 'Santa Eduviges', 3101006133: 'La Hilda', 3101037251: 'Nosavar', 3101032890: 'Loma Bonita' };
 
 // Columnas del reporte de GTI. El CSV que se ajusta para el sistema contable trae estas 13, sin encabezado.
 export const GTI_CSV = ['TipoDocRecibido', 'FechaEmisiónDocumento', 'ConsecutivoDocumento', 'IdentificaciónReceptor',
@@ -295,7 +295,7 @@ export function prepararFacturas(filas, inicio, mapeo, fijos, datos, opciones = 
 }
 
 /** "DistribuidoraAgroComercialS.A." → "DISTRIBUIDORA AGRO COMERCIAL S.A." */
-function nombreLegible(n) {
+export function nombreLegible(n) {
   return String(n).replace(/([a-záéíóúñ])([A-ZÁÉÍÓÚÑ])/g, '$1 $2').replace(/([a-zA-Z])(S\.A\.|S\.R\.L\.)$/i, '$1 $2')
     .replace(/\s{2,}/g, ' ').trim().toUpperCase();
 }

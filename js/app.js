@@ -5,7 +5,8 @@ import { VERSION, USUARIOS, API_URL } from './config.js';
 import { importarExcel } from './importer.js';
 import { crearPdfReporte, crearPdfEstadoCuenta } from './reporte-pdf.js';
 import { crearAvisoPago } from './aviso-pdf.js';
-import { CAMPOS as CAMPOS_IMP, leerFilas, filaEncabezado, sugerirMapeo, prepararFacturas, detectarGTI } from './importar-facturas.js';
+import { CAMPOS as CAMPOS_IMP, leerFilas, filaEncabezado, sugerirMapeo, prepararFacturas, detectarGTI, CEDULAS_SOCIEDAD, nombreClave, numeroDocumento, cedulasConocidas, nombreLegible } from './importar-facturas.js';
+import { archivoContable, lineaContable } from './contable.js';
 import { construirArchivo } from './banco.js';
 import {
   money, fmtNum, parseNum, parseMonto, formatearMontoEscrito, fechaHora, fmtFecha, hoyISO, esc, errorIBAN, fmtIBAN, sumarDias, round2, MONEDAS,
@@ -36,6 +37,7 @@ const ui = {
 const RUTAS = {
   programar: { titulo: 'Programar pagos', vista: vistaProgramar },
   aplicar: { titulo: 'Por aplicar', vista: vistaAplicar },
+  recibidas: { titulo: 'Recibidas', vista: vistaRecibidas },
   facturas: { titulo: 'Facturas', vista: vistaFacturas },
   canceladas: { titulo: 'Canceladas', vista: vistaCanceladas },
   proveedores: { titulo: 'Proveedores', vista: vistaProveedores },
@@ -46,7 +48,7 @@ const RUTAS = {
 
 function menuPara(usuario) {
   if (usuario?.rol === 'aprueba') return ['tablero', 'programar', 'facturas', 'canceladas', 'reportes'];
-  return ['tablero', 'aplicar', 'facturas', 'canceladas', 'proveedores', 'reportes', 'config']; // Programar pagos: solo Norman
+  return ['tablero', 'aplicar', 'recibidas', 'facturas', 'canceladas', 'proveedores', 'reportes', 'config']; // Programar pagos: solo Norman
 }
 
 function rutaActual() {
@@ -84,7 +86,7 @@ function render() {
   if (S.usuarioActual() && !menuPara(S.usuarioActual()).includes(ruta) && ruta !== 'tablero') ruta = 'tablero';
   const foco = guardarFoco();
   $nav.innerHTML = u ? menuPara(u).map((r) => {
-    const n = r === 'aplicar' ? S.programacionesPendientes().filter((p) => !S.factura(p.facturaId)?.revision).length + porRevisar().length : 0;
+    const n = r === 'aplicar' ? S.programacionesPendientes().filter((p) => !S.factura(p.facturaId)?.revision).length + porRevisar().length : r === 'recibidas' ? nPorPasar() : 0;
     return `<a href="#/${r}" class="${r === ruta ? 'activo' : ''}" ${r === ruta ? 'aria-current="page"' : ''}>${RUTAS[r].titulo}${n ? ` <span class="burbuja">${n}</span>` : ''}</a>`;
   }).join('') : '';
   $user.innerHTML = u
@@ -1318,6 +1320,365 @@ function avisoUnificacion() {
     <button class="btn primario chico" data-act="pv-unificar">Unificar ahora</button></div>`;
 }
 
+// ---------------------------------------------------------------- Facturas recibidas por correo (1.21)
+
+const REC = { filas: [], inicio: '2026-10-26', ultima: null, cargado: false, cargando: false, error: '', tab: 'credito', sel: new Set(), cargadoEn: 0, archivos: [], provsPend: null };
+const TIPO_REC = { FE: 'Factura', TE: 'Tiquete', NC: 'Nota de crédito', ND: 'Nota de débito', FEC: 'Factura de compra' };
+
+async function cargarRecibidas(forzar) {
+  const u = S.usuarioActual();
+  if (!u || u.rol === 'aprueba' || REC.cargando) return;
+  if (!forzar && Date.now() - REC.cargadoEn < 60000) return;
+  REC.cargando = true;
+  if (rutaActual() === 'recibidas') render();
+  try {
+    const r = await Sync.recibidas('recibidasLista');
+    REC.filas = r.filas || []; REC.inicio = r.inicio || REC.inicio; REC.ultima = r.ultima || null;
+    REC.error = ''; REC.cargado = true; REC.cargadoEn = Date.now();
+    const vivas = new Set(REC.filas.map((x) => x.clave));
+    for (const c of [...REC.sel]) if (!vivas.has(c)) REC.sel.delete(c);
+  } catch (e) { REC.error = e.message; REC.cargadoEn = Date.now(); }
+  finally { REC.cargando = false; render(); }
+}
+setInterval(() => { if (navigator.onLine && document.visibilityState === 'visible' && Date.now() - REC.cargadoEn > 10 * 60000) cargarRecibidas(); }, 60000);
+
+/** Datos para relacionar lo recibido con sociedades, proveedores y cuentas por pagar (se arma una vez por pantalla). */
+function contextoRecibidas() {
+  const socs = Object.values(S.sociedades());
+  const socDeCedula = (ced) => {
+    const corto = CEDULAS_SOCIEDAD[String(ced || '').replace(/\D/g, '')];
+    return corto ? socs.find((s) => nombreClave(s.corto) === nombreClave(corto))?.clave || null : null;
+  };
+  const cedProv = { ...cedulasConocidas(S.datos()), ...memoriaCedulas() };
+  const porNombre = new Map();
+  for (const p of S.proveedoresActivos()) if (!porNombre.has(nombreClave(p.nombre))) porNombre.set(nombreClave(p.nombre), p.codigo);
+  const idx = new Map();
+  for (const f of S.listaFacturas()) {
+    const k = f.sociedad + '|' + String(f.documento).replace(/^0+(?=\d)/, '');
+    if (!idx.has(k)) idx.set(k, []);
+    idx.get(k).push(f);
+  }
+  return { socDeCedula, cedProv, porNombre, idx };
+}
+
+function infoRecibida(r, ctx) {
+  const sociedad = ctx.socDeCedula(r.cedulaReceptor);
+  let codigo = ctx.cedProv[r.cedulaEmisor] || '', como = codigo ? 'cedula' : '';
+  if (codigo && S.unidoA(codigo)) codigo = S.unidoA(codigo);
+  if (!codigo) { codigo = ctx.porNombre.get(nombreClave(r.nombreEmisor)) || ctx.porNombre.get(nombreClave(r.nombreComercial)) || ''; como = codigo ? 'nombre' : ''; }
+  const documento = numeroDocumento(r.consecutivo);
+  const cond = r.condicionManual || (r.condicion === '02' ? 'credito' : r.condicion === '01' ? 'contado' : r.tipo === 'TE' ? 'contado' : 'otra');
+  const plazo = Number(r.plazoManual || r.plazo) || (codigo ? Number(S.proveedor(codigo).plazo) || 0 : 0);
+  const total = round2(Number(r.total) || 0);
+  let factura = r.facturaId ? S.factura(r.facturaId) : null;
+  if (!factura && sociedad) {
+    const cands = ctx.idx.get(sociedad + '|' + documento) || [];
+    factura = cands.find((f) => (codigo && String(f.codigo) === String(codigo)) || (f.moneda === (r.moneda === 'USD' ? 'USD' : 'CRC') && Math.abs(f.monto - total) < 0.01)) || null;
+  }
+  return {
+    r, sociedad, codigo, como, documento, cond, plazo, total, factura,
+    moneda: r.moneda === 'USD' ? 'USD' : r.moneda === 'CRC' || !r.moneda ? 'CRC' : r.moneda,
+    vence: r.fecha ? sumarDias(r.fecha, plazo || 0) : '',
+    anterior: !!r.fecha && r.fecha < REC.inicio,
+    rechazada: r.hacienda === 'rechazada',
+    proveedorNombre: codigo ? S.proveedor(codigo).nombre : nombreLegible(r.nombreEmisor || r.nombreComercial || r.cedulaEmisor),
+  };
+}
+
+/** Pestaña de cada comprobante; null = no se muestra (respuestas de Hacienda sueltas, mensajes). */
+function pestanaRecibida(x) {
+  const r = x.r;
+  if (r.tipo === 'MH' || r.tipo === 'MR') return null;
+  if (r.estado === 'descartada') return 'descartadas';
+  if (r.estado === 'cxp' || x.factura) return 'cxp';
+  if (r.tipo === 'NC') return 'nc';
+  return x.cond === 'credito' ? 'credito' : 'contado';
+}
+
+function listaRecibidas() {
+  const ctx = contextoRecibidas();
+  const todas = REC.filas.map((r) => infoRecibida(r, ctx)).map((x) => ({ ...x, tab: pestanaRecibida(x) })).filter((x) => x.tab);
+  todas.sort((a, b) => String(b.r.recibida).localeCompare(String(a.r.recibida)) || String(b.r.fecha).localeCompare(String(a.r.fecha)));
+  return todas;
+}
+const seleccionable = (x) => x.tab === 'credito' && x.sociedad && !x.rechazada && x.total > 0 && (x.moneda === 'CRC' || x.moneda === 'USD');
+const nPorPasar = () => (REC.cargado ? listaRecibidas().filter((x) => x.tab === 'credito').length : 0);
+
+function etiquetasRecibida(x) {
+  const t = [];
+  if (x.rechazada) t.push(`<span class="tg rc-rech" title="${esc(x.r.haciendaDetalle || '')}">Rechazada por Hacienda</span>`);
+  if (!x.sociedad) t.push('<span class="tg rc-gris">no es del grupo</span>');
+  if (x.anterior) t.push(`<span class="tg rc-amb">anterior al ${fmtFecha(REC.inicio)} · revisar</span>`);
+  if (!x.codigo && x.tab !== 'cxp') t.push('<span class="tg rc-azul">proveedor nuevo</span>');
+  if (x.r.condicionManual === 'credito') t.push('<span class="tg rc-amb">venía de contado</span>');
+  if (x.tab === 'cxp' && x.factura && x.r.estado !== 'cxp') t.push('<span class="tg rc-verde">ya estaba en CxP</span>');
+  return t.join(' ');
+}
+
+function vistaRecibidas() {
+  if (!REC.cargado && !REC.cargando && !REC.error) setTimeout(() => cargarRecibidas(true), 0);
+  const todas = listaRecibidas();
+  const tabs = [['credito', 'Crédito'], ['contado', 'Contado'], ['nc', 'Notas de crédito'], ['cxp', 'Ya en cuentas por pagar'], ['descartadas', 'Descartadas']];
+  const cuenta = (k) => todas.filter((x) => x.tab === k).length;
+  const lista = todas.filter((x) => x.tab === REC.tab);
+  const u = REC.ultima;
+  const info = REC.error ? `<span class="malo">${esc(REC.error)}</span>`
+    : u ? `📥 Última lectura del correo: ${fechaHora(Date.parse(u.fecha))}${u.dia === hoyISO() ? ` · hoy llegaron ${u.nuevasHoy || 0} ${Number(u.nuevasHoy) === 1 ? 'factura nueva' : 'facturas nuevas'}` : ''}`
+      : REC.cargado ? '📥 El lector del correo todavía no ha enviado facturas.' : 'Cargando…';
+  return `
+  <div class="titulo-vista"><div><h1>Facturas recibidas</h1><p class="sub">Llegan solas del correo facturacion@bse.cr. Revise, marque las de crédito y páselas a cuentas por pagar.</p></div>
+    <div class="acciones">
+      <label class="btn">Subir XML<input type="file" accept=".xml,.pdf,application/xml,text/xml,application/pdf" multiple data-in="rc-subir" hidden></label>
+      <label class="btn">Comparar con GTI<input type="file" accept=".csv,.txt,.xlsx,.xls" data-in="rc-gti" hidden></label>
+    </div></div>
+  <div class="rc-info"><span>${info}</span><button class="btn chico" data-act="rc-actualizar" ${REC.cargando ? 'disabled' : ''}>${REC.cargando ? 'Actualizando…' : 'Actualizar'}</button></div>
+  <div class="rc-tabs" role="tablist">${tabs.map(([k, n]) => `<button role="tab" class="${REC.tab === k ? 'on' : ''}" aria-selected="${REC.tab === k}" data-act="rc-tab" data-v="${k}">${n} <i>${cuenta(k)}</i></button>`).join('')}</div>
+  ${lista.length ? tablaRecibidas(lista) : `<p class="vacio">${REC.cargando && !REC.cargado ? 'Cargando…' : {
+    credito: 'No hay facturas de crédito por revisar.', contado: 'No hay facturas de contado.', nc: 'No hay notas de crédito.',
+    cxp: 'Todavía no se ha pasado ninguna factura recibida.', descartadas: 'No hay facturas descartadas.' }[REC.tab]}</p>`}
+  ${REC.tab === 'credito' || REC.tab === 'cxp' ? pieRecibidas(lista) : ''}`;
+}
+
+function tablaRecibidas(lista) {
+  const conSel = REC.tab === 'credito' || REC.tab === 'cxp';
+  const marcables = lista.filter((x) => REC.tab === 'cxp' || seleccionable(x));
+  const todas = marcables.length && marcables.every((x) => REC.sel.has(x.r.clave));
+  return `<div class="tabla-scroll"><table class="tabla rc-tabla">
+    <thead><tr>${conSel ? `<th class="rc-ck"><input type="checkbox" data-in="rc-todas" aria-label="Marcar todas" ${todas ? 'checked' : ''} ${marcables.length ? '' : 'disabled'}></th>` : ''}
+      <th>Recibida</th><th>Sociedad</th><th>Proveedor</th><th>Factura</th><th>Fecha</th><th>Condición</th><th>Vence</th><th class="num">Monto</th><th></th></tr></thead>
+    <tbody>${lista.map((x) => {
+      const r = x.r, k = esc(r.clave);
+      const cond = x.cond === 'credito' ? `<span class="tg rc-verde">Crédito${x.plazo ? ` ${x.plazo} d` : ''}</span>` : x.cond === 'contado' ? '<span class="tg rc-amb">Contado</span>' : `<span class="tg rc-gris">${esc(r.condicion || '—')}</span>`;
+      let acc = '';
+      if (REC.tab === 'contado') acc = `<button class="btn chico" data-act="rc-credito" data-v="${k}">Es de crédito</button> <button class="btn chico" data-act="rc-descartar" data-v="${k}">No es CxP</button>`;
+      else if (REC.tab === 'nc') acc = ncAccion(x);
+      else if (REC.tab === 'descartadas') acc = `<button class="btn chico" data-act="rc-recuperar" data-v="${k}">Recuperar</button>`;
+      else if (REC.tab === 'credito') acc = `<button class="btn-link" data-act="rc-descartar" data-v="${k}">descartar</button>`;
+      return `<tr class="${x.rechazada ? 'rc-fila-rech' : ''} ${REC.sel.has(r.clave) ? 'rc-on' : ''}">
+        ${conSel ? `<td class="rc-ck"><input type="checkbox" data-in="rc-sel" data-v="${k}" ${REC.sel.has(r.clave) ? 'checked' : ''} ${REC.tab === 'cxp' || seleccionable(x) ? '' : 'disabled'} aria-label="Marcar factura ${esc(x.documento)}"></td>` : ''}
+        <td>${r.recibida ? fmtFecha(r.recibida.slice(0, 10)).slice(0, 5) : ''}</td>
+        <td>${x.sociedad ? esc(S.nombreSociedad(x.sociedad)) : `<span class="sub">${esc(r.nombreReceptor || r.cedulaReceptor)}</span>`}</td>
+        <td><b>${esc(x.proveedorNombre)}</b>${x.codigo ? ` <span class="sub">· ${esc(x.codigo)}</span>` : ''}<div class="rc-tags">${etiquetasRecibida(x)}</div></td>
+        <td class="mono">${esc(x.documento)}${r.tipo !== 'FE' ? `<div class="sub">${esc(TIPO_REC[r.tipo] || r.tipo)}</div>` : ''}</td>
+        <td>${fmtFecha(r.fecha)}</td><td>${cond}</td><td>${x.cond === 'credito' ? fmtFecha(x.vence) : '—'}</td>
+        <td class="num">${MONEDAS[x.moneda] ? money(x.total, x.moneda) : esc(x.moneda + ' ' + fmtNum(x.total))}</td>
+        <td class="rc-acc">${r.pdfId ? `<button class="btn-link" data-act="ver-arch" data-v="${esc(r.pdfId)}">PDF</button> ` : ''}${acc}</td></tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
+function ncAccion(x) {
+  const ref = String(x.r.referencia || '');
+  const f = refFacturaNC(x);
+  if (f) return `<button class="btn chico" data-act="rc-nc" data-v="${esc(x.r.clave)}">Aplicar a la factura ${esc(f.documento)}</button> <button class="btn-link" data-act="rc-descartar" data-v="${esc(x.r.clave)}">descartar</button>`;
+  return `<span class="sub">${ref ? `La factura ${esc(numeroDocumento(ref.slice(21, 41)))} no está en CxP` : 'Sin factura de referencia'}</span> <button class="btn-link" data-act="rc-descartar" data-v="${esc(x.r.clave)}">descartar</button>`;
+}
+function refFacturaNC(x) {
+  const ref = String(x.r.referencia || '').replace(/\D/g, '');
+  if (ref.length < 41 || !x.sociedad) return null;
+  const doc = numeroDocumento(ref.slice(21, 41));
+  return S.listaFacturas().find((f) => f.sociedad === x.sociedad && String(f.documento).replace(/^0+(?=\d)/, '') === doc && (!x.codigo || String(f.codigo) === String(x.codigo)) && S.saldo(f) > 0.004) || null;
+}
+
+function pieRecibidas(lista) {
+  const sel = lista.filter((x) => REC.sel.has(x.r.clave) && (REC.tab === 'cxp' || seleccionable(x)));
+  const t = { CRC: 0, USD: 0 };
+  for (const x of sel) if (t[x.moneda] != null) t[x.moneda] = round2(t[x.moneda] + x.total);
+  const tot = [t.CRC ? money(t.CRC, 'CRC') : '', t.USD ? money(t.USD, 'USD') : ''].filter(Boolean).join(' · ');
+  if (REC.tab === 'cxp') {
+    return `<div class="rc-pie"><span>${sel.length ? `<b>${sel.length} marcadas</b> · ${tot}` : 'Marque las facturas para descargar otra vez su archivo para el sistema contable.'}</span>
+      <button class="btn primario" data-act="rc-csv" ${sel.length ? '' : 'disabled'}>Descargar archivo contable</button></div>`;
+  }
+  return `<div class="rc-pie"><span>${sel.length ? `<b>${sel.length} ${sel.length === 1 ? 'marcada' : 'marcadas'}</b> · ${tot}` : 'Marque las facturas de crédito que van a cuentas por pagar.'}</span>
+    <span class="rc-pie-btns"><button class="btn" data-act="rc-descartar-sel" ${sel.length ? '' : 'disabled'}>Descartar marcadas</button>
+    <button class="btn primario" data-act="rc-pasar" ${sel.length ? '' : 'disabled'}>Pasar ${sel.length || ''} a cuentas por pagar</button></span></div>`;
+}
+
+/** Cambia el estado en la hoja «Recibidas» y lo refleja aquí. */
+async function cambiarRecibidas(claves, cambios, porClave) {
+  await Sync.recibidas('recibidasCambiar', { claves, cambios, porClave: porClave || {} });
+  for (const r of REC.filas) {
+    if (!claves.includes(r.clave)) continue;
+    Object.assign(r, cambios, porClave?.[r.clave] || {});
+  }
+  for (const c of claves) REC.sel.delete(c);
+  render();
+}
+
+function dialogoCreditoRecibida(clave) {
+  const x = listaRecibidas().find((y) => y.r.clave === clave);
+  if (!x) return;
+  const plazo = x.plazo || 30;
+  abrirDialogo(`<header class="dlg-cab"><div><h2>Pasar a crédito</h2><p class="sub">${esc(x.proveedorNombre)} · Factura ${esc(x.documento)} · ${money(x.total, x.moneda)}</p></div><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+    <form class="dlg-cuerpo form-grid" data-form="rc-credito" data-v="${esc(clave)}">
+      <label>Plazo (días) <input type="number" name="plazo" min="0" max="365" value="${plazo}" required data-in="rc-plazo" data-fecha="${esc(x.r.fecha)}"></label>
+      <p class="sub" id="rc-vence">Vence el <b>${fmtFecha(sumarDias(x.r.fecha, plazo))}</b></p>
+      <p class="ancho sub">Pasa a la pestaña «Crédito», ya marcada, con la nota «venía de contado».</p>
+      <div class="ancho acciones-fila"><button class="btn primario" type="submit">Pasar a crédito</button><button class="btn" type="button" data-act="cerrar">Cancelar</button></div>
+    </form>`);
+}
+
+/** Paso 1 al pasar a cuentas por pagar: proveedores que no se reconocieron. */
+function pasarRecibidas() {
+  const items = listaRecibidas().filter((x) => REC.sel.has(x.r.clave) && seleccionable(x));
+  if (!items.length) return;
+  const nuevos = new Map();
+  for (const x of items) if (!x.codigo && !nuevos.has(x.r.cedulaEmisor)) nuevos.set(x.r.cedulaEmisor, x);
+  if (!nuevos.size) {
+    if (!confirm(`¿Pasar ${items.length} ${items.length === 1 ? 'factura' : 'facturas'} a cuentas por pagar?`)) return;
+    pasarRecibidasConfirmado(items, {});
+    return;
+  }
+  REC.provsPend = items;
+  const provs = S.proveedoresActivos().sort((a, b) => a.nombre.localeCompare(b.nombre));
+  let sig = Number(S.siguienteCodigoProveedor());
+  abrirDialogo(`<header class="dlg-cab"><div><h2>Proveedores nuevos</h2><p class="sub">${nuevos.size} ${nuevos.size === 1 ? 'proveedor no está' : 'proveedores no están'} en la aplicación. Elija si se crea o si ya existe con otro nombre.</p></div><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+    <form class="dlg-cuerpo" data-form="rc-provs">
+      <div class="imp-emisores">${[...nuevos.values()].map((x) => `
+        <div class="imp-emisor es-nuevo"><div><strong>${esc(x.r.nombreEmisor)}</strong><span class="sub">Céd. ${esc(x.r.cedulaEmisor)}${x.r.nombreComercial ? ' · ' + esc(x.r.nombreComercial) : ''}</span></div>
+          <select name="p_${esc(x.r.cedulaEmisor)}"><option value="">➕ Crear proveedor nuevo (código ${sig++})</option>
+            ${provs.map((p) => `<option value="${esc(p.codigo)}">${esc(p.codigo)} · ${esc(p.nombre)}</option>`).join('')}</select></div>`).join('')}</div>
+      <div class="acciones-fila" style="margin-top:12px"><button class="btn primario" type="submit">Continuar y pasar ${items.length} ${items.length === 1 ? 'factura' : 'facturas'}</button><button class="btn" type="button" data-act="cerrar">Cancelar</button></div>
+    </form>`);
+}
+
+async function pasarRecibidasConfirmado(items, elegidos) {
+  const creados = {}, errores = [], ok = [];
+  let sig = Number(S.siguienteCodigoProveedor());
+  const mem = memoriaCedulas();
+  for (const x of items) {
+    const ced = x.r.cedulaEmisor;
+    let codigo = x.codigo || creados[ced] || elegidos[ced] || '';
+    if (!codigo) {
+      codigo = String(sig++);
+      const r = S.guardarProveedor(codigo, { nombre: nombreLegible(x.r.nombreEmisor), alias: '', ibanCRC: '', ibanUSD: '', plazo: x.plazo || 30 }, true);
+      if (r.error) { errores.push(`${x.r.nombreEmisor}: ${r.error}`); continue; }
+      creados[ced] = codigo;
+    }
+    if (ced) mem[ced] = codigo;
+    const id = Sync.nuevoId();
+    const r = S.nuevaFactura({ id, sociedad: x.sociedad, codigo, documento: x.documento, moneda: x.moneda, fechaFactura: x.r.fecha,
+      fechaVence: x.vence || x.r.fecha, monto: x.total, observaciones: `Céd. ${ced} · Correo · Clave ${x.r.clave}` });
+    if (r.error) errores.push(`Factura ${x.documento}: ${r.error}`); else ok.push({ x, id });
+  }
+  try { localStorage.setItem('cxp-cedulas', JSON.stringify(mem)); } catch { /* sin almacenamiento */ }
+  cerrarDialogo();
+  if (ok.length) {
+    const porClave = Object.fromEntries(ok.map(({ x, id }) => [x.r.clave, { facturaId: id }]));
+    try { await cambiarRecibidas(ok.map(({ x }) => x.r.clave), { estado: 'cxp' }, porClave); }
+    catch (e) { avisar('Las facturas quedaron en cuentas por pagar, pero no se pudo marcar en «Recibidas»: ' + e.message, 'error'); }
+    dialogoArchivosContables(ok.map(({ x }) => x.r), `✓ ${ok.length} ${ok.length === 1 ? 'factura pasó' : 'facturas pasaron'} a cuentas por pagar`, errores);
+  } else if (errores.length) avisar(errores.slice(0, 3).join(' · '), 'error');
+}
+
+/** Archivos para el sistema contable: uno por sociedad y moneda. */
+function dialogoArchivosContables(filas, titulo, errores = []) {
+  const ctx = contextoRecibidas();
+  const grupos = new Map();
+  for (const r of filas) {
+    const soc = ctx.socDeCedula(r.cedulaReceptor) || 'OTRA';
+    const k = soc + '|' + r.moneda;
+    if (!grupos.has(k)) grupos.set(k, { soc, moneda: r.moneda, filas: [] });
+    grupos.get(k).filas.push(r);
+  }
+  const hoy = new Date(), meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'setiembre', 'octubre', 'noviembre', 'diciembre'];
+  const sufijo = `${String(hoy.getDate()).padStart(2, '0')}_${meses[hoy.getMonth()]}_${hoy.getFullYear()}`;
+  REC.archivos = [...grupos.values()].map((g) => {
+    const corto = g.soc === 'OTRA' ? 'OTRA' : S.nombreSociedad(g.soc);
+    const mon = g.moneda === 'USD' ? 'DOLARES' : g.moneda === 'CRC' ? 'COLONES' : g.moneda;
+    const total = round2(g.filas.reduce((t, r) => t + (Number(r.total) || 0), 0));
+    return { nombre: `${limpioArchivo(corto).toUpperCase().replace(/\s+/g, '_')}_${mon}_${sufijo}.csv`, filas: g.filas, total, moneda: g.moneda };
+  });
+  abrirDialogo(`<header class="dlg-cab"><div><h2>${esc(titulo)}</h2><p class="sub">Archivos para subir al sistema contable: uno por sociedad y moneda, con el mismo formato del reporte de GTI.</p></div><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+    <div class="dlg-cuerpo">
+      ${errores.length ? `<div class="aviso"><strong>No se pasaron ${errores.length}:</strong><ul>${errores.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
+      ${REC.archivos.map((a, i) => `<div class="rc-arch"><span>📄 <b>${esc(a.nombre)}</b><br><span class="sub">${a.filas.length} ${a.filas.length === 1 ? 'factura' : 'facturas'} · ${MONEDAS[a.moneda] ? money(a.total, a.moneda) : fmtNum(a.total)}</span></span>
+        <button class="btn primario chico" data-act="rc-bajar" data-v="${i}">Descargar</button></div>
+        <pre class="txt rc-pre">${esc(a.filas.slice(0, 3).map(lineaContable).join('\n'))}${a.filas.length > 3 ? '\n…' : ''}</pre>`).join('')}
+      <div class="acciones-fila">${REC.archivos.length > 1 ? '<button class="btn" data-act="rc-bajar-todos">Descargar todos</button>' : ''}<button class="btn" data-act="cerrar">Cerrar</button></div>
+      <p class="sub">Decimales con punto, sin espacios en los nombres y 0 donde no hay monto: listo para subir sin arreglarlo. Se puede volver a descargar desde «Ya en cuentas por pagar».</p>
+    </div>`);
+}
+function bajarArchivoContable(i) {
+  const a = REC.archivos[i];
+  if (a) descargar(a.nombre, new Blob([archivoContable(a.filas)], { type: 'text/csv' }));
+}
+
+async function aplicarNCRecibida(clave) {
+  const x = listaRecibidas().find((y) => y.r.clave === clave);
+  const f = x && refFacturaNC(x);
+  if (!f) return;
+  const monto = Math.min(x.total, S.saldo(f));
+  if (!confirm(`¿Aplicar la nota de crédito ${x.documento} por ${money(monto, f.moneda)} a la factura ${f.documento} de ${S.proveedor(f.codigo).nombre}?`)) return;
+  const r = S.registrarMovimiento(f.id, { tipo: 'nc', monto, fecha: x.r.fecha || hoyISO(), comprobante: x.documento });
+  if (!resultado(r, 'Nota de crédito aplicada')) return;
+  try { await cambiarRecibidas([clave], { estado: 'cxp' }, { [clave]: { facturaId: f.id } }); } catch (e) { avisar(e.message, 'error'); }
+}
+
+/** Subir XML (y sus PDF) a mano: el atraso o lo que no llegó por correo. */
+async function subirXmlRecibidas(files) {
+  const xmls = files.filter((f) => /\.xml$/i.test(f.name)), pdfs = files.filter((f) => /\.pdf$/i.test(f.name));
+  if (!xmls.length) { avisar('Elija archivos .xml de Hacienda (los PDF son opcionales)', 'error'); return; }
+  const base = (n) => n.replace(/\.(xml|pdf)$/i, '').replace(/[_-]?xml$/i, '').toLowerCase();
+  const usados = new Set(), docs = [];
+  for (const f of xmls) {
+    const xml = await f.text();
+    const clave = (/<(?:[\w.-]+:)?Clave>\s*(\d+)/.exec(xml) || [])[1] || '';
+    const cons = (/<(?:[\w.-]+:)?NumeroConsecutivo>\s*(\d+)/.exec(xml) || [])[1] || '';
+    const p = pdfs.find((q) => !usados.has(q) && (base(q.name) === base(f.name) || (clave && q.name.includes(clave)) || (cons && q.name.includes(cons))));
+    let pdf = null;
+    if (p) { usados.add(p); try { pdf = { nombre: p.name, base64: await archivoBase64(p) }; } catch { /* PDF muy grande: va sin PDF */ } }
+    docs.push({ xml, pdf });
+  }
+  const res = { nueva: 0, repetida: 0, respuesta: 0, error: 0, ignorado: 0 };
+  try {
+    for (let i = 0; i < docs.length; i += 10) {
+      avisar(`Subiendo ${Math.min(i + 10, docs.length)} de ${docs.length}…`);
+      const r = await Sync.recibidas('recibidasSubir', { documentos: docs.slice(i, i + 10) });
+      for (const x of r.resultados || []) res[x.estado] = (res[x.estado] || 0) + 1;
+    }
+  } catch (e) { avisar('No se pudo subir: ' + e.message, 'error'); return; }
+  avisar(`Listo: ${res.nueva} nuevas · ${res.repetida} ya estaban · ${res.respuesta} respuestas de Hacienda${res.error ? ` · ${res.error} no se pudieron leer` : ''}`, res.error ? 'error' : 'ok');
+  await cargarRecibidas(true);
+}
+
+/** Compara el reporte de GTI con lo recibido y con cuentas por pagar: muestra lo que falta. */
+async function compararGTI(file) {
+  let g;
+  try {
+    const esTexto = /\.(csv|txt)$/i.test(file.name);
+    const filas = leerFilas(esTexto ? await leerTexto(file) : await file.arrayBuffer(), window.XLSX, esTexto);
+    g = detectarGTI(filas);
+  } catch (e) { avisar('No se pudo leer el archivo: ' + e.message, 'error'); return; }
+  if (!g) { avisar('Ese archivo no parece el reporte de GTI', 'error'); return; }
+  if (!REC.cargado) await cargarRecibidas(true);
+  const m = g.mapeo, col = (f, k) => (m[k] != null ? f[m[k]] : '');
+  const ctx = contextoRecibidas();
+  const recibidos = new Set(REC.filas.map((r) => r.consecutivo + '|' + r.cedulaEmisor));
+  const faltan = [];
+  let n = 0, enCorreo = 0, enCxP = 0;
+  for (const f of g.filas.slice(g.inicio + 1)) {
+    const cons = String(col(f, 'documento')).replace(/\D/g, '');
+    if (!cons) continue;
+    n++;
+    const ced = String(col(f, 'cedulaEmisor')).replace(/\D/g, '');
+    if (recibidos.has(cons + '|' + ced)) { enCorreo++; continue; }
+    const soc = ctx.socDeCedula(col(f, 'cedulaReceptor'));
+    const doc = numeroDocumento(cons);
+    const cod = ctx.cedProv[ced];
+    if (soc && (ctx.idx.get(soc + '|' + doc) || []).some((x) => !cod || String(x.codigo) === String(cod))) { enCxP++; continue; }
+    faltan.push({ tipo: String(col(f, 'tipoDoc')), fecha: String(col(f, 'fechaFactura')), soc, sociedad: String(col(f, 'sociedad')), prov: String(col(f, 'proveedor')), doc, monto: col(f, 'monto'), moneda: String(col(f, 'moneda')) });
+  }
+  abrirDialogo(`<header class="dlg-cab"><div><h2>Comparación con GTI</h2><p class="sub">${esc(file.name)} · ${n} comprobantes en el reporte</p></div><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+    <div class="dlg-cuerpo">
+      <div class="cifras"><div><span>Llegaron por correo</span><strong>${enCorreo}</strong></div><div><span>Ya estaban en CxP</span><strong>${enCxP}</strong></div><div><span>Faltan</span><strong class="${faltan.length ? 'malo' : 'bien'}">${faltan.length}</strong></div></div>
+      ${faltan.length ? `<p><b>Estas no llegaron por correo ni están en cuentas por pagar.</b> Súbalas con «Subir XML» o reenvíe esos correos a cxp.grupobse@gmail.com.</p>
+      <div class="tabla-scroll"><table class="tabla"><thead><tr><th>Tipo</th><th>Fecha</th><th>Sociedad</th><th>Proveedor</th><th>Factura</th><th class="num">Monto</th></tr></thead>
+        <tbody>${faltan.map((x) => `<tr><td>${esc(x.tipo.replace(/Electr.nica/i, ''))}</td><td>${esc(x.fecha)}</td><td>${esc(x.soc ? S.nombreSociedad(x.soc) : x.sociedad)}</td><td>${esc(nombreLegible(x.prov))}</td><td class="mono">${esc(x.doc)}</td><td class="num">${esc(x.moneda)} ${esc(fmtNum(Number(x.monto) || 0))}</td></tr>`).join('')}</tbody></table></div>`
+        : '<p class="bien">✓ Todo lo del reporte de GTI llegó por correo o ya está en cuentas por pagar.</p>'}
+      <div class="acciones-fila"><button class="btn" data-act="cerrar">Cerrar</button></div>
+    </div>`);
+}
+
 // ---------------------------------------------------------------- Fechas de los reportes (se escriben dd/mm/aaaa)
 
 const FILTRO_FECHA = {
@@ -2069,6 +2430,7 @@ function despuesDeRender(ruta) {
   etiquetarTablas($app);
   if (ruta === 'programar') actualizarBarra();
   if (ruta === 'reportes') ajustarCifras();
+  if (ruta === 'recibidas') cargarRecibidas();
   if (ruta === 'reportes') { const f = document.querySelector('[data-in="r-provfiltro"]'); if (f?.value) f.dispatchEvent(new Event('input', { bubbles: true })); }
   if (ruta === 'config') document.querySelectorAll('[data-in="iban"]').forEach(validarCampoIBAN);
 }
@@ -2291,6 +2653,24 @@ const acciones = {
   'pv-filtro': (v) => { ui.prov.filtro = v; render(); },
   'pv-abrir': (v) => dialogoProveedor(v),
   'pv-nuevo': () => dialogoProveedor(null),
+  'rc-tab': (v) => { REC.tab = v; REC.sel.clear(); render(); },
+  'rc-actualizar': () => cargarRecibidas(true),
+  'rc-credito': (v) => dialogoCreditoRecibida(v),
+  'rc-descartar': async (v) => { try { await cambiarRecibidas([v], { estado: 'descartada' }); avisar('Descartada: quedó en «Descartadas»'); } catch (e) { avisar(e.message, 'error'); } },
+  'rc-descartar-sel': async () => {
+    const c = [...REC.sel];
+    if (!c.length || !confirm(`¿Descartar ${c.length} ${c.length === 1 ? 'factura' : 'facturas'}? Quedan en «Descartadas» y se pueden recuperar.`)) return;
+    try { await cambiarRecibidas(c, { estado: 'descartada' }); } catch (e) { avisar(e.message, 'error'); }
+  },
+  'rc-recuperar': async (v) => { try { await cambiarRecibidas([v], { estado: 'nueva' }); avisar('Recuperada'); } catch (e) { avisar(e.message, 'error'); } },
+  'rc-pasar': () => pasarRecibidas(),
+  'rc-nc': (v) => aplicarNCRecibida(v),
+  'rc-csv': () => {
+    const filas = REC.filas.filter((r) => REC.sel.has(r.clave));
+    if (filas.length) dialogoArchivosContables(filas, 'Archivo para el sistema contable');
+  },
+  'rc-bajar': (v) => bajarArchivoContable(Number(v)),
+  'rc-bajar-todos': () => REC.archivos.forEach((a, i) => setTimeout(() => bajarArchivoContable(i), i * 400)),
   'fecha-borrar': (v) => ponerFiltroFecha(v, ''),
   'fecha-cal': (v, el) => {
     const n = el.parentElement.querySelector('.cf-nativo');
@@ -2377,6 +2757,7 @@ document.addEventListener('input', (e) => {
     else if (!v) ponerFiltroFecha(el.dataset.k, '');
     return;
   }
+  if (k === 'rc-plazo') { const t = document.getElementById('rc-vence'); if (t) t.innerHTML = `Vence el <b>${fmtFecha(sumarDias(el.dataset.fecha, Number(el.value) || 0))}</b>`; return; }
   if (k === 'iban-alias') { const t = document.getElementById('iban-desc'); if (t) t.innerHTML = `La descripción quedaría: <b>${esc(`Pago Fact ${el.dataset.docs} ${el.value.trim() || el.dataset.def}`)}</b>`; return; }
   if (k === 'imp-iban') {
     const I = ui.imp; if (!I) return;
@@ -2434,6 +2815,14 @@ document.addEventListener('change', async (e) => {
     return;
   }
   if (k === 'r-soc') { ui.rep.soc = el.value; render(); return; }
+  if (k === 'rc-sel') { if (el.checked) REC.sel.add(el.dataset.v); else REC.sel.delete(el.dataset.v); render(); return; }
+  if (k === 'rc-todas') {
+    const lista = listaRecibidas().filter((x) => x.tab === REC.tab && (REC.tab === 'cxp' || seleccionable(x)));
+    for (const x of lista) { if (el.checked) REC.sel.add(x.r.clave); else REC.sel.delete(x.r.clave); }
+    render(); return;
+  }
+  if (k === 'rc-subir') { const files = [...el.files]; el.value = ''; if (files.length) await subirXmlRecibidas(files); return; }
+  if (k === 'rc-gti') { const f = el.files[0]; el.value = ''; if (f) await compararGTI(f); return; }
   if (k === 'fecha-nativa') { ponerFiltroFecha(el.dataset.k, el.value); return; }
   if (k === 'fecha-txt') {
     // Al salir del campo con una fecha incompleta o inválida, vuelve a la que está puesta.
@@ -2594,6 +2983,24 @@ document.addEventListener('submit', (e) => {
     if (!(monto > 0)) { avisar('Monto inválido', 'error'); return; }
     const r = S.nuevaFactura({ sociedad: d.sociedad, codigo, documento: d.documento.trim(), moneda: d.moneda, fechaFactura: d.fechaFactura, fechaVence: d.fechaVence || sumarDias(d.fechaFactura, 30), monto, observaciones: d.observaciones });
     if (resultado(r, 'Factura guardada')) cerrarDialogo();
+  } else if (k === 'rc-credito') {
+    const clave = form.dataset.v, plazo = Math.max(0, Math.round(Number(d.plazo) || 0));
+    cerrarDialogo();
+    cambiarRecibidas([clave], { condicionManual: 'credito', plazoManual: String(plazo), nota: 'Venía de contado' })
+      .then(() => {
+        const x = listaRecibidas().find((y) => y.r.clave === clave);
+        REC.tab = 'credito';
+        if (x && seleccionable(x)) { REC.sel.add(clave); avisar('Pasó a «Crédito», ya marcada'); }
+        else avisar(x?.rechazada ? 'Pasó a «Crédito», pero Hacienda la rechazó: no se puede pasar a cuentas por pagar' : 'Pasó a «Crédito»');
+        render();
+      })
+      .catch((e) => avisar(e.message, 'error'));
+  } else if (k === 'rc-provs') {
+    const elegidos = {};
+    for (const [n, v] of Object.entries(d)) if (n.startsWith('p_') && v) elegidos[n.slice(2)] = v;
+    const items = REC.provsPend || [];
+    REC.provsPend = null;
+    pasarRecibidasConfirmado(items, elegidos);
   } else if (k === 'pv-iban') {
     const p = S.proveedor(form.dataset.v);
     if ([...form.querySelectorAll('[data-in="iban"]')].some((i) => !validarCampoIBAN(i))) { avisar('Revise la cuenta IBAN', 'error'); return; }

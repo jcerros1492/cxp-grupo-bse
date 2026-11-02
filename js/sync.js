@@ -322,6 +322,14 @@ export async function subirArchivo({ nombre, tipo, base64 }) {
 }
 
 /** Trae un comprobante para verlo (no se guarda en el dispositivo). */
+/** Facturas recibidas por correo (1.21): recibidasLista | recibidasSubir | recibidasCambiar. Necesita internet. */
+export async function recibidas(accion, datos = {}) {
+  if (!navigator.onLine) throw new Error('Para ver las facturas recibidas se necesita internet');
+  const r = await api({ accion, token: estado.sesion?.token, ...datos });
+  if (!r.ok) throw new Error(/desconocida/i.test(r.error || '') ? 'Falta instalar «Recibidas» en Apps Script (versión 1.21)' : (r.error || 'No se pudo completar'));
+  return r;
+}
+
 export async function leerArchivo(id) {
   if (!navigator.onLine) throw new Error('Para ver comprobantes se necesita internet');
   const r = await api({ accion: 'leerArchivo', token: estado.sesion?.token, id });
