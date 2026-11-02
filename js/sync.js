@@ -69,8 +69,16 @@ function recomputar() {
   vista = d;
 }
 
+// Cada pestaña o ventana recuerda su propio usuario (sessionStorage no se comparte entre pestañas).
+// Antes, al recargarse una pestaña tomaba el último usuario que había entrado en cualquier otra.
+const CLAVE_PESTANA = 'cxp-usuario-pestana';
+function recordarPestana() {
+  try { sessionStorage.setItem(CLAVE_PESTANA, estado.sesion?.usuario || ''); } catch { /* sin almacenamiento */ }
+}
+
 let tGuardar;
 function guardarLocal() {
+  recordarPestana();
   clearTimeout(tGuardar);
   tGuardar = setTimeout(() => {
     const { sesion, servidor, pendientes, desde, epoca, hoja, ultimoSync } = estado;
@@ -82,6 +90,13 @@ export async function iniciar() {
   try {
     const g = await idbGet('estado');
     if (g) Object.assign(estado, g);
+    let propio = null;
+    try { propio = sessionStorage.getItem(CLAVE_PESTANA); } catch { /* sin almacenamiento */ }
+    if (propio !== null && propio !== (estado.sesion?.usuario || '')) {
+      const s = propio ? sesionesGuardadas()[propio] : null;
+      estado.sesion = s && !s.debeCambiar ? { ...s } : null; // sin sesión guardada: vuelve a la pantalla de usuarios
+    }
+    recordarPestana();
   } catch (e) {
     console.error('No se pudo leer la copia local', e);
   }
@@ -106,6 +121,7 @@ export const nuevoId = uid;
  */
 export function ejecutar(op) {
   op.opId = uid();
+  op.hechoPor = estado.sesion?.usuario || '';
   const r = L.aplicarOp(datos(), op, { usuario: estado.sesion, ahora: Date.now() });
   if (!r.ok) return { error: r.error };
   estado.pendientes.push(op);
@@ -342,7 +358,8 @@ export async function sincronizar() {
   sincronizando = true;
   estado.red = 'sync';
   notificar();
-  const enviadas = estado.pendientes.slice(0, 100);
+  // Solo los cambios de este usuario (si otra pestaña dejó cambios de otra persona, los envía esa persona).
+  const enviadas = estado.pendientes.filter((op) => !op.hechoPor || op.hechoPor === estado.sesion.usuario).slice(0, 100);
   try {
     const r = await api({ accion: 'sync', token: estado.sesion.token, desde: estado.desde, epoca: estado.epoca, ops: enviadas });
     if (!r.ok) {

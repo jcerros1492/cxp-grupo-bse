@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.20.2 | Cada pestaña o ventana recuerda su propio usuario (antes, al recargarse, tomaba el último usuario que entró en otra pestaña); los cambios pendientes se envían con el usuario que los hizo. Fechas de Reportes y Estado de cuenta: se escriben dd/mm/aaaa (las barras se ponen solas), se aplican al estar completas y válidas, con botón de calendario y «×» para borrar. |
 | 1.20.1 | Unificación acordada de proveedores con código repetido, con un solo botón en Proveedores (solo Jonathan): Cámara de Productores de Caña → 1, El Colono → 89, Keylamax → 266, Fama de Alajuela → 8, Vedova & Obando → 190, Minorica → 268. Requiere el bloque de Apps Script 1.20. |
 | 1.20.0 | Proveedores ordenados por código. Filtro «Código repetido» para el mismo proveedor con varios códigos (venían así del Excel): en su ficha, «Dejar todo en el código N» pasa sus facturas a ese código y oculta los demás, sin borrar nada. **Requiere el bloque de Apps Script 1.20.** |
 | 1.19.5 | Programar pagos en el celular: al marcar una factura ya no se abre el teclado (queda marcada por el total; el teclado sale solo si se toca el monto para cambiarlo). En computadora el cursor sigue saltando al monto. |

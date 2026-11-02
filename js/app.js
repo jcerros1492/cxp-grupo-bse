@@ -1318,6 +1318,42 @@ function avisoUnificacion() {
     <button class="btn primario chico" data-act="pv-unificar">Unificar ahora</button></div>`;
 }
 
+// ---------------------------------------------------------------- Fechas de los reportes (se escriben dd/mm/aaaa)
+
+const FILTRO_FECHA = {
+  'r-desde': [() => ui.rep, 'desde'], 'r-hasta': [() => ui.rep, 'hasta'],
+  'ec-desde': [() => ui.ec, 'desde'], 'ec-hasta': [() => ui.ec, 'hasta'],
+};
+function ponerFiltroFecha(k, iso) {
+  const [obj, campo] = FILTRO_FECHA[k];
+  if (obj()[campo] === iso) return;
+  obj()[campo] = iso;
+  render();
+}
+/** «15/03/2026» → «2026-03-15»; '' si está incompleta o no existe. */
+function isoDeTexto(t) {
+  const m = String(t).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return '';
+  const [, d, mes, a] = m.map(Number);
+  const f = new Date(a, mes - 1, d);
+  if (a < 2000 || a > 2100 || f.getMonth() !== mes - 1 || f.getDate() !== d) return '';
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+/** Pone las barras mientras se escribe: 15032026 → 15/03/2026. */
+function mascaraFecha(t) {
+  const n = String(t).replace(/\D/g, '').slice(0, 8);
+  return [n.slice(0, 2), n.slice(2, 4), n.slice(4)].filter(Boolean).join('/');
+}
+function campoFecha(k, iso, etiqueta) {
+  return `<label class="campo-fecha">${etiqueta}
+    <span class="cf">
+      <input type="text" inputmode="numeric" autocomplete="off" placeholder="dd/mm/aaaa" maxlength="10" data-in="fecha-txt" data-k="${k}" value="${fmtFecha(iso)}" aria-label="${esc(etiqueta)} (día/mes/año)">
+      ${iso ? `<button type="button" class="cf-btn cf-x" data-act="fecha-borrar" data-v="${k}" aria-label="Borrar ${esc(etiqueta)}">×</button>` : ''}
+      <button type="button" class="cf-btn cf-cal" data-act="fecha-cal" data-v="${k}" aria-label="Elegir ${esc(etiqueta)} en el calendario"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></button>
+      <input type="date" class="cf-nativo" tabindex="-1" aria-hidden="true" data-in="fecha-nativa" data-k="${k}" value="${iso}">
+    </span></label>`;
+}
+
 const ordenCodigo = (a, b) => (Number(a) - Number(b)) || String(a).localeCompare(String(b), 'es', { numeric: true });
 
 /** Aviso: proveedores con facturas por pagar que no tienen la cuenta IBAN de esa moneda. */
@@ -1593,8 +1629,8 @@ function vistaCxp() {
       <div><span class="lbl">Moneda</span><div class="chips">
         <button class="chip ${R.mon === 'CRC' ? 'on' : ''}" data-act="r-mon" data-v="CRC">Colones</button>
         <button class="chip ${R.mon === 'USD' ? 'on' : ''}" data-act="r-mon" data-v="USD">Dólares</button></div></div>
-      <label>Vence desde <input type="date" data-in="r-desde" value="${R.desde}"></label>
-      <label>Vence hasta <input type="date" data-in="r-hasta" value="${R.hasta}"></label>
+      ${campoFecha('r-desde', R.desde, 'Vence desde')}
+      ${campoFecha('r-hasta', R.hasta, 'Vence hasta')}
     </div>
     <div class="chips rep-presets"><span class="lbl">Rápido:</span>
       ${preset('Vencidas a hoy', '', hoy)}${preset('Próximos 7 días', hoy, sumarDias(hoy, 7))}${preset('Próximos 30 días', hoy, sumarDias(hoy, 30))}${preset('Todo', '', '')}
@@ -1829,8 +1865,8 @@ function vistaEstadoCuenta() {
       <div><span class="lbl">Facturas</span><div class="chips">
         <button class="chip ${E.alcance === 'saldo' ? 'on' : ''}" data-act="ec-alcance" data-v="saldo">Con saldo</button>
         <button class="chip ${E.alcance === 'todas' ? 'on' : ''}" data-act="ec-alcance" data-v="todas">Todas</button></div></div>
-      <label>Fecha de factura desde <input type="date" data-in="ec-desde" value="${E.desde}"></label>
-      <label>Hasta <input type="date" data-in="ec-hasta" value="${E.hasta}"></label>
+      ${campoFecha('ec-desde', E.desde, 'Fecha de factura desde')}
+      ${campoFecha('ec-hasta', E.hasta, 'Hasta')}
     </div>
     <div class="chips rep-presets"><button type="button" class="btn chico rep-limpiar" data-act="ec-limpiar">Limpiar filtros</button></div>
   </section>
@@ -2255,6 +2291,11 @@ const acciones = {
   'pv-filtro': (v) => { ui.prov.filtro = v; render(); },
   'pv-abrir': (v) => dialogoProveedor(v),
   'pv-nuevo': () => dialogoProveedor(null),
+  'fecha-borrar': (v) => ponerFiltroFecha(v, ''),
+  'fecha-cal': (v, el) => {
+    const n = el.parentElement.querySelector('.cf-nativo');
+    try { n.showPicker(); } catch { n.focus(); n.click(); }
+  },
   'pv-unificar': () => {
     const pend = unificacionPendiente();
     if (!pend.length || !confirm(`¿Unificar ${pend.length} ${pend.length === 1 ? 'proveedor' : 'proveedores'}?\n\n${pend.map((x) => `${S.proveedor(x.a).nombre}: queda ${x.a} (se unen ${x.de.join(', ')})`).join('\n')}`)) return;
@@ -2326,6 +2367,16 @@ document.addEventListener('input', (e) => {
     return;
   }
   if (k === 'fm-monto') { actualizarRestoMov(); return; }
+  if (k === 'fecha-txt') {
+    const borrando = e.inputType?.startsWith('delete');
+    const v = borrando ? el.value : mascaraFecha(el.value);
+    if (v !== el.value) { el.value = v; try { el.setSelectionRange(v.length, v.length); } catch { /* */ } }
+    const iso = isoDeTexto(v);
+    el.classList.toggle('malo', v.length === 10 && !iso);
+    if (iso) ponerFiltroFecha(el.dataset.k, iso);
+    else if (!v) ponerFiltroFecha(el.dataset.k, '');
+    return;
+  }
   if (k === 'iban-alias') { const t = document.getElementById('iban-desc'); if (t) t.innerHTML = `La descripción quedaría: <b>${esc(`Pago Fact ${el.dataset.docs} ${el.value.trim() || el.dataset.def}`)}</b>`; return; }
   if (k === 'imp-iban') {
     const I = ui.imp; if (!I) return;
@@ -2383,6 +2434,12 @@ document.addEventListener('change', async (e) => {
     return;
   }
   if (k === 'r-soc') { ui.rep.soc = el.value; render(); return; }
+  if (k === 'fecha-nativa') { ponerFiltroFecha(el.dataset.k, el.value); return; }
+  if (k === 'fecha-txt') {
+    // Al salir del campo con una fecha incompleta o inválida, vuelve a la que está puesta.
+    if (el.value && !isoDeTexto(el.value)) { avisar('Fecha no válida: escríbala como dd/mm/aaaa (ej. 15/03/2026)', 'error'); el.value = fmtFecha(FILTRO_FECHA[el.dataset.k][0]()[FILTRO_FECHA[el.dataset.k][1]]); el.classList.remove('malo'); }
+    return;
+  }
   if (k === 'r-desde') { ui.rep.desde = el.value; render(); return; }
   if (k === 'ec-soc') { ui.ec.soc = el.value; render(); return; }
   if (k === 'ec-desde') { ui.ec.desde = el.value; render(); return; }

@@ -115,7 +115,7 @@ let codigoGs = readFileSync(process.env.CODIGO_GS || raiz + 'apps-script/Codigo.
 if (process.env.ADJUNTOS === '1') {
   const linea = "if (p.accion === 'quienSoy') return { ok: true, usuario: publico_(usuario), hoja: libro.getUrl() };";
   if (!codigoGs.includes(linea)) throw new Error('No se encontró la línea de quienSoy en Codigo.gs');
-  codigoGs = codigoGs.replace(linea, linea + '\n    var extra = adjuntos_(p, usuario); if (extra) return extra;') + '\n' + readFileSync(raiz + 'apps-script/Adjuntos.gs', 'utf8');
+  codigoGs = codigoGs.replace(linea, linea + '\n    var extra = adjuntos_(p, usuario); if (extra) return extra;') + '\n' + readFileSync(process.env.ADJUNTOS_GS || raiz + 'apps-script/Adjuntos.gs', 'utf8');
 }
 vm.runInContext(codigoGs.replace("'ESCRIBA-AQUI-SU-CONTRASEÑA';", `'${CLAVE_PRUEBA}';`).replace('var MODO_PRUEBAS = true;', `var MODO_PRUEBAS = ${process.env.MODO_PRUEBAS === '1'};`), contexto, { filename: 'Codigo.gs' });
 // Con un .xlsx como segundo argumento, la hoja simulada arranca con ese contenido
