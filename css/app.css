@@ -877,3 +877,7 @@ label.adjuntar { align-items: center !important; }
   .resumen-lista .rl-m i { display: none; }
 }
 @media not screen and (max-width: 760px) { .resumen-lista:not(.sin-punto) .rl-n::after { content: ' ·'; } }
+/* 1.20 · proveedor con varios códigos */
+.unir-prov { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; background: var(--ambar-fondo); border: 1px solid #E8B26A; border-radius: 9px; padding: 10px 12px; font-size: 14px; }
+.unir-prov .sub { margin: 0; font-size: 13px; }
+.aviso-unir ul { margin: 6px 0; padding-left: 18px; font-size: 14px; }

@@ -884,6 +884,30 @@ var Logica = (function () {
       return { ok: true };
     },
 
+    /** { a: codigo que queda, de: [codigos repetidos] } — pasa sus facturas al código «a» y los oculta (1.20). */
+    unirProveedores: function (d, op, ctx, marcar) {
+      var a = String(op.a || ''), pa = d.proveedores[a];
+      if (!pa) return { error: 'No existe el proveedor ' + a };
+      var de = (op.de || []).map(String).filter(function (c) { return c !== a && d.proveedores[c]; });
+      if (!de.length) return { error: 'No hay códigos para unir' };
+      var n = 0;
+      Object.keys(d.facturas).forEach(function (id) {
+        var f = d.facturas[id];
+        if (de.indexOf(String(f.codigo)) < 0) return;
+        f.codigo = a; f.proveedor = pa.nombre; marcar('facturas', id); n++;
+      });
+      de.forEach(function (c) {
+        var p = d.proveedores[c];
+        if (!pa.ibanCRC && p.ibanCRC) pa.ibanCRC = p.ibanCRC;
+        if (!pa.ibanUSD && p.ibanUSD) pa.ibanUSD = p.ibanUSD;
+        if (!pa.alias && p.alias) pa.alias = p.alias;
+        d.config['unido:' + c] = { clave: 'unido:' + c, valor: a };
+        marcar('config', 'unido:' + c);
+      });
+      marcar('proveedores', a);
+      return { ok: true, avisos: [n + (n === 1 ? ' factura pasó' : ' facturas pasaron') + ' al código ' + a] };
+    },
+
     guardarConfig: function (d, op, ctx, marcar) {
       var c = op.cambios || {};
       if (c.clienteBanco && !/^\d{1,15}$/.test(c.clienteBanco)) return { error: 'El código de cliente debe tener solo dígitos' };

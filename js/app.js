@@ -1120,7 +1120,7 @@ async function leerTexto(file) {
 
 function dialogoImportar() {
   const I = ui.imp;
-  const d = S.datos();
+  const d = { ...S.datos(), proveedores: Object.fromEntries(S.proveedoresActivos().map((p) => [p.codigo, p])) };
   const res = prepararFacturas(I.filas, I.inicio, I.mapeo, I.fijos, d, { asignados: I.asignados, memoria: memoriaCedulas() });
   I.res = res;
   const opcionesCol = (k, opcional) => `<option value="">${opcional ? '— no viene en el archivo —' : '— elegir columna —'}</option>` +
@@ -1185,7 +1185,7 @@ function memoriaCedulas() {
 function seccionEmisores(emisores) {
   const lista = emisores.filter((e) => e.filas > 0 || e.clave in ui.imp.asignados);
   if (!lista.length) return '';
-  const provs = Object.values(S.datos().proveedores).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const provs = S.proveedoresActivos().sort((a, b) => a.nombre.localeCompare(b.nombre));
   const como = { cedula: 'reconocido por la cédula', nombre: 'reconocido por el nombre', codigo: 'por el código', elegido: 'elegido por usted', nuevo: 'no se encontró: se creará' };
   return `<h3>Proveedores del archivo</h3>
     <p class="sub">El archivo trae la cédula, no su código contable. Confirme cada proveedor o elija el correcto; la aplicación lo recordará.</p>
@@ -1232,7 +1232,7 @@ function confirmarImportacion() {
 
 function dialogoNuevaFactura() {
   const socs = Object.keys(S.sociedades());
-  const provs = Object.values(S.datos().proveedores).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const provs = S.proveedoresActivos().sort((a, b) => a.nombre.localeCompare(b.nombre));
   abrirDialogo(`
     <header class="dlg-cab"><h2>Nueva factura</h2><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
     <form class="dlg-cuerpo form-grid" data-form="f-crear">
@@ -1262,23 +1262,29 @@ function vistaProveedores() {
     saldoPorProv.set(f.codigo, t);
   }
   const faltan = new Map(S.faltaIban().map((x) => [x.prov.codigo, x.falta]));
-  let lista = Object.values(S.datos().proveedores).filter((p) => {
+  const activos = S.proveedoresActivos();
+  const repetidos = S.proveedoresRepetidos();
+  const enRepetidos = new Set(repetidos.flatMap((g) => g.codigos));
+  if (P.filtro === 'repetidos' && !repetidos.length) P.filtro = '';
+  let lista = activos.filter((p) => {
     if (texto && !(`${p.nombre} ${p.alias} ${p.codigo}`.toLowerCase().includes(texto))) return false;
     if (P.filtro === 'sin-iban' && !faltan.has(p.codigo)) return false;
     if (P.filtro === 'con-saldo' && !saldoPorProv.has(p.codigo)) return false;
+    if (P.filtro === 'repetidos' && !enRepetidos.has(p.codigo)) return false;
     return true;
-  }).sort((a, b) => a.nombre.localeCompare(b.nombre));
-  const conIban = Object.values(S.datos().proveedores).filter((p) => p.ibanCRC || p.ibanUSD).length;
+  }).sort(P.filtro === 'repetidos' ? (a, b) => a.nombre.localeCompare(b.nombre) || ordenCodigo(a.codigo, b.codigo) : (a, b) => ordenCodigo(a.codigo, b.codigo));
+  const conIban = activos.filter((p) => p.ibanCRC || p.ibanUSD).length;
   return `
   <div class="titulo-vista">
-    <div><h1>Proveedores</h1><p class="sub">${Object.keys(S.datos().proveedores).length} proveedores · ${conIban} con cuenta IBAN</p></div>
+    <div><h1>Proveedores</h1><p class="sub">${activos.length} proveedores · ${conIban} con cuenta IBAN · ordenados por código</p></div>
     <div class="acciones"><button class="btn primario" data-act="pv-nuevo">+ Nuevo proveedor</button></div>
   </div>
+  ${avisoUnificacion()}
   ${faltan.size && P.filtro !== 'sin-iban' ? avisoFaltaIban(faltan.size) : ''}
   <div class="filtros">
     <div class="fila-busqueda">
       <label class="buscar"><span class="vh">Buscar</span><input type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Nombre, alias o código" value="${esc(P.q)}" data-in="pv-q"></label>
-      <div class="fila-chips">${chip('pv-filtro', '', P.filtro, 'Todos')}${chip('pv-filtro', 'con-saldo', P.filtro, 'Con saldo')}${chip('pv-filtro', 'sin-iban', P.filtro, `Falta IBAN${faltan.size ? ` (${faltan.size})` : ''}`)}</div>
+      <div class="fila-chips">${chip('pv-filtro', '', P.filtro, 'Todos')}${chip('pv-filtro', 'con-saldo', P.filtro, 'Con saldo')}${chip('pv-filtro', 'sin-iban', P.filtro, `Falta IBAN${faltan.size ? ` (${faltan.size})` : ''}`)}${repetidos.length ? chip('pv-filtro', 'repetidos', P.filtro, `Código repetido (${repetidos.length})`) : ''}</div>
     </div>
   </div>
   <div class="tabla-scroll"><table class="tabla clic">
@@ -1286,7 +1292,7 @@ function vistaProveedores() {
     <tbody>${lista.map((p) => {
       const t = saldoPorProv.get(p.codigo);
       return `<tr data-act="pv-abrir" data-v="${esc(p.codigo)}" tabindex="0">
-      <td>${esc(p.codigo)}</td><td><a href="#/proveedores" data-act="pv-abrir" data-v="${esc(p.codigo)}">${esc(p.nombre)}</a></td><td>${esc(p.alias)}</td>
+      <td>${esc(p.codigo)}</td><td><a href="#/proveedores" data-act="pv-abrir" data-v="${esc(p.codigo)}">${esc(p.nombre)}</a>${enRepetidos.has(p.codigo) ? ' <span class="tag-sin" title="El mismo proveedor aparece con varios códigos">código repetido</span>' : ''}</td><td>${esc(p.alias)}</td>
       <td class="mono">${p.ibanCRC ? fmtIBAN(p.ibanCRC) : faltan.get(p.codigo)?.includes('CRC') ? '<span class="tag-sin">falta</span>' : '<span class="sub">—</span>'}</td>
       <td class="mono">${p.ibanUSD ? fmtIBAN(p.ibanUSD) : faltan.get(p.codigo)?.includes('USD') ? '<span class="tag-sin">falta</span>' : '<span class="sub">—</span>'}</td>
       <td class="num">${t ? totalesTxt(t) : ''}</td></tr>`;
@@ -1294,11 +1300,43 @@ function vistaProveedores() {
   </table></div>`;
 }
 
+/** Unificación acordada con Jonathan (código que queda ← códigos repetidos). */
+const UNIFICACION = [['1', ['3', '4', '5', '6']], ['89', ['90', '91']], ['266', ['179']], ['8', ['9']], ['190', ['191', '192', '193']], ['268', ['269', '271', '272']]];
+/** Lo que falta de esa unificación: solo códigos que existen, no están unidos y tienen el mismo nombre. */
+function unificacionPendiente() {
+  const P = S.datos().proveedores, nom = (c) => String(P[c]?.nombre || '').normalize('NFD').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  return UNIFICACION.map(([a, de]) => ({ a, de: de.filter((c) => P[c] && !S.unidoA(c) && nom(c) === nom(a)) }))
+    .filter((x) => P[x.a] && !S.unidoA(x.a) && x.de.length);
+}
+function avisoUnificacion() {
+  if (!S.esAdmin()) return '';
+  const pend = unificacionPendiente();
+  if (!pend.length) return '';
+  return `<div class="aviso-iban aviso-unir"><div><b>Unificar ${pend.length} ${pend.length === 1 ? 'proveedor' : 'proveedores'} con código repetido</b>
+    <ul>${pend.map((x) => `<li>${esc(S.proveedor(x.a).nombre)}: queda el código <b>${esc(x.a)}</b> (se unen ${x.de.map(esc).join(', ')})</li>`).join('')}</ul>
+    <span class="sub">Las facturas pasan al código que queda; no se borra ninguna.</span></div>
+    <button class="btn primario chico" data-act="pv-unificar">Unificar ahora</button></div>`;
+}
+
+const ordenCodigo = (a, b) => (Number(a) - Number(b)) || String(a).localeCompare(String(b), 'es', { numeric: true });
+
 /** Aviso: proveedores con facturas por pagar que no tienen la cuenta IBAN de esa moneda. */
 function avisoFaltaIban(n) {
   return `<div class="aviso-iban"><div><b>⚠ ${n} ${n === 1 ? 'proveedor con facturas por pagar no tiene' : 'proveedores con facturas por pagar no tienen'} cuenta IBAN.</b>
     <span class="sub">Si Norman les programa un pago, no se podrá generar el archivo del banco (sí se puede pagar Manual).</span></div>
     <button class="btn primario chico" data-act="ir-falta-iban">Completar cuentas</button></div>`;
+}
+
+/** Si el mismo proveedor aparece con otros códigos: ofrecer pasar todo a este código. */
+function seccionUnir(p) {
+  const g = S.proveedoresRepetidos().find((x) => x.codigos.includes(String(p.codigo)));
+  if (!g) return '';
+  const otros = g.codigos.filter((c) => c !== String(p.codigo));
+  const nF = (c) => S.listaFacturas().filter((f) => String(f.codigo) === c).length;
+  return `<div class="ancho unir-prov">
+    <b>Este proveedor también aparece con ${otros.length === 1 ? 'el código' : 'los códigos'} ${otros.map((c) => `<span class="mono">${esc(c)}</span> (${nF(c)} ${nF(c) === 1 ? 'factura' : 'facturas'})`).join(', ')}.</b>
+    <span class="sub">Si es el mismo, sus facturas pasan al código <b>${esc(p.codigo)}</b> y los otros códigos dejan de aparecer. No se borra ninguna factura.</span>
+    <button type="button" class="btn chico" data-act="pv-unir" data-v="${esc(p.codigo)}" data-de="${esc(otros.join(','))}">Dejar todo en el código ${esc(p.codigo)}</button></div>`;
 }
 
 function dialogoProveedor(codigo) {
@@ -1313,6 +1351,7 @@ function dialogoProveedor(codigo) {
       <label class="ancho">Alias para la descripción del banco <input name="alias" value="${esc(p.alias)}" placeholder="Ej. Resusa, DAC"></label>
       <label class="ancho">IBAN en colones <input name="ibanCRC" class="mono" value="${esc(fmtIBAN(p.ibanCRC))}" placeholder="CR00 0000 0000 0000 0000 00" data-in="iban"><span class="ayuda" data-ayuda></span></label>
       <label class="ancho">IBAN en dólares <input name="ibanUSD" class="mono" value="${esc(fmtIBAN(p.ibanUSD))}" placeholder="CR00 0000 0000 0000 0000 00" data-in="iban"><span class="ayuda" data-ayuda></span></label>
+      ${nuevo ? '' : seccionUnir(p)}
       <div class="ancho"><button class="btn primario" type="submit">Guardar</button></div>
     </form>`);
   $dialog.querySelectorAll('[data-in="iban"]').forEach(validarCampoIBAN);
@@ -2216,6 +2255,21 @@ const acciones = {
   'pv-filtro': (v) => { ui.prov.filtro = v; render(); },
   'pv-abrir': (v) => dialogoProveedor(v),
   'pv-nuevo': () => dialogoProveedor(null),
+  'pv-unificar': () => {
+    const pend = unificacionPendiente();
+    if (!pend.length || !confirm(`¿Unificar ${pend.length} ${pend.length === 1 ? 'proveedor' : 'proveedores'}?\n\n${pend.map((x) => `${S.proveedor(x.a).nombre}: queda ${x.a} (se unen ${x.de.join(', ')})`).join('\n')}`)) return;
+    let n = 0;
+    for (const x of pend) { const r = S.unirProveedores(x.a, x.de); if (r.error) { avisar(`${S.proveedor(x.a).nombre}: ${r.error}`, 'error'); break; } n++; }
+    if (n) avisar(`Listo: ${n} ${n === 1 ? 'proveedor unificado' : 'proveedores unificados'}`);
+    render();
+  },
+  'pv-unir': (v, el) => {
+    const de = el.dataset.de.split(',');
+    if (!confirm(`¿Pasar las facturas de ${de.length === 1 ? 'el código' : 'los códigos'} ${de.join(', ')} al código ${v}?\n\n${de.length === 1 ? 'Ese código deja' : 'Esos códigos dejan'} de aparecer en Proveedores. No se borra ninguna factura.`)) return;
+    const r = S.unirProveedores(v, de);
+    if (r.error) { avisar(r.error, 'error'); return; }
+    avisar(`Listo: todo quedó en el código ${v}`); dialogoProveedor(v); render();
+  },
 
   'cfg-excel': () => exportarExcel(),
 };

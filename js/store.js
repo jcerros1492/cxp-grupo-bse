@@ -294,6 +294,23 @@ export function faltaIban() {
   }
   return [...m.values()].map((x) => ({ ...x, falta: [...x.falta] })).sort((a, b) => a.prov.nombre.localeCompare(b.prov.nombre));
 }
+/** Códigos ocultos porque se unieron a otro (1.20). */
+export const unidoA = (codigo) => datos().config['unido:' + codigo]?.valor || '';
+/** Proveedores visibles (sin los códigos unidos a otro). */
+export const proveedoresActivos = () => Object.values(datos().proveedores).filter((p) => !unidoA(p.codigo));
+const nombreClave = (n) => String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '');
+/** Grupos de proveedores con el mismo nombre y varios códigos: [{ nombre, codigos: [...] }] (de menor a mayor). */
+export function proveedoresRepetidos() {
+  const m = new Map();
+  for (const p of proveedoresActivos()) {
+    const k = nombreClave(p.nombre);
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(p);
+  }
+  return [...m.values()].filter((l) => l.length > 1)
+    .map((l) => ({ nombre: l[0].nombre, codigos: l.map((p) => p.codigo).sort((x, y) => Number(x) - Number(y) || String(x).localeCompare(String(y))) }));
+}
+export const unirProveedores = (a, de) => Sync.ejecutar({ tipo: 'unirProveedores', a: String(a), de: de.map(String) });
 export const guardarProveedor = (codigo, datosProv, nuevo) => Sync.ejecutar({ tipo: 'guardarProveedor', codigo, datos: datosProv, nuevo });
 export const guardarSociedad = (clave, d) => Sync.ejecutar({ tipo: 'guardarSociedad', clave, datos: d });
 export const guardarConfig = (cambios) => Sync.ejecutar({ tipo: 'guardarConfig', cambios });

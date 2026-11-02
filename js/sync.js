@@ -368,7 +368,9 @@ function recibir(r) {
   const mensajes = [];
   for (const x of r.resultados || []) {
     if (!x.ok) {
-      const pista = /tipo de movimiento inv/i.test(x.error || '') ? ' · Para guardar notas de crédito falta agregar una línea en Apps Script (versión 1.14).' : '';
+      const pista = /tipo de movimiento inv/i.test(x.error || '') ? ' · Para guardar notas de crédito falta agregar una línea en Apps Script (versión 1.14).'
+        : /desconocida: unirProveedores/i.test(x.error || '') ? ' · Para unir códigos de proveedor falta actualizar el bloque de adjuntos en Apps Script (versión 1.20).'
+        : /anotación no permitida/i.test(x.error || '') ? ' · Falta actualizar el bloque de adjuntos en Apps Script.' : '';
       mensajes.push(['No se guardó un cambio: ' + x.error + pista, 'error']);
     }
     else if (x.avisos?.length) mensajes.push([x.avisos.join(' · '), 'aviso']);

@@ -1,5 +1,5 @@
 // ============================================================================
-// Cuentas por Pagar · Grupo BSE · Adjuntos y anotaciones (versión 1.18.1)
+// Cuentas por Pagar · Grupo BSE · Adjuntos y anotaciones (versión 1.20)
 //
 // Pegue este bloque completo AL FINAL del script, y agregue en la función
 // manejar_ esta línea justo debajo de la que dice  if (p.accion === 'quienSoy') ...
@@ -35,6 +35,7 @@ function instalarAnotar_() {
   if (Logica.__anotar) return;
   var original = Logica.aplicarOp;
   Logica.aplicarOp = function (d, op, ctx) {
+    if (op && op.tipo === 'unirProveedores') return unirProveedores_(d, op, ctx);
     if (!op || op.tipo !== 'anotar') return original(d, op, ctx);
     var clave = String(op.clave || '');
     if (!/^(envio|adj|doc|banco):/.test(clave)) return { ok: false, error: 'Anotación no permitida', cambios: [] };
@@ -69,4 +70,31 @@ function leerArchivo_(p) {
   if (!dentro) return { ok: false, error: 'Ese archivo no es un comprobante' };
   var blob = archivo.getBlob();
   return { ok: true, nombre: archivo.getName(), tipo: blob.getContentType(), base64: Utilities.base64Encode(blob.getBytes()) };
+}
+
+/**
+ * Operación «unirProveedores» (1.20): un proveedor que quedó con varios códigos. Sus facturas pasan
+ * al código que queda y los otros códigos se ocultan en la aplicación (no se borra ninguna fila).
+ */
+function unirProveedores_(d, op, ctx) {
+  var a = String(op.a || ''), pa = d.proveedores[a], cambios = [];
+  if (!pa) return { ok: false, error: 'No existe el proveedor ' + a, cambios: [] };
+  var de = (op.de || []).map(String).filter(function (c) { return c !== a && d.proveedores[c]; });
+  if (!de.length) return { ok: false, error: 'No hay códigos para unir', cambios: [] };
+  var n = 0;
+  Object.keys(d.facturas).forEach(function (id) {
+    var f = d.facturas[id];
+    if (de.indexOf(String(f.codigo)) < 0) return;
+    f.codigo = a; f.proveedor = pa.nombre; f.v = ctx.ahora; cambios.push(['facturas', id]); n++;
+  });
+  de.forEach(function (c) {
+    var p = d.proveedores[c];
+    if (!pa.ibanCRC && p.ibanCRC) pa.ibanCRC = p.ibanCRC;
+    if (!pa.ibanUSD && p.ibanUSD) pa.ibanUSD = p.ibanUSD;
+    if (!pa.alias && p.alias) pa.alias = p.alias;
+    d.config['unido:' + c] = { clave: 'unido:' + c, valor: a, v: ctx.ahora };
+    cambios.push(['config', 'unido:' + c]);
+  });
+  pa.v = ctx.ahora; cambios.push(['proveedores', a]);
+  return { ok: true, avisos: [n + (n === 1 ? ' factura pasó' : ' facturas pasaron') + ' al código ' + a], cambios: cambios };
 }
