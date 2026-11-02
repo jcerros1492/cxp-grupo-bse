@@ -1390,6 +1390,7 @@ function pestanaRecibida(x) {
   const r = x.r;
   if (r.tipo === 'MH' || r.tipo === 'MR') return null;
   if (r.estado === 'descartada') return 'descartadas';
+  if (!x.sociedad) return 'otras'; // a nombre de empresas cuyas cuentas por pagar no se llevan aquí
   if (r.estado === 'cxp' || x.factura) return 'cxp';
   if (r.tipo === 'NC') return 'nc';
   return x.cond === 'credito' ? 'credito' : 'contado';
@@ -1407,9 +1408,9 @@ const nPorPasar = () => (REC.cargado ? listaRecibidas().filter((x) => x.tab === 
 function etiquetasRecibida(x) {
   const t = [];
   if (x.rechazada) t.push(`<span class="tg rc-rech" title="${esc(x.r.haciendaDetalle || '')}">Rechazada por Hacienda</span>`);
-  if (!x.sociedad) t.push('<span class="tg rc-gris">no es del grupo</span>');
+  if (!x.sociedad && x.tab !== 'otras') t.push('<span class="tg rc-gris">no es del grupo</span>');
   if (x.anterior) t.push(`<span class="tg rc-amb">anterior al ${fmtFecha(REC.inicio)} · revisar</span>`);
-  if (!x.codigo && x.tab !== 'cxp') t.push('<span class="tg rc-azul">proveedor nuevo</span>');
+  if (!x.codigo && x.tab !== 'cxp' && x.tab !== 'otras') t.push('<span class="tg rc-azul">proveedor nuevo</span>');
   if (x.r.condicionManual === 'credito') t.push('<span class="tg rc-amb">venía de contado</span>');
   if (x.tab === 'cxp' && x.factura && x.r.estado !== 'cxp') t.push('<span class="tg rc-verde">ya estaba en CxP</span>');
   return t.join(' ');
@@ -1418,7 +1419,7 @@ function etiquetasRecibida(x) {
 function vistaRecibidas() {
   if (!REC.cargado && !REC.cargando && !REC.error) setTimeout(() => cargarRecibidas(true), 0);
   const todas = listaRecibidas();
-  const tabs = [['credito', 'Crédito'], ['contado', 'Contado'], ['nc', 'Notas de crédito'], ['cxp', 'Ya en cuentas por pagar'], ['descartadas', 'Descartadas']];
+  const tabs = [['credito', 'Crédito'], ['contado', 'Contado'], ['nc', 'Notas de crédito'], ['cxp', 'Ya en cuentas por pagar'], ['descartadas', 'Descartadas'], ['otras', 'Otras empresas']];
   const cuenta = (k) => todas.filter((x) => x.tab === k).length;
   const lista = todas.filter((x) => x.tab === REC.tab);
   const u = REC.ultima;
@@ -1435,7 +1436,8 @@ function vistaRecibidas() {
   <div class="rc-tabs" role="tablist">${tabs.map(([k, n]) => `<button role="tab" class="${REC.tab === k ? 'on' : ''}" aria-selected="${REC.tab === k}" data-act="rc-tab" data-v="${k}">${n} <i>${cuenta(k)}</i></button>`).join('')}</div>
   ${lista.length ? tablaRecibidas(lista) : `<p class="vacio">${REC.cargando && !REC.cargado ? 'Cargando…' : {
     credito: 'No hay facturas de crédito por revisar.', contado: 'No hay facturas de contado.', nc: 'No hay notas de crédito.',
-    cxp: 'Todavía no se ha pasado ninguna factura recibida.', descartadas: 'No hay facturas descartadas.' }[REC.tab]}</p>`}
+    cxp: 'Todavía no se ha pasado ninguna factura recibida.', descartadas: 'No hay facturas descartadas.', otras: 'No llegaron facturas a nombre de otras empresas.' }[REC.tab]}</p>`}
+  ${REC.tab === 'otras' && lista.length ? '<p class="sub rc-nota">Facturas que los proveedores mandaron a facturacion@bse.cr a nombre de empresas que no son Santa Eduviges, La Hilda, Nosavar ni Loma Bonita. Solo se guardan aquí: no van a cuentas por pagar.</p>' : ''}
   ${REC.tab === 'credito' || REC.tab === 'cxp' ? pieRecibidas(lista) : ''}`;
 }
 
