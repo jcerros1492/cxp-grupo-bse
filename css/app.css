@@ -935,7 +935,8 @@ label.adjuntar { align-items: center !important; }
 .fila-antig { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .lbl-filtro { font-size: 12px; font-weight: 600; color: var(--tenue); min-width: 78px; }
 .chip i { font-style: normal; font-size: 12px; opacity: .65; margin-left: 3px; }
-.fila-busqueda.fila-prov > label.sel-prov { flex: 0 1 420px; }
+.fila-busqueda.fila-prov > .sel-prov { flex: 0 1 420px; min-width: 0; }
+.fila-busqueda.fila-prov .rep-prov-drop .lbl { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
 .fila-busqueda.fila-prov > label.sel-orden { flex: 0 1 240px; }
 .dias.venc.v30 { background: #fef3c7; color: #92400e; padding: 1px 7px; border-radius: 999px; }
 .dias.venc.v60 { background: #ffedd5; color: #9a3412; padding: 1px 7px; border-radius: 999px; }

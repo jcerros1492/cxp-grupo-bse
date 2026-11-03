@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.22.1 | Programar pagos y Facturas: el filtro de proveedor es tipo filtro de Excel: se abre, se escribe parte del nombre y muestra solo los que coinciden (Enter elige si queda uno). |
 | 1.22.0 | Programar pagos y Facturas: ordenadas de la más vencida a la menos vencida; filtro de antigüedad (Por vencer · 1–30 · 31–60 · 61–90 · Más de 90, con cantidades), filtro por proveedor y «Ordenar» (más vencidas, proveedor A–Z, monto; en Facturas también «más recientes»). La etiqueta «vencida X d» toma color según la antigüedad. |
 | 1.21.6 | Pagos manuales (Por aplicar → Manual y «Pagar ahora» → Manual): al lado del N° de comprobante hay que escribir la «Fecha del comprobante» (dd/mm/aaaa, no futura). Esa es la fecha del pago en Canceladas, estado de cuenta y reportes. |
 | 1.21.5 | La factura que llegó por correo con su PDF muestra «📄 Ver factura (PDF)» en su detalle (Facturas, Canceladas, Por aplicar), también para Norman. Las que ya se pasaron antes (o estaban desde GTI) se enlazan solas al abrir «Recibidas». |

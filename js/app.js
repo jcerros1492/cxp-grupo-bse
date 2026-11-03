@@ -248,8 +248,7 @@ function filtrosAntiguedad(pref, F, base, ordenes) {
   return `<div class="fila-antig"><span class="lbl-filtro">Antigüedad</span><div class="fila-chips" role="group" aria-label="Antigüedad">
       ${TRAMOS.map(([v, n]) => chip(pref + '-tramo', v, F.tramo, `${n} <i>${v ? porTramo[v] || 0 : total}</i>`)).join('')}</div></div>
     <div class="fila-busqueda fila-prov">
-      <label class="sel-prov">Proveedor <select data-in="${pref}-prov"><option value="">Todos los proveedores</option>
-        ${provs.map((x) => `<option value="${esc(x.c)}" ${String(F.prov) === x.c ? 'selected' : ''}>${esc(x.n)}${porProv.has(x.c) ? ` (${porProv.get(x.c)})` : ''}</option>`).join('')}</select></label>
+      <div class="sel-prov">${dropProveedor(pref, F.prov ? String(F.prov) : '', provs.map((x) => ({ codigo: x.c, nombre: x.n + (porProv.has(x.c) ? ` (${porProv.get(x.c)})` : '') })), 'Todos los proveedores')}</div>
       <label class="sel-orden">Ordenar <select data-in="${pref}-orden">${ordenes.map(([v, n]) => `<option value="${v}" ${F.orden === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
     </div>`;
 }
@@ -2746,7 +2745,12 @@ const acciones = {
     ui.provDrop = ui.provDrop === k ? null : k; render();
     if (ui.provDrop) setTimeout(() => document.querySelector('[data-in="r-provfiltro"]')?.focus(), 0);
   },
-  'r-prov-set': (v, el) => { (el.dataset.k === 'ec' ? ui.ec : ui.rep).prov = v; ui.provDrop = null; render(); },
+  'r-prov-set': (v, el) => {
+    const k = el.dataset.k;
+    ({ ec: ui.ec, p: ui.prog, f: ui.fact }[k] || ui.rep).prov = v;
+    if (k === 'f') ui.fact.limite = 150;
+    ui.provDrop = null; render();
+  },
   'r-limpiar': () => { Object.assign(ui.rep, { soc: '', prov: '', desde: '', hasta: '' }); ui.provDrop = null; render(); },
   'r-preset': (v) => { const [d, h] = v.split('|'); ui.rep.desde = d; ui.rep.hasta = h; render(); },
   'r-tipo': (v) => { ui.rep.tipo = v; ui.provDrop = null; render(); },
