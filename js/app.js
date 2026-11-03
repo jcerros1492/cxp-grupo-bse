@@ -2437,6 +2437,28 @@ function despuesDeRender(ruta) {
   if (ruta === 'config') document.querySelectorAll('[data-in="iban"]').forEach(validarCampoIBAN);
 }
 
+/**
+ * Elegir archivos sin perderlos: mientras la ventana de Windows está abierta, una sincronización puede
+ * redibujar la pantalla y cambiar el <input type=file> por otro; el archivo elegido quedaba en el viejo y
+ * no pasaba nada (había que subirlo dos veces). Se abre un campo aparte, fuera de la pantalla que se redibuja.
+ */
+const ARCHIVO_APARTE = new Set(['rc-subir', 'rc-gti', 'ap-pdf', 'ap-gen', 'imp-archivo', 'importar']);
+document.addEventListener('click', (e) => {
+  const lbl = e.target.closest?.('label');
+  const orig = lbl?.querySelector('input[type=file]');
+  if (!orig || !ARCHIVO_APARTE.has(orig.dataset.in) || e.target === orig) return;
+  e.preventDefault();
+  document.querySelectorAll('input.archivo-aparte').forEach((x) => x.remove());
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.hidden = true; inp.className = 'archivo-aparte';
+  if (orig.accept) inp.accept = orig.accept;
+  inp.multiple = orig.multiple;
+  Object.assign(inp.dataset, orig.dataset);
+  inp.addEventListener('change', () => setTimeout(() => inp.remove(), 0));
+  document.body.append(inp);
+  inp.click();
+}, true);
+
 document.addEventListener('click', (e) => {
   if (ui.provDrop && !e.target.closest('.rep-prov-drop')) { ui.provDrop = null; render(); }
   const el = e.target.closest('[data-act]');
