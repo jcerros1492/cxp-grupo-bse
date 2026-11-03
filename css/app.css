@@ -930,3 +930,18 @@ label.adjuntar { align-items: center !important; }
 /* Búsqueda en Recibidas */
 .rc-buscar { display: block; max-width: 460px; margin: 4px 0 10px; }
 .rc-buscar input { width: 100%; }
+
+/* Antigüedad, proveedor y orden (Programar pagos y Facturas) */
+.fila-antig { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.lbl-filtro { font-size: 12px; font-weight: 600; color: var(--tenue); min-width: 78px; }
+.chip i { font-style: normal; font-size: 12px; opacity: .65; margin-left: 3px; }
+.fila-busqueda.fila-prov > label.sel-prov { flex: 0 1 420px; }
+.fila-busqueda.fila-prov > label.sel-orden { flex: 0 1 240px; }
+.dias.venc.v30 { background: #fef3c7; color: #92400e; padding: 1px 7px; border-radius: 999px; }
+.dias.venc.v60 { background: #ffedd5; color: #9a3412; padding: 1px 7px; border-radius: 999px; }
+.dias.venc.v90 { background: #fee2e2; color: #991b1b; padding: 1px 7px; border-radius: 999px; }
+@media screen and (max-width: 760px) {
+  .lbl-filtro { min-width: 0; width: 100%; }
+  .fila-antig .fila-chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+  .fila-antig .chip { flex: 0 0 auto; }
+}

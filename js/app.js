@@ -20,8 +20,8 @@ const $dialog = document.getElementById('dialogo');
 // Estado temporal de pantallas (no se guarda)
 const ui = {
   login: '',
-  prog: { soc: '', mon: '', q: '', vencidas: false, sel: new Map(), fecha: '', verProgramado: true },
-  fact: { soc: '', mon: '', est: 'saldo', q: '', limite: 150 },
+  prog: { soc: '', mon: '', q: '', tramo: '', prov: '', orden: 'venc', sel: new Map(), fecha: '', verProgramado: true },
+  fact: { soc: '', mon: '', est: 'saldo', q: '', tramo: '', prov: '', orden: 'venc', limite: 150 },
   canc: { soc: '', mon: '', q: '', limite: 100 },
   prov: { q: '', filtro: '', abierto: null },
   rep: { tipo: 'cxp', soc: '', prov: '', mon: 'CRC', desde: '', hasta: '' },
@@ -223,10 +223,38 @@ function etiquetaDias(f) {
   const d = S.diasVencida(f);
   if (d == null) return '';
   const est = f.venceEstimado ? ' <span class="est" title="Vencimiento estimado: fecha de factura + 30 días">EST</span>' : '';
-  if (d > 0) return `<span class="dias venc">vencida ${d} d</span>${est}`;
+  if (d > 0) return `<span class="dias venc${d > 90 ? ' v90' : d > 60 ? ' v60' : d > 30 ? ' v30' : ''}">vencida ${d} d</span>${est}`;
   if (d === 0) return `<span class="dias hoy">vence hoy</span>${est}`;
   return `<span class="dias">en ${-d} d</span>${est}`;
 }
+
+/** Antigüedad según los días vencidos (desde la fecha de vencimiento). */
+const TRAMOS = [['', 'Todas'], ['por', 'Por vencer'], ['30', '1–30 días'], ['60', '31–60'], ['90', '61–90'], ['mas', 'Más de 90']];
+function tramoDe(f) {
+  const d = S.diasVencida(f);
+  if (d == null || d <= 0) return 'por';
+  return d <= 30 ? '30' : d <= 60 ? '60' : d <= 90 ? '90' : 'mas';
+}
+/** Fila de filtros nueva: antigüedad (con cantidades), proveedor y orden. `base` = lista sin filtrar por antigüedad ni proveedor. */
+function filtrosAntiguedad(pref, F, base, ordenes) {
+  const porTramo = {}, porProv = new Map();
+  for (const f of base) {
+    if (!F.prov || String(f.codigo) === String(F.prov)) { const t = tramoDe(f); porTramo[t] = (porTramo[t] || 0) + 1; }
+    if (!F.tramo || tramoDe(f) === F.tramo) porProv.set(String(f.codigo), (porProv.get(String(f.codigo)) || 0) + 1);
+  }
+  const total = Object.values(porTramo).reduce((a, b) => a + b, 0);
+  const provs = [...porProv.keys()].map((c) => ({ c, n: S.proveedor(c).nombre })).sort((a, b) => a.n.localeCompare(b.n));
+  if (F.prov && !porProv.has(String(F.prov))) provs.unshift({ c: String(F.prov), n: S.proveedor(F.prov).nombre });
+  return `<div class="fila-antig"><span class="lbl-filtro">Antigüedad</span><div class="fila-chips" role="group" aria-label="Antigüedad">
+      ${TRAMOS.map(([v, n]) => chip(pref + '-tramo', v, F.tramo, `${n} <i>${v ? porTramo[v] || 0 : total}</i>`)).join('')}</div></div>
+    <div class="fila-busqueda fila-prov">
+      <label class="sel-prov">Proveedor <select data-in="${pref}-prov"><option value="">Todos los proveedores</option>
+        ${provs.map((x) => `<option value="${esc(x.c)}" ${String(F.prov) === x.c ? 'selected' : ''}>${esc(x.n)}${porProv.has(x.c) ? ` (${porProv.get(x.c)})` : ''}</option>`).join('')}</select></label>
+      <label class="sel-orden">Ordenar <select data-in="${pref}-orden">${ordenes.map(([v, n]) => `<option value="${v}" ${F.orden === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+    </div>`;
+}
+/** Vencimiento para ordenar: sin fecha va al final. */
+const venceOrden = (f) => f.fechaVence || '9999-12-31';
 
 function etiquetaEstado(e) {
   const cls = { Pendiente: 'pend', Programada: 'prog', Abonada: 'abon', Cancelada: 'canc', 'Revisión': 'rev' }[e] || '';
@@ -327,12 +355,11 @@ function vistaBienvenida() {
 // ---------------------------------------------------------------- Programar pagos (Norman)
 
 function facturasParaProgramar() {
-  const { soc, mon, q, vencidas } = ui.prog;
+  const { soc, mon, q } = ui.prog;
   const texto = q.trim().toLowerCase();
   return S.conSaldo().filter((f) => {
     if (soc && f.sociedad !== soc) return false;
     if (mon && f.moneda !== mon) return false;
-    if (vencidas && !(S.diasVencida(f) >= 0)) return false;
     if (texto) {
       const p = S.proveedor(f.codigo);
       if (!(`${p.nombre} ${p.alias} ${f.documento}`.toLowerCase().includes(texto))) return false;
@@ -344,16 +371,20 @@ function facturasParaProgramar() {
 function vistaProgramar() {
   const P = ui.prog;
   if (!P.fecha) P.fecha = hoyISO();
-  const lista = facturasParaProgramar();
+  const base = facturasParaProgramar();
+  const lista = base.filter((f) => (!P.tramo || tramoDe(f) === P.tramo) && (!P.prov || String(f.codigo) === String(P.prov)));
   const grupos = new Map();
   for (const f of lista) {
     const k = f.codigo + '|' + f.sociedad + '|' + f.moneda;
     if (!grupos.has(k)) grupos.set(k, []);
     grupos.get(k).push(f);
   }
+  const porNombre = (a, b) => S.proveedor(a[0].codigo).nombre.localeCompare(S.proveedor(b[0].codigo).nombre);
   const ordenados = [...grupos.values()]
-    .map((fs) => fs.sort((a, b) => (a.fechaVence || '').localeCompare(b.fechaVence || '')))
-    .sort((a, b) => S.proveedor(a[0].codigo).nombre.localeCompare(S.proveedor(b[0].codigo).nombre));
+    .map((fs) => fs.sort((a, b) => venceOrden(a).localeCompare(venceOrden(b))))
+    .sort(P.orden === 'nombre' ? porNombre
+      : P.orden === 'monto' ? (a, b) => (a[0].moneda === b[0].moneda ? 0 : a[0].moneda === 'CRC' ? -1 : 1) || (S.totales(b)[b[0].moneda] - S.totales(a)[a[0].moneda]) || porNombre(a, b)
+      : (a, b) => venceOrden(a[0]).localeCompare(venceOrden(b[0])) || porNombre(a, b));
 
   const programado = S.programacionesPendientes()
     .map((p) => ({ p, f: S.factura(p.facturaId) })).filter((x) => x.f)
@@ -372,8 +403,8 @@ function vistaProgramar() {
     <div class="fila-chips" role="group" aria-label="Moneda">${chip('p-mon', '', P.mon, 'Ambas monedas')}${chip('p-mon', 'CRC', P.mon, 'Colones')}${chip('p-mon', 'USD', P.mon, 'Dólares')}</div>
     <div class="fila-busqueda">
       <label class="buscar"><span class="vh">Buscar</span><input type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Buscar proveedor o número de factura" value="${esc(P.q)}" data-in="p-q"></label>
-      <label class="check"><input type="checkbox" data-in="p-venc" ${P.vencidas ? 'checked' : ''}> Solo vencidas o que vencen hoy</label>
     </div>
+    ${filtrosAntiguedad('p', P, base, [['venc', 'Más vencidas primero'], ['nombre', 'Proveedor A–Z'], ['monto', 'Monto mayor primero']])}
   </div>
 
   ${resumenLista(`${lista.length} facturas con saldo`, S.totales(lista))}
@@ -805,7 +836,7 @@ function descargar(nombre, contenido, tipo) {
 function vistaFacturas() {
   const F = ui.fact;
   const texto = F.q.trim().toLowerCase();
-  let lista = S.listaFacturas().filter((f) => {
+  const base = S.listaFacturas().filter((f) => {
     if (F.soc && f.sociedad !== F.soc) return false;
     if (F.mon && f.moneda !== F.mon) return false;
     const e = S.estado(f);
@@ -814,7 +845,13 @@ function vistaFacturas() {
     if (texto && !(`${S.proveedor(f.codigo).nombre} ${f.documento} ${S.movimientosDe(f).map((m) => m.comprobante).join(' ')}`.toLowerCase().includes(texto))) return false;
     return true;
   });
-  lista.sort((a, b) => (b.fechaFactura || '').localeCompare(a.fechaFactura || ''));
+  let lista = base.filter((f) => (!F.tramo || tramoDe(f) === F.tramo) && (!F.prov || String(f.codigo) === String(F.prov)));
+  const conSaldo = (f) => (S.saldo(f) > 0.004 ? 0 : 1);
+  const recientes = (a, b) => (b.fechaFactura || '').localeCompare(a.fechaFactura || '');
+  lista.sort(F.orden === 'recientes' ? recientes
+    : F.orden === 'nombre' ? (a, b) => S.proveedor(a.codigo).nombre.localeCompare(S.proveedor(b.codigo).nombre) || venceOrden(a).localeCompare(venceOrden(b))
+    : F.orden === 'monto' ? (a, b) => (a.moneda === b.moneda ? 0 : a.moneda === 'CRC' ? -1 : 1) || S.saldo(b) - S.saldo(a) || b.monto - a.monto
+    : (a, b) => conSaldo(a) - conSaldo(b) || venceOrden(a).localeCompare(venceOrden(b)) || recientes(a, b));
   const total = lista.length;
   const t = S.totales(lista);
   lista = lista.slice(0, F.limite);
@@ -835,6 +872,7 @@ function vistaFacturas() {
           .map(([v, n]) => `<option value="${v}" ${F.est === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label>Moneda <select data-in="f-mon"><option value="">Ambas</option><option value="CRC" ${F.mon === 'CRC' ? 'selected' : ''}>Colones</option><option value="USD" ${F.mon === 'USD' ? 'selected' : ''}>Dólares</option></select></label>
     </div>
+    ${filtrosAntiguedad('f', F, base, [['venc', 'Más vencidas primero'], ['recientes', 'Más recientes primero'], ['nombre', 'Proveedor A–Z'], ['monto', 'Saldo mayor primero']])}
   </div>
   ${resumenLista(`${total} facturas · saldo`, t, false)}
   <div class="tabla-scroll"><table class="tabla clic">
@@ -2581,6 +2619,8 @@ const acciones = {
 
   'p-soc': (v) => { ui.prog.soc = v; render(); },
   'p-mon': (v) => { ui.prog.mon = v; render(); },
+  'p-tramo': (v) => { ui.prog.tramo = v; render(); },
+  'f-tramo': (v) => { ui.fact.tramo = v; ui.fact.limite = 150; render(); },
   'p-todas': (v) => { for (const id of v.split(',')) { const f = S.factura(id); if (!S.programacionDe(f) && !ui.prog.sel.has(id)) ui.prog.sel.set(id, fmtNum(S.saldo(f))); } render(); },
   'p-quitar': (v) => { if (confirm('¿Quitar este pago de lo programado?')) resultado(S.quitarProgramacion(v, 'Quitado por Norman'), 'Pago quitado'); },
   'p-enviar': () => {
@@ -2930,7 +2970,10 @@ document.addEventListener('change', async (e) => {
     if (el.checked && matchMedia('(hover: hover) and (pointer: fine)').matches) document.querySelector(`[data-in="p-monto"][data-v="${f.id}"]`)?.select();
     return;
   }
-  if (k === 'p-venc') { ui.prog.vencidas = el.checked; render(); return; }
+  if (k === 'p-prov') { ui.prog.prov = el.value; render(); return; }
+  if (k === 'p-orden') { ui.prog.orden = el.value; render(); return; }
+  if (k === 'f-prov') { ui.fact.prov = el.value; ui.fact.limite = 150; render(); return; }
+  if (k === 'f-orden') { ui.fact.orden = el.value; render(); return; }
   if (k === 'p-fecha') { ui.prog.fecha = el.value; return; }
   if (k === 'f-est') { ui.fact.est = el.value; ui.fact.limite = 150; render(); return; }
   if (k === 'f-mon') { ui.fact.mon = el.value; render(); return; }
