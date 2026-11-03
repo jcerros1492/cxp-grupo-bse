@@ -21,7 +21,7 @@ const $dialog = document.getElementById('dialogo');
 const ui = {
   login: '',
   prog: { soc: '', mon: '', q: '', tramo: '', prov: '', orden: 'venc', sel: new Map(), fecha: '', verProgramado: true },
-  fact: { soc: '', mon: '', est: 'saldo', q: '', tramo: '', prov: '', orden: 'venc', limite: 150 },
+  fact: { soc: '', mon: '', est: 'saldo', q: '', tramo: '', prov: '', orden: 'venc', limite: 150, sel: new Set() },
   canc: { soc: '', mon: '', q: '', limite: 100 },
   prov: { q: '', filtro: '', abierto: null },
   rep: { tipo: 'cxp', soc: '', prov: '', mon: 'CRC', desde: '', hasta: '' },
@@ -854,6 +854,10 @@ function vistaFacturas() {
   const total = lista.length;
   const t = S.totales(lista);
   lista = lista.slice(0, F.limite);
+  const conCk = !S.esNorman();
+  for (const id of [...F.sel]) { const f = S.factura(id); if (!f || !marcable(f)) F.sel.delete(id); }
+  const marcablesVis = conCk ? lista.filter(marcable) : [];
+  const todasMarcadas = marcablesVis.length && marcablesVis.every((f) => F.sel.has(f.id));
   return `
   <div class="titulo-vista">
     <div><h1>Facturas</h1><p class="sub">${S.listaFacturas().length} facturas en total</p></div>
@@ -875,8 +879,9 @@ function vistaFacturas() {
   </div>
   ${resumenLista(`${total} facturas · saldo`, t, false)}
   <div class="tabla-scroll"><table class="tabla clic">
-    <thead><tr><th>Sociedad</th><th>Proveedor</th><th>Factura</th><th>Fecha</th><th>Vence</th><th class="num">Monto</th><th class="num">Saldo</th><th>Estado</th></tr></thead>
-    <tbody>${lista.map((f) => `<tr data-act="f-abrir" data-v="${f.id}" tabindex="0">
+    <thead><tr>${conCk ? `<th class="ck-celda"><label><input type="checkbox" data-in="f-todas" aria-label="Marcar todas las que se ven" ${todasMarcadas ? 'checked' : ''} ${marcablesVis.length ? '' : 'disabled'}></label></th>` : ''}<th>Sociedad</th><th>Proveedor</th><th>Factura</th><th>Fecha</th><th>Vence</th><th class="num">Monto</th><th class="num">Saldo</th><th>Estado</th></tr></thead>
+    <tbody>${lista.map((f) => `<tr data-act="f-abrir" data-v="${f.id}" tabindex="0" class="${F.sel.has(f.id) ? 'marcada' : ''}">
+      ${conCk ? `<td class="ck-celda" data-act="nada">${marcable(f) ? `<label><input type="checkbox" data-in="f-sel" data-v="${f.id}" ${F.sel.has(f.id) ? 'checked' : ''} aria-label="Marcar la factura ${esc(f.documento)} para pagar"></label>` : ''}</td>` : ''}
       <td>${esc(S.nombreSociedad(f.sociedad))}</td><td>${esc(S.proveedor(f.codigo).nombre)}</td>
       <td><a href="#/facturas" data-act="f-abrir" data-v="${f.id}">${esc(f.documento)}</a></td>
       <td>${fmtFecha(f.fechaFactura)}</td>
@@ -884,7 +889,61 @@ function vistaFacturas() {
       <td class="num">${money(f.monto, f.moneda)}</td><td class="num"><strong>${money(S.saldo(f), f.moneda)}</strong></td>
       <td>${etiquetaEstado(S.estado(f))}</td></tr>`).join('')}</tbody>
   </table></div>
-  ${total > lista.length ? `<p class="centro-txt"><button class="btn" data-act="f-mas">Mostrar más (${total - lista.length} restantes)</button></p>` : ''}`;
+  ${total > lista.length ? `<p class="centro-txt"><button class="btn" data-act="f-mas">Mostrar más (${total - lista.length} restantes)</button></p>` : ''}
+  ${conCk && F.sel.size ? barraVarias() : ''}`;
+}
+
+/** Factura que se puede marcar para pagar junto con otras: con saldo y sin programar. */
+const marcable = (f) => S.saldo(f) > 0.004 && !S.programacionDe(f);
+const facturasMarcadas = () => [...ui.fact.sel].map((id) => S.factura(id)).filter(Boolean)
+  .sort((a, b) => venceOrden(a).localeCompare(venceOrden(b)) || String(a.documento).localeCompare(String(b.documento), 'es', { numeric: true }));
+
+function barraVarias() {
+  const fs = facturasMarcadas();
+  if (!fs.length) return '';
+  const f0 = fs[0], total = round2(fs.reduce((t, f) => t + S.saldo(f), 0));
+  return `<div class="barra-envio barra-varias"><div class="barra-interior">
+    <div class="resumen-sel"><b>${fs.length} ${fs.length === 1 ? 'factura marcada' : 'facturas marcadas'}</b> · ${esc(S.proveedor(f0.codigo).nombre)} · ${esc(S.nombreSociedad(f0.sociedad))} · ${MONEDAS[f0.moneda].nombre} · <b>${money(total, f0.moneda)}</b></div>
+    <button class="btn" data-act="f-sel-quitar">Quitar marcas</button>
+    <button class="btn primario" data-act="f-pagar-varias">Pagar seleccionadas</button>
+  </div></div>`;
+}
+
+function dialogoPagarVarias() {
+  const fs = facturasMarcadas();
+  const pr = S.problemaVarias(fs);
+  if (pr) { avisar(pr, 'error'); return; }
+  const f0 = fs[0], prov = S.proveedor(f0.codigo);
+  const lote = S.loteVarias(fs, hoyISO());
+  const ln = lote.lineas[0], prob = S.problemasLote(lote);
+  const clave = 'varias|' + fs.map((f) => f.id).join(',');
+  abrirDialogo(`<header class="dlg-cab"><div><h2>Pagar ${fs.length} ${fs.length === 1 ? 'factura' : 'facturas'}</h2>
+      <p class="sub">${esc(prov.nombre)} · ${esc(S.nombreSociedad(f0.sociedad))} · ${MONEDAS[f0.moneda].nombre}</p></div>
+      <button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+    <form class="dlg-cuerpo form-grid pagar-ahora" data-form="pagar-varias" data-forma="banco">
+      <div class="ancho pv-lista">${fs.map((f) => `<div class="pv-li"><span>Fact. ${esc(f.documento)} <span class="sub">${f.fechaVence ? fmtFecha(f.fechaVence) : ''}</span></span><span>${money(S.saldo(f), f.moneda)}</span></div>`).join('')}
+        <div class="pv-tot"><span>Total</span><span>${money(lote.total, f0.moneda)}</span></div></div>
+      <div class="ancho"><span class="lbl">¿Cómo se paga?</span>
+        <div class="pa-formas">
+          <label class="pa-forma"><input type="radio" name="forma" value="banco" checked data-in="pn-forma"><span><b>Banco (.txt)</b>Una sola transferencia por el total. El comprobante se escribe en «Por aplicar» cuando el banco aplique.</span></label>
+          <label class="pa-forma"><input type="radio" name="forma" value="manual" data-in="pn-forma"><span><b>Manual</b>Transferencia hecha a mano. El comprobante se escribe ya.</span></label>
+        </div></div>
+      <div class="ancho solo-banco pn-banco">
+        <label>Descripción en el banco <input type="text" name="descripcion" maxlength="60" value="${esc(ln.descripcion)}"></label>
+        <label>Consecutivo del archivo <input type="text" name="consecutivo" inputmode="numeric" maxlength="3" value="${S.siguienteConsecutivo(f0.sociedad)}">
+          <span class="sub">Último usado en ${esc(S.nombreSociedad(f0.sociedad))}: ${S.bancoSoc(f0.sociedad).ultimo ? c3(S.bancoSoc(f0.sociedad).ultimo) : '—'}</span></label>
+        <p class="sub">Cuenta del proveedor: <span class="mono">${ln.iban ? fmtIBAN(ln.iban) : '—'}</span></p>
+        ${prob.length ? `<div class="aviso"><strong>Para generar el archivo falta:</strong><ul>${prob.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+        <p class="sub">Al tocar el botón se descarga el .txt y el pago queda «Enviado al banco · esperando comprobante» en Por aplicar.</p>
+      </div>
+      <label class="solo-manual">N° de comprobante <input type="text" name="comprobante" autocomplete="off"></label>
+      <label class="solo-manual">Fecha del comprobante ${inputFechaComp('name="fechaComp"', 'Fecha del comprobante')}</label>
+      <div class="ancho solo-manual">${campoArchivo(clave, `Comprobante del banco (PDF o foto) · opcional · uno solo para ${fs.length === 1 ? 'la factura' : 'las ' + fs.length}`)}</div>
+      <div class="ancho acciones-fila">
+        <button class="btn oscuro solo-banco" type="submit" ${prob.length ? 'disabled' : ''}>Descargar .txt y enviar al banco</button>
+        <button class="btn primario solo-manual" type="submit">Aplicar pago ${fs.length === 1 ? '' : 'a las ' + fs.length}</button>
+        <button class="btn" type="button" data-act="cerrar">Cancelar</button></div>
+    </form>`);
 }
 
 function ultimoPago(f) {
@@ -2620,6 +2679,9 @@ const acciones = {
   'p-mon': (v) => { ui.prog.mon = v; render(); },
   'p-tramo': (v) => { ui.prog.tramo = v; render(); },
   'f-tramo': (v) => { ui.fact.tramo = v; ui.fact.limite = 150; render(); },
+  'nada': () => {},
+  'f-sel-quitar': () => { ui.fact.sel.clear(); render(); },
+  'f-pagar-varias': () => dialogoPagarVarias(),
   'p-todas': (v) => { for (const id of v.split(',')) { const f = S.factura(id); if (!S.programacionDe(f) && !ui.prog.sel.has(id)) ui.prog.sel.set(id, fmtNum(S.saldo(f))); } render(); },
   'p-quitar': (v) => { if (confirm('¿Quitar este pago de lo programado?')) resultado(S.quitarProgramacion(v, 'Quitado por Norman'), 'Pago quitado'); },
   'p-enviar': () => {
@@ -2976,6 +3038,20 @@ document.addEventListener('change', async (e) => {
   }
   if (k === 'p-prov') { ui.prog.prov = el.value; render(); return; }
   if (k === 'p-orden') { ui.prog.orden = el.value; render(); return; }
+  if (k === 'f-sel' || k === 'f-todas') {
+    const F = ui.fact;
+    const nuevas = k === 'f-sel' ? [S.factura(el.dataset.v)].filter(Boolean)
+      : [...document.querySelectorAll('[data-in="f-sel"]')].map((x) => S.factura(x.dataset.v)).filter(Boolean);
+    if (!el.checked) { for (const f of nuevas) F.sel.delete(f.id); render(); return; }
+    const pr = S.problemaVarias([...facturasMarcadas(), ...nuevas]);
+    if (pr) {
+      el.checked = false;
+      avisar(k === 'f-todas' ? 'Las facturas que se ven son de varios proveedores, sociedades o monedas: filtre por proveedor, sociedad y moneda, o márquelas una por una' : pr + (F.sel.size ? '. Quite las marcas para empezar con otra' : ''), 'error');
+      return;
+    }
+    for (const f of nuevas) F.sel.add(f.id);
+    render(); return;
+  }
   if (k === 'f-prov') { ui.fact.prov = el.value; ui.fact.limite = 150; render(); return; }
   if (k === 'f-orden') { ui.fact.orden = el.value; render(); return; }
   if (k === 'p-fecha') { ui.prog.fecha = el.value; return; }
@@ -3110,6 +3186,38 @@ document.addEventListener('submit', (e) => {
       if (!resultado(r, `${r.tipo === 'abono' ? 'Abono' : 'Pago'} aplicado`)) return;
       cerrarDialogo(); render();
       adjuntarDespues('pn|' + f.id, `${limpioArchivo(S.proveedor(f.codigo).nombre).slice(0, 40)} ${x.comprobante}`, (a) => S.guardarDocLinea(r.loteId, r.codigo, { archivo: a }));
+    }
+  } else if (k === 'pagar-varias') {
+    const fs = facturasMarcadas();
+    const pr = S.problemaVarias(fs);
+    if (pr) { avisar(pr, 'error'); return; }
+    const clave = 'varias|' + fs.map((f) => f.id).join(',');
+    const docs = fs.map((f) => f.documento).join(', ');
+    if (form.dataset.forma === 'banco') {
+      const n = leerConsecutivo(form.consecutivo);
+      if (!n) return;
+      const l = S.loteVarias(fs, hoyISO(), form.descripcion.value);
+      const prob = S.problemasLote(l);
+      if (prob.length) { avisar(prob.join(' '), 'error'); return; }
+      try { textoArchivo(l, n); } catch (err) { avisar(err.message, 'error'); return; }
+      const r = S.pagarVariasBanco(fs, { fecha: hoyISO(), descripcion: form.descripcion.value, consecutivo: n });
+      if (r.error) { avisar(r.error, 'error'); return; }
+      try { descargarTxt(r.lote, n, '_' + limpioArchivo(S.proveedor(fs[0].codigo).nombre).replace(/\s+/g, '').slice(0, 20) + '_' + fs.length + 'FACT'); } catch (err) { avisar(err.message, 'error'); }
+      ui.fact.sel.clear();
+      avisar(`Archivo descargado (consecutivo ${c3(n)}) · ${fs.length} ${fs.length === 1 ? 'factura quedó' : 'facturas quedaron'} en «Por aplicar» esperando el comprobante del banco`);
+      cerrarDialogo(); render();
+    } else {
+      const comp = String(form.comprobante.value || '').trim();
+      if (!comp) { avisar('Escriba el N° de comprobante', 'error'); form.comprobante.focus(); return; }
+      const fecha = leerFechaComp(form.fechaComp.value);
+      if (!fecha) { form.fechaComp.focus(); return; }
+      const total = round2(fs.reduce((t, f) => t + S.saldo(f), 0));
+      if (!confirm(`¿Aplicar el pago de ${money(total, fs[0].moneda)} a ${S.proveedor(fs[0].codigo).nombre} (facturas ${docs}) con el comprobante ${comp} del ${fmtFecha(fecha)}?`)) return;
+      const r = S.pagarVariasManual(fs, { fecha, comprobante: comp });
+      if (!resultado(r, `Pago aplicado a ${fs.length} ${fs.length === 1 ? 'factura' : 'facturas'}`)) return;
+      ui.fact.sel.clear();
+      cerrarDialogo(); render();
+      adjuntarDespues(clave, `${limpioArchivo(S.proveedor(fs[0].codigo).nombre).slice(0, 40)} ${comp}`, (a) => S.guardarDocLinea(r.loteId, r.codigo, { archivo: a }));
     }
   } else if (k === 'f-mov') {
     if (resultado(S.registrarMovimiento(form.dataset.v, { tipo: d.tipo, monto: parseMonto(d.monto), fecha: d.fecha, comprobante: d.comprobante }), 'Movimiento registrado')) dialogoFactura(form.dataset.v);

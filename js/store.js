@@ -236,6 +236,78 @@ function pagoDirecto(f, { monto, fecha, comprobante, descripcion, notaProg }) {
   return { ok: true, tipo: saldo(f) <= 0.004 ? 'pago' : 'abono', avisos: r2.avisos || [], loteId, codigo: f.codigo };
 }
 
+// ---------------------------------------------------------------- Pagar varias facturas juntas (1.23)
+// Desde «Facturas»: varias facturas del mismo proveedor, sociedad y moneda, por su saldo completo,
+// en una sola transferencia (Banco .txt) o con un solo comprobante (Manual).
+
+/** Revisa que las facturas se puedan pagar juntas. Devuelve el texto del problema o ''. */
+export function problemaVarias(fs) {
+  if (!fs.length) return 'No hay facturas marcadas';
+  const f0 = fs[0];
+  if (fs.some((f) => String(f.codigo) !== String(f0.codigo) || f.sociedad !== f0.sociedad || f.moneda !== f0.moneda)) return 'Solo se pueden pagar juntas facturas del mismo proveedor, sociedad y moneda';
+  const prog = fs.find((f) => programacionDe(f));
+  if (prog) return `La factura ${prog.documento} ya está programada: se aplica en «Por aplicar»`;
+  const sin = fs.find((f) => !(saldo(f) > 0.004));
+  if (sin) return `La factura ${sin.documento} no tiene saldo`;
+  return '';
+}
+
+/** Lote de varias facturas del mismo proveedor (una sola línea del .txt), cada una por su saldo. */
+export function loteVarias(fs, fecha, descripcion) {
+  const f0 = fs[0];
+  const lote = { clave: [f0.sociedad, f0.moneda, fecha].join('|'), sociedad: f0.sociedad, moneda: f0.moneda, fecha };
+  const ln = completarLinea({ ...lote, clave: 'varias|' + fs.map((f) => f.id).join(',') }, { codigo: f0.codigo, items: fs.map((f) => ({ p: { id: null, monto: round2(saldo(f)) }, f })) });
+  if (descripcion != null && String(descripcion).trim()) ln.descripcion = String(descripcion).trim();
+  lote.lineas = [ln];
+  lote.total = ln.total;
+  lote.cuentaDebito = datos().sociedades[f0.sociedad]?.[f0.moneda === 'USD' ? 'cuentaUSD' : 'cuentaCRC'] || '';
+  return lote;
+}
+
+function programarVarias(fs, fecha, nota) {
+  const items = fs.map((f) => ({ progId: Sync.nuevoId(), facturaId: f.id, monto: round2(saldo(f)) }));
+  const r = Sync.ejecutar({ tipo: 'programar', fechaPago: fecha, nota, items });
+  if (r.error) return r;
+  if ((r.avisos || []).length) {
+    for (const it of items) if (datos().programaciones[it.progId]?.estado === 'programado') Sync.ejecutar({ tipo: 'quitarProgramacion', progId: it.progId, motivo: 'No se pudo programar todo junto' });
+    return { error: r.avisos.join(' · ') };
+  }
+  return { ok: true, items };
+}
+
+/** Banco: se programan para la fecha, quedan «enviado al banco» con un mismo envío y se devuelve el lote para el .txt. */
+export function pagarVariasBanco(fs, { fecha, descripcion, consecutivo }) {
+  const pr = problemaVarias(fs);
+  if (pr) return { error: pr };
+  const lote = loteVarias(fs, fecha, descripcion);
+  const r = programarVarias(fs, fecha, NOTA_PAGAR_AHORA + ' · banco · ' + fs.length + ' facturas');
+  if (r.error) return r;
+  const m = marcarEnviado(r.items.map((x) => x.progId), consecutivo);
+  if (m.error) return m;
+  if (descripcion != null && String(descripcion).trim()) guardarBorrador(lote.clave, fs[0].codigo, { descripcion: String(descripcion).trim() });
+  return { ok: true, lote };
+}
+
+/** Manual: se programan y se aplican en un paso, con un solo comprobante y fecha. */
+export function pagarVariasManual(fs, { fecha, comprobante, descripcion }) {
+  const pr = problemaVarias(fs);
+  if (pr) return { error: pr };
+  if (!fecha) return { error: 'Falta la fecha del comprobante' };
+  if (!String(comprobante || '').trim()) return { error: 'Falta el número de comprobante' };
+  const lote = loteVarias(fs, fecha, descripcion);
+  const ln = lote.lineas[0];
+  const r = programarVarias(fs, fecha, NOTA_PAGAR_AHORA + ' · manual · ' + fs.length + ' facturas');
+  if (r.error) return r;
+  const loteId = Sync.nuevoId();
+  const r2 = Sync.ejecutar({
+    tipo: 'aplicarLote', loteId, comprobante: String(comprobante).trim(), fecha,
+    sociedad: lote.sociedad, moneda: lote.moneda, progIds: r.items.map((x) => x.progId), extras: [],
+    lineas: [{ codigo: ln.codigo, total: ln.total, extra: 0, descripcion: ln.descripcion, documentos: fs.map((f) => f.documento) }],
+  });
+  if (r2.error) { for (const it of r.items) Sync.ejecutar({ tipo: 'quitarProgramacion', progId: it.progId, motivo: 'No se pudo aplicar' }); return r2; }
+  return { ok: true, avisos: r2.avisos || [], loteId, codigo: ln.codigo };
+}
+
 /** Pagos autorizados por Norman de los últimos `dias` días, del más reciente al más antiguo. */
 export function autorizadosNorman(dias = 30) {
   const desde = new Date(Date.now() - dias * 864e5).toISOString();
