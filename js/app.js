@@ -909,6 +909,7 @@ function dialogoFactura(id) {
         <div><span>Pagado</span><strong>${money(S.pagado(f), f.moneda)}</strong></div>
         <div><span>Saldo</span><strong>${money(s, f.moneda)}</strong></div>
       </div>
+      ${S.pdfFactura(f.id)?.id ? `<div class="acciones-fila"><button class="btn" data-act="ver-arch" data-v="${esc(S.pdfFactura(f.id).id)}">📄 Ver factura (PDF)</button></div>` : ''}
       ${s > 0.004 && !S.esNorman() ? `<div class="acciones-fila"><button class="btn btn-norman" data-act="pn-abrir" data-v="${f.id}">✔ Pagar ahora</button></div>` : ''}
       <form class="form-grid" data-form="f-fechas" data-v="${f.id}">
         <label>Fecha de factura <input type="date" name="fechaFactura" value="${f.fechaFactura || ''}"></label>
@@ -1337,10 +1338,22 @@ async function cargarRecibidas(forzar) {
     REC.error = ''; REC.cargado = true; REC.cargadoEn = Date.now();
     const vivas = new Set(REC.filas.map((x) => x.clave));
     for (const c of [...REC.sel]) if (!vivas.has(c)) REC.sel.delete(c);
+    enlazarPdfFacturas();
   } catch (e) { REC.error = e.message; REC.cargadoEn = Date.now(); }
   finally { REC.cargando = false; render(); }
 }
 setInterval(() => { if (navigator.onLine && document.visibilityState === 'visible' && Date.now() - REC.cargadoEn > 10 * 60000) cargarRecibidas(); }, 60000);
+
+/** El PDF recibido por correo queda también en la factura de cuentas por pagar (para verlo desde «Facturas»). */
+function enlazarPdfFacturas() {
+  try {
+    for (const x of listaRecibidas()) {
+      const f = x.factura;
+      if (!f || !x.r.pdfId || S.pdfFactura(f.id)?.id) continue;
+      S.guardarPdfFactura(f.id, { id: x.r.pdfId, nombre: x.r.pdfNombre || 'Factura.pdf' });
+    }
+  } catch { /* se intenta en la próxima carga */ }
+}
 
 /** Datos para relacionar lo recibido con sociedades, proveedores y cuentas por pagar (se arma una vez por pantalla). */
 function contextoRecibidas() {
@@ -1584,7 +1597,9 @@ async function pasarRecibidasConfirmado(items, elegidos) {
     const id = Sync.nuevoId();
     const r = S.nuevaFactura({ id, sociedad: x.sociedad, codigo, documento: x.documento, moneda: x.moneda, fechaFactura: x.r.fecha,
       fechaVence: x.vence || x.r.fecha, monto: x.total, observaciones: `Céd. ${ced} · Correo · Clave ${x.r.clave}` });
-    if (r.error) errores.push(`Factura ${x.documento}: ${r.error}`); else ok.push({ x, id });
+    if (r.error) { errores.push(`Factura ${x.documento}: ${r.error}`); continue; }
+    ok.push({ x, id });
+    if (x.r.pdfId) S.guardarPdfFactura(id, { id: x.r.pdfId, nombre: x.r.pdfNombre || 'Factura.pdf' });
   }
   try { localStorage.setItem('cxp-cedulas', JSON.stringify(mem)); } catch { /* sin almacenamiento */ }
   cerrarDialogo();

@@ -149,6 +149,9 @@ export const guardarDocLinea = (loteId, codigo, cambios) => anotar(`doc:${loteId
 /** Comprobante general del débito (solo uso interno): { id, nombre }. */
 export const adjLote = (loteId) => nota('adj:lote:' + loteId);
 export const guardarAdjLote = (loteId, archivo) => anotar('adj:lote:' + loteId, archivo);
+/** PDF de la factura (el que llegó por correo a «Recibidas»): { id, nombre }. */
+export const pdfFactura = (facturaId) => nota('adj:fact:' + facturaId);
+export const guardarPdfFactura = (facturaId, archivo) => anotar('adj:fact:' + facturaId, archivo);
 
 /** Comprobante para ver desde un movimiento: el individual del proveedor o, si no hay, el general (interno). */
 export function comprobanteDe(m) {

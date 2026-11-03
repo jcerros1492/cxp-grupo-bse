@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.21.5 | La factura que llegó por correo con su PDF muestra «📄 Ver factura (PDF)» en su detalle (Facturas, Canceladas, Por aplicar), también para Norman. Las que ya se pasaron antes (o estaban desde GTI) se enlazan solas al abrir «Recibidas». |
 | 1.21.4 | Recibidas: buscador por proveedor, cédula o número de factura (filtra todas las pestañas). «Subir XML» avisa cuántas facturas quedaron sin PDF; al volver a subir el XML con su PDF, el PDF se agrega. |
 | 1.21.3 | Recibidas: el proveedor se reconoce aunque el nombre venga en otro orden («NATALIA VARGAS ESPINOZA» = «VARGAS ESPINOZA NATALIA»). En «Proveedores nuevos» queda ya elegido el proveedor parecido (mismos apellidos). Lo elegido se recuerda por cédula. |
 | 1.21.2 | «Subir XML», «Comparar con GTI», importar y adjuntar comprobantes: el archivo elegido ya no se pierde si la pantalla se actualiza mientras está abierta la ventana para elegirlo (antes a veces había que subirlo dos veces). |
