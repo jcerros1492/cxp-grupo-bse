@@ -624,6 +624,7 @@ function tarjetaLote(l) {
             <button type="button" class="${fm === 'banco' ? 'on' : ''}" data-act="a-forma" data-v="${ke}|banco">Banco (.txt)</button><button type="button" class="${fm === 'manual' ? 'on' : ''}" data-act="a-forma" data-v="${ke}|manual">Manual</button></span>
           ${fm === 'manual' ? `<div class="manual-aplicar">
             <input type="text" id="mc-${ke}" placeholder="N° comprobante" aria-label="Comprobante del pago manual a ${esc(ln.prov.nombre)}" autocomplete="off">
+            ${inputFechaComp(`id="mf-${ke}" class="fecha-comp"`, 'Fecha del comprobante')}
             ${campoArchivo('man|' + k, 'PDF (opcional)')}
             <button class="btn primario chico" data-act="a-aplicar-manual" data-v="${ke}">Aplicar</button></div>` : ''}
         </td></tr>`;
@@ -970,7 +971,7 @@ function dialogoPagoNorman(id) {
         </div></div>
       <label>Monto a pagar <input type="text" name="monto" inputmode="decimal" data-monto value="${fmtNum(s)}" required data-in="pn-monto" data-v="${f.id}">
         <span class="pn-resto" id="pn-resto">${textoResto(f, s)}</span></label>
-      <label>Fecha de pago <input type="date" name="fecha" value="${hoyISO()}" required></label>
+      <label class="solo-banco">Fecha de pago <input type="date" name="fecha" value="${hoyISO()}"></label>
       <label class="ancho">Nota <span class="sub-inline">opcional</span> <input type="text" name="nota" placeholder="Ej. Norman lo pidió por teléfono"></label>
       <div class="ancho solo-banco pn-banco">
         <label>Descripción en el banco <input type="text" name="descripcion" maxlength="60" value="${esc(lote.lineas[0].descripcion)}"></label>
@@ -979,7 +980,8 @@ function dialogoPagoNorman(id) {
         ${prob.length ? `<div class="aviso"><strong>Para generar el archivo falta:</strong><ul>${prob.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
         <p class="sub">Al tocar el botón se descarga el .txt y el pago queda «Enviado al banco · esperando comprobante» en Por aplicar.</p>
       </div>
-      <label class="ancho solo-manual">N° de comprobante <input type="text" name="comprobante" autocomplete="off"></label>
+      <label class="solo-manual">N° de comprobante <input type="text" name="comprobante" autocomplete="off"></label>
+      <label class="solo-manual">Fecha del comprobante ${inputFechaComp('name="fechaComp"', 'Fecha del comprobante')}</label>
       <div class="ancho solo-manual">${campoArchivo('pn|' + f.id, 'Comprobante del banco (PDF o foto) · opcional')}</div>
       <div class="ancho acciones-fila">
         <button class="btn oscuro solo-banco" type="submit" ${prob.length ? 'disabled' : ''}>Descargar .txt y enviar al banco</button>
@@ -1741,6 +1743,19 @@ function isoDeTexto(t) {
   const f = new Date(a, mes - 1, d);
   if (a < 2000 || a > 2100 || f.getMonth() !== mes - 1 || f.getDate() !== d) return '';
   return `${m[3]}-${m[2]}-${m[1]}`;
+}
+/** Fecha del comprobante (pagos manuales): se escribe siempre a mano, dd/mm/aaaa. */
+function inputFechaComp(attrs, etiqueta) {
+  return `<input type="text" ${attrs} inputmode="numeric" autocomplete="off" placeholder="dd/mm/aaaa" maxlength="10" data-in="fecha-comp" aria-label="${esc(etiqueta)} (día/mes/año)">`;
+}
+/** Valida la fecha del comprobante: completa, válida y no futura. Devuelve la fecha ISO o '' (y avisa). */
+function leerFechaComp(texto) {
+  const v = String(texto || '').trim();
+  if (!v) { avisar('Escriba la fecha del comprobante (dd/mm/aaaa)', 'error'); return ''; }
+  const iso = isoDeTexto(v);
+  if (!iso) { avisar('Fecha del comprobante no válida: escríbala como dd/mm/aaaa (ej. 15/03/2026)', 'error'); return ''; }
+  if (iso > hoyISO()) { avisar('La fecha del comprobante no puede ser posterior a hoy', 'error'); return ''; }
+  return iso;
 }
 /** Pone las barras mientras se escribe: 15032026 → 15/03/2026. */
 function mascaraFecha(t) {
@@ -2654,8 +2669,10 @@ const acciones = {
     if (!ln) return;
     const comp = document.getElementById('mc-' + v)?.value.trim();
     if (!comp) { avisar('Escriba el N° de comprobante del pago manual', 'error'); return; }
-    if (!confirm(`¿Aplicar el pago manual a ${ln.prov.nombre} por ${money(ln.total, l.moneda)} con el comprobante ${comp}?`)) return;
-    const r = S.aplicarLote({ ...l, lineas: [ln], total: ln.total }, { comprobante: comp, fecha: hoyISO() });
+    const fecha = leerFechaComp(document.getElementById('mf-' + v)?.value);
+    if (!fecha) { document.getElementById('mf-' + v)?.focus(); return; }
+    if (!confirm(`¿Aplicar el pago manual a ${ln.prov.nombre} por ${money(ln.total, l.moneda)} con el comprobante ${comp} del ${fmtFecha(fecha)}?`)) return;
+    const r = S.aplicarLote({ ...l, lineas: [ln], total: ln.total }, { comprobante: comp, fecha });
     if (!resultado(r, 'Pago manual aplicado')) return;
     delete ui.forma[k];
     render();
@@ -2811,6 +2828,13 @@ document.addEventListener('input', (e) => {
     return;
   }
   if (k === 'fm-monto') { actualizarRestoMov(); return; }
+  if (k === 'fecha-comp') {
+    const borrando = e.inputType?.startsWith('delete');
+    const v = borrando ? el.value : mascaraFecha(el.value);
+    if (v !== el.value) { el.value = v; try { el.setSelectionRange(v.length, v.length); } catch { /* */ } }
+    el.classList.toggle('malo', v.length === 10 && (!isoDeTexto(v) || isoDeTexto(v) > hoyISO()));
+    return;
+  }
   if (k === 'fecha-txt') {
     const borrando = e.inputType?.startsWith('delete');
     const v = borrando ? el.value : mascaraFecha(el.value);
@@ -3033,6 +3057,8 @@ document.addEventListener('submit', (e) => {
       cerrarDialogo(); render();
     } else {
       if (!String(x.comprobante || '').trim()) { avisar('Escriba el N° de comprobante', 'error'); return; }
+      x.fecha = leerFechaComp(form.fechaComp.value);
+      if (!x.fecha) { form.fechaComp.focus(); return; }
       const r = S.pagarAutorizadoNorman(f, x);
       if (!resultado(r, `${r.tipo === 'abono' ? 'Abono' : 'Pago'} aplicado`)) return;
       cerrarDialogo(); render();
