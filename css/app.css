@@ -926,3 +926,7 @@ label.adjuntar { align-items: center !important; }
   .rc-pie-btns .btn { flex: 1; }
   .rc-acc { text-align: left; white-space: normal; }
 }
+
+/* Búsqueda en Recibidas */
+.rc-buscar { display: block; max-width: 460px; margin: 4px 0 10px; }
+.rc-buscar input { width: 100%; }

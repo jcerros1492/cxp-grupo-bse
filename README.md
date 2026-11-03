@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.21.4 | Recibidas: buscador por proveedor, cédula o número de factura (filtra todas las pestañas). «Subir XML» avisa cuántas facturas quedaron sin PDF; al volver a subir el XML con su PDF, el PDF se agrega. |
 | 1.21.3 | Recibidas: el proveedor se reconoce aunque el nombre venga en otro orden («NATALIA VARGAS ESPINOZA» = «VARGAS ESPINOZA NATALIA»). En «Proveedores nuevos» queda ya elegido el proveedor parecido (mismos apellidos). Lo elegido se recuerda por cédula. |
 | 1.21.2 | «Subir XML», «Comparar con GTI», importar y adjuntar comprobantes: el archivo elegido ya no se pierde si la pantalla se actualiza mientras está abierta la ventana para elegirlo (antes a veces había que subirlo dos veces). |
 | 1.21.1 | Recibidas: las facturas a nombre de empresas que no son del grupo (los proveedores usan el mismo correo) van a la pestaña «Otras empresas»; «Crédito» y la burbuja del menú solo cuentan las cuatro sociedades. |

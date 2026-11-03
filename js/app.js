@@ -1322,7 +1322,7 @@ function avisoUnificacion() {
 
 // ---------------------------------------------------------------- Facturas recibidas por correo (1.21)
 
-const REC = { filas: [], inicio: '2026-10-26', ultima: null, cargado: false, cargando: false, error: '', tab: 'credito', sel: new Set(), cargadoEn: 0, archivos: [], provsPend: null };
+const REC = { filas: [], inicio: '2026-10-26', ultima: null, cargado: false, cargando: false, error: '', tab: 'credito', sel: new Set(), q: '', cargadoEn: 0, archivos: [], provsPend: null };
 const TIPO_REC = { FE: 'Factura', TE: 'Tiquete', NC: 'Nota de crédito', ND: 'Nota de débito', FEC: 'Factura de compra' };
 
 async function cargarRecibidas(forzar) {
@@ -1404,6 +1404,17 @@ function listaRecibidas() {
   todas.sort((a, b) => String(b.r.recibida).localeCompare(String(a.r.recibida)) || String(b.r.fecha).localeCompare(String(a.r.fecha)));
   return todas;
 }
+/** Búsqueda en Recibidas: proveedor, nombre comercial, cédula, número de factura o sociedad. */
+function buscarRecibidas(lista) {
+  const norm = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const palabras = norm(REC.q).split(/\s+/).filter(Boolean);
+  if (!palabras.length) return lista;
+  return lista.filter((x) => {
+    const r = x.r;
+    const t = norm([x.proveedorNombre, r.nombreEmisor, r.nombreComercial, r.cedulaEmisor, x.documento, r.consecutivo, x.codigo, x.sociedad ? S.nombreSociedad(x.sociedad) : r.nombreReceptor].join(' '));
+    return palabras.every((w) => t.includes(w));
+  });
+}
 const seleccionable = (x) => x.tab === 'credito' && x.sociedad && !x.rechazada && x.total > 0 && (x.moneda === 'CRC' || x.moneda === 'USD');
 const nPorPasar = () => (REC.cargado ? listaRecibidas().filter((x) => x.tab === 'credito').length : 0);
 
@@ -1420,7 +1431,7 @@ function etiquetasRecibida(x) {
 
 function vistaRecibidas() {
   if (!REC.cargado && !REC.cargando && !REC.error) setTimeout(() => cargarRecibidas(true), 0);
-  const todas = listaRecibidas();
+  const todas = buscarRecibidas(listaRecibidas());
   const tabs = [['credito', 'Crédito'], ['contado', 'Contado'], ['nc', 'Notas de crédito'], ['cxp', 'Ya en cuentas por pagar'], ['descartadas', 'Descartadas'], ['otras', 'Otras empresas']];
   const cuenta = (k) => todas.filter((x) => x.tab === k).length;
   const lista = todas.filter((x) => x.tab === REC.tab);
@@ -1435,8 +1446,9 @@ function vistaRecibidas() {
       <label class="btn">Comparar con GTI<input type="file" accept=".csv,.txt,.xlsx,.xls" data-in="rc-gti" hidden></label>
     </div></div>
   <div class="rc-info"><span>${info}</span><button class="btn chico" data-act="rc-actualizar" ${REC.cargando ? 'disabled' : ''}>${REC.cargando ? 'Actualizando…' : 'Actualizar'}</button></div>
+  <label class="buscar rc-buscar"><span class="vh">Buscar</span><input type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Buscar proveedor, cédula o número de factura" value="${esc(REC.q)}" data-in="rc-q"></label>
   <div class="rc-tabs" role="tablist">${tabs.map(([k, n]) => `<button role="tab" class="${REC.tab === k ? 'on' : ''}" aria-selected="${REC.tab === k}" data-act="rc-tab" data-v="${k}">${n} <i>${cuenta(k)}</i></button>`).join('')}</div>
-  ${lista.length ? tablaRecibidas(lista) : `<p class="vacio">${REC.cargando && !REC.cargado ? 'Cargando…' : {
+  ${lista.length ? tablaRecibidas(lista) : `<p class="vacio">${REC.cargando && !REC.cargado ? 'Cargando…' : REC.q.trim() ? `Nada coincide con «${esc(REC.q.trim())}» en esta pestaña.` : {
     credito: 'No hay facturas de crédito por revisar.', contado: 'No hay facturas de contado.', nc: 'No hay notas de crédito.',
     cxp: 'Todavía no se ha pasado ninguna factura recibida.', descartadas: 'No hay facturas descartadas.', otras: 'No llegaron facturas a nombre de otras empresas.' }[REC.tab]}</p>`}
   ${REC.tab === 'otras' && lista.length ? '<p class="sub rc-nota">Facturas que los proveedores mandaron a facturacion@bse.cr a nombre de empresas que no son Santa Eduviges, La Hilda, Nosavar ni Loma Bonita. Solo se guardan aquí: no van a cuentas por pagar.</p>' : ''}
@@ -1643,6 +1655,7 @@ async function subirXmlRecibidas(files) {
     if (p) { usados.add(p); try { pdf = { nombre: p.name, base64: await archivoBase64(p) }; } catch { /* PDF muy grande: va sin PDF */ } }
     docs.push({ xml, pdf });
   }
+  const sinPdf = docs.filter((d) => !d.pdf && !/<(?:[\w.-]+:)?MensajeHacienda[\s>]/.test(d.xml)).length;
   const res = { nueva: 0, repetida: 0, respuesta: 0, error: 0, ignorado: 0 };
   try {
     for (let i = 0; i < docs.length; i += 10) {
@@ -1651,7 +1664,7 @@ async function subirXmlRecibidas(files) {
       for (const x of r.resultados || []) res[x.estado] = (res[x.estado] || 0) + 1;
     }
   } catch (e) { avisar('No se pudo subir: ' + e.message, 'error'); return; }
-  avisar(`Listo: ${res.nueva} nuevas · ${res.repetida} ya estaban · ${res.respuesta} respuestas de Hacienda${res.error ? ` · ${res.error} no se pudieron leer` : ''}`, res.error ? 'error' : 'ok');
+  avisar(`Listo: ${res.nueva} nuevas · ${res.repetida} ya estaban · ${res.respuesta} respuestas de Hacienda${res.error ? ` · ${res.error} no se pudieron leer` : ''}${sinPdf ? ` · ${sinPdf} sin PDF (no venía su PDF en lo que eligió)` : ''}`, res.error || sinPdf ? 'error' : 'ok');
   await cargarRecibidas(true);
 }
 
@@ -2808,7 +2821,7 @@ document.addEventListener('input', (e) => {
     if (ff) form.fechaVence.value = sumarDias(ff, pl);
     return;
   }
-  const busquedas = { 'c-q': (x) => { ui.canc.q = x; ui.canc.limite = 100; }, 'p-q': (x) => { ui.prog.q = x; }, 'f-q': (x) => { ui.fact.q = x; ui.fact.limite = 150; }, 'pv-q': (x) => { ui.prov.q = x; } };
+  const busquedas = { 'c-q': (x) => { ui.canc.q = x; ui.canc.limite = 100; }, 'p-q': (x) => { ui.prog.q = x; }, 'f-q': (x) => { ui.fact.q = x; ui.fact.limite = 150; }, 'pv-q': (x) => { ui.prov.q = x; }, 'rc-q': (x) => { REC.q = x; } };
   if (busquedas[k]) {
     busquedas[k](el.value);
     clearTimeout(tBusqueda);
@@ -2853,7 +2866,7 @@ document.addEventListener('change', async (e) => {
   if (k === 'r-soc') { ui.rep.soc = el.value; render(); return; }
   if (k === 'rc-sel') { if (el.checked) REC.sel.add(el.dataset.v); else REC.sel.delete(el.dataset.v); render(); return; }
   if (k === 'rc-todas') {
-    const lista = listaRecibidas().filter((x) => x.tab === REC.tab && (REC.tab === 'cxp' || seleccionable(x)));
+    const lista = buscarRecibidas(listaRecibidas()).filter((x) => x.tab === REC.tab && (REC.tab === 'cxp' || seleccionable(x)));
     for (const x of lista) { if (el.checked) REC.sel.add(x.r.clave); else REC.sel.delete(x.r.clave); }
     render(); return;
   }
