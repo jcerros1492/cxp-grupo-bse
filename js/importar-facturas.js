@@ -163,7 +163,7 @@ export function cedulasConocidas(datos) {
 }
 
 /** Busca un proveedor por nombre (exacto sin puntuación, o uno contenido en el otro). */
-function buscarPorNombre(nombre, provs) {
+export function buscarPorNombre(nombre, provs) {
   const c = nombreClave(nombre);
   if (c.length < 3) return null;
   const exacto = provs.filter((p) => nombreClave(p.nombre) === c || (p.alias && nombreClave(p.alias) === c));

@@ -5,7 +5,7 @@ import { VERSION, USUARIOS, API_URL } from './config.js';
 import { importarExcel } from './importer.js';
 import { crearPdfReporte, crearPdfEstadoCuenta } from './reporte-pdf.js';
 import { crearAvisoPago } from './aviso-pdf.js';
-import { CAMPOS as CAMPOS_IMP, leerFilas, filaEncabezado, sugerirMapeo, prepararFacturas, detectarGTI, CEDULAS_SOCIEDAD, nombreClave, numeroDocumento, cedulasConocidas, nombreLegible } from './importar-facturas.js';
+import { CAMPOS as CAMPOS_IMP, leerFilas, filaEncabezado, sugerirMapeo, prepararFacturas, detectarGTI, CEDULAS_SOCIEDAD, nombreClave, numeroDocumento, cedulasConocidas, nombreLegible, buscarPorNombre } from './importar-facturas.js';
 import { archivoContable, lineaContable } from './contable.js';
 import { construirArchivo } from './banco.js';
 import {
@@ -1358,7 +1358,7 @@ function contextoRecibidas() {
     if (!idx.has(k)) idx.set(k, []);
     idx.get(k).push(f);
   }
-  return { socDeCedula, cedProv, porNombre, idx };
+  return { socDeCedula, cedProv, porNombre, idx, provs: S.proveedoresActivos() };
 }
 
 function infoRecibida(r, ctx) {
@@ -1366,6 +1366,8 @@ function infoRecibida(r, ctx) {
   let codigo = ctx.cedProv[r.cedulaEmisor] || '', como = codigo ? 'cedula' : '';
   if (codigo && S.unidoA(codigo)) codigo = S.unidoA(codigo);
   if (!codigo) { codigo = ctx.porNombre.get(nombreClave(r.nombreEmisor)) || ctx.porNombre.get(nombreClave(r.nombreComercial)) || ''; como = codigo ? 'nombre' : ''; }
+  // El nombre en otro orden (apellidos primero) o con algo de más: «NATALIA VARGAS ESPINOZA» = «VARGAS ESPINOZA NATALIA».
+  if (!codigo) { codigo = (buscarPorNombre(r.nombreEmisor, ctx.provs) || buscarPorNombre(r.nombreComercial, ctx.provs))?.codigo || ''; como = codigo ? 'nombre' : ''; }
   const documento = numeroDocumento(r.consecutivo);
   const cond = r.condicionManual || (r.condicion === '02' ? 'credito' : r.condicion === '01' ? 'contado' : r.tipo === 'TE' ? 'contado' : 'otra');
   const plazo = Number(r.plazoManual || r.plazo) || (codigo ? Number(S.proveedor(codigo).plazo) || 0 : 0);
@@ -1520,6 +1522,15 @@ function dialogoCreditoRecibida(clave) {
 }
 
 /** Paso 1 al pasar a cuentas por pagar: proveedores que no se reconocieron. */
+/** Proveedor con al menos dos palabras del nombre en común (p. ej. los dos apellidos); solo si hay uno. */
+function sugerenciaProveedor(nombre, provs) {
+  const pal = (t) => new Set(String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().split(/[^A-Z0-9]+/).filter((w) => w.length > 2 && !/^(LAS|LOS|DEL|SOCIEDAD|ANONIMA|LIMITADA|LTDA|SRL)$/.test(w)));
+  const a = pal(nombre);
+  if (a.size < 2) return null;
+  const c = provs.filter((p) => [...pal(p.nombre)].filter((w) => a.has(w)).length >= 2);
+  return c.length === 1 ? c[0] : null;
+}
+
 function pasarRecibidas() {
   const items = listaRecibidas().filter((x) => REC.sel.has(x.r.clave) && seleccionable(x));
   if (!items.length) return;
@@ -1537,8 +1548,9 @@ function pasarRecibidas() {
     <form class="dlg-cuerpo" data-form="rc-provs">
       <div class="imp-emisores">${[...nuevos.values()].map((x) => `
         <div class="imp-emisor es-nuevo"><div><strong>${esc(x.r.nombreEmisor)}</strong><span class="sub">Céd. ${esc(x.r.cedulaEmisor)}${x.r.nombreComercial ? ' · ' + esc(x.r.nombreComercial) : ''}</span></div>
-          <select name="p_${esc(x.r.cedulaEmisor)}"><option value="">➕ Crear proveedor nuevo (código ${sig++})</option>
-            ${provs.map((p) => `<option value="${esc(p.codigo)}">${esc(p.codigo)} · ${esc(p.nombre)}</option>`).join('')}</select></div>`).join('')}</div>
+          ${(() => { const sug = sugerenciaProveedor(x.r.nombreEmisor, provs); return `<select name="p_${esc(x.r.cedulaEmisor)}"><option value="">➕ Crear proveedor nuevo (código ${sig++})</option>
+            ${sug ? `<option value="${esc(sug.codigo)}" selected>${esc(sug.codigo)} · ${esc(sug.nombre)} (parecido)</option>` : ''}
+            ${provs.map((p) => `<option value="${esc(p.codigo)}">${esc(p.codigo)} · ${esc(p.nombre)}</option>`).join('')}</select>`; })()}</div>`).join('')}</div>
       <div class="acciones-fila" style="margin-top:12px"><button class="btn primario" type="submit">Continuar y pasar ${items.length} ${items.length === 1 ? 'factura' : 'facturas'}</button><button class="btn" type="button" data-act="cerrar">Cancelar</button></div>
     </form>`);
 }
