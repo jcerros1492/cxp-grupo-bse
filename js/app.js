@@ -1,7 +1,7 @@
 // Pantallas y eventos de la aplicación.
 import * as S from './store.js';
 import * as Sync from './sync.js';
-import { VERSION, USUARIOS, API_URL } from './config.js';
+import { VERSION, USUARIOS, API_URL, PINES } from './config.js';
 import { importarExcel } from './importer.js';
 import { crearPdfReporte, crearPdfEstadoCuenta } from './reporte-pdf.js';
 import { crearAvisoPago } from './aviso-pdf.js';
@@ -95,7 +95,7 @@ function render() {
   document.title = `${RUTAS[ruta].titulo} · Cuentas por Pagar`;
 
   if (!Sync.estado.cargado) { $app.innerHTML = '<p class="vacio">Cargando…</p>'; return; }
-  if (!u) { $app.innerHTML = vistaLogin(); return; }
+  if (!u) { $app.innerHTML = vistaLogin(); if (PINUI.usuario) document.querySelector('.pin-real')?.focus({ preventScroll: true }); return; }
   if (u.debeCambiar) { $nav.innerHTML = ''; $app.innerHTML = vistaLogin(); return; }
   if (!S.hayDatos() && ruta !== 'config') { $app.innerHTML = Sync.estado.desde ? vistaBienvenida() : vistaCargando(); return; }
   const html = RUTAS[ruta].vista();
@@ -277,16 +277,67 @@ function vistaLogin() {
   const lista = (Sync.usuariosConocidos() || USUARIOS).filter((x) => x.activo !== false);
   const elegido = lista.find((x) => x.usuario === ui.login);
   if (elegido) return vistaClave(elegido);
+  const conPin = lista.find((x) => x.usuario === PINUI.usuario);
   return `<section class="centro">
     <img class="logo-inicio" src="img/logo.png" alt="Beneficiadora Santa Eduviges">
     <h1>¿Quién está usando la aplicación?</h1>
-    <p class="sub">Toque su nombre para entrar.</p>
+    <p class="sub">Toque su nombre y escriba su PIN.</p>
     <div class="usuarios">${lista.map((u) => `
-      <button class="tarjeta-usuario" data-act="elegir" data-v="${esc(u.usuario)}">
+      <button class="tarjeta-usuario ${conPin?.usuario === u.usuario ? 'on' : ''}" data-act="elegir" data-v="${esc(u.usuario)}">
         <span class="avatar grande ${colorUsuario(u.usuario)}" aria-hidden="true">${iniciales(u.nombre)}</span>
         <strong>${esc(u.nombre)}</strong>
       </button>`).join('')}</div>
+    ${conPin ? panelPin(conPin) : ''}
   </section>`;
+}
+
+/** PIN fijo de entrada (3 números): casillas + teclado (en el celular no se abre el teclado del sistema). */
+const PINUI = { usuario: '', valor: '', error: false };
+function panelPin(u) {
+  const v = PINUI.valor;
+  return `<div class="panel-pin">
+    <strong>${esc(u.nombre)}</strong>
+    <span class="sub">${PINUI.error ? '<span class="malo">PIN incorrecto. Intente de nuevo.</span>' : 'Escriba su PIN de 3 números'}</span>
+    <label class="pin-cajas ${PINUI.error ? 'error' : ''}"><span class="vh">PIN de ${esc(u.nombre)}</span>
+      <input class="pin-real" type="text" inputmode="none" autocomplete="off" maxlength="3" data-in="pin" value="${esc(v)}">
+      ${[0, 1, 2].map((i) => `<span class="pin-caja ${i < v.length ? 'llena' : ''} ${i === v.length ? 'actual' : ''}">${i < v.length ? '•' : ''}</span>`).join('')}
+    </label>
+    <div class="pin-teclado">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button type="button" data-act="pin-tecla" data-v="${n}">${n}</button>`).join('')}
+      <button type="button" class="suave" data-act="pin-tecla" data-v="borrar">Borrar</button><button type="button" data-act="pin-tecla" data-v="0">0</button><button type="button" class="suave" data-act="pin-tecla" data-v="atras" aria-label="Borrar el último número">⌫</button></div>
+    <button class="btn-link" data-act="elegir" data-v="">← Elegir otro usuario</button>
+  </div>`;
+}
+/** Mientras se escribe, solo se actualizan las casillas (la pantalla de inicio no se redibuja, así no se pierde el foco). */
+function pintarPin() {
+  const inp = document.querySelector('.pin-real');
+  if (!inp) { render(); return; }
+  if (inp.value !== PINUI.valor) inp.value = PINUI.valor;
+  const cajas = inp.closest('.pin-cajas');
+  cajas.classList.toggle('error', PINUI.error);
+  cajas.querySelectorAll('.pin-caja').forEach((c, i) => {
+    c.classList.toggle('llena', i < PINUI.valor.length);
+    c.classList.toggle('actual', i === PINUI.valor.length);
+    c.textContent = i < PINUI.valor.length ? '•' : '';
+  });
+  const sub = inp.closest('.panel-pin').querySelector('.sub');
+  if (sub && !PINUI.error) sub.textContent = 'Escriba su PIN de 3 números';
+  if (document.activeElement !== inp) inp.focus({ preventScroll: true });
+}
+function ponerPin(valor) {
+  PINUI.valor = String(valor).replace(/\D/g, '').slice(0, 3);
+  if (PINUI.valor) PINUI.error = false;
+  if (PINUI.valor.length < 3) { pintarPin(); return; }
+  const u = PINUI.usuario;
+  if (PINES[u] && PINUI.valor === PINES[u]) {
+    Object.assign(PINUI, { usuario: '', valor: '', error: false });
+    if (!Sync.conexion()) { ui.login = u; render(); return; }
+    render();
+    entrarComo(u);
+  } else {
+    Object.assign(PINUI, { valor: '', error: true });
+    render();
+    setTimeout(() => document.querySelector('.pin-real')?.focus({ preventScroll: true }), 0);
+  }
 }
 
 /** Solo la primera vez en un dispositivo: la contraseña del servicio. */
@@ -2469,6 +2520,16 @@ function pdfEstado() {
 
 // ---------------------------------------------------------------- Configuración
 
+function seccionPines() {
+  const lista = (Sync.usuariosConocidos() || USUARIOS).filter((u) => PINES[u.usuario]);
+  return `<section class="bloque">
+    <h2>PIN de entrada</h2>
+    <p class="sub">Fijos: no cambian ni vencen y son los mismos en todos los dispositivos. Se piden al tocar el nombre en la pantalla de inicio. Solo usted ve esta lista.</p>
+    <div class="tabla-scroll"><table class="tabla"><thead><tr><th>Nombre</th><th>Rol</th><th>PIN</th></tr></thead>
+      <tbody>${lista.map((u) => `<tr><td>${esc(u.nombre)}</td><td>${esc(ROLES[u.rol] || u.rol || '')}</td><td><span class="pin-ver">${esc(PINES[u.usuario])}</span></td></tr>`).join('')}</tbody></table></div>
+  </section>`;
+}
+
 function seccionUsuarios() {
   if (!Sync.gestionUsuarios()) {
     return `<section class="bloque">
@@ -2561,7 +2622,7 @@ function vistaConfig() {
     </form>`).join('') : '<p class="sub">Aparecerán al cargar el Excel.</p>'}
   </section>
 
-  ${S.esAdmin() ? seccionUsuarios() : ''}
+  ${S.esAdmin() ? seccionUsuarios() + seccionPines() : ''}
 
   ${S.esAdmin() ? `<section class="bloque">
     <h2>Volver a cargar el Excel</h2>
@@ -2685,9 +2746,20 @@ const acciones = {
   },
   conexion: () => dialogoConexion(),
   elegir: (v) => {
-    if (!v) { ui.login = ''; render(); return; }
+    if (!v) { ui.login = ''; Object.assign(PINUI, { usuario: '', valor: '', error: false }); render(); return; }
+    if (PINES[v]) {
+      Object.assign(PINUI, { usuario: v, valor: '', error: false });
+      render();
+      setTimeout(() => { const i = document.querySelector('.pin-real'); i?.focus({ preventScroll: true }); i?.closest('.panel-pin')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, 0);
+      return;
+    }
     if (!Sync.conexion()) { ui.login = v; render(); return; }
     entrarComo(v);
+  },
+  'pin-tecla': (v) => {
+    if (v === 'borrar') ponerPin('');
+    else if (v === 'atras') ponerPin(PINUI.valor.slice(0, -1));
+    else ponerPin(PINUI.valor + v);
   },
   'cambiar-usuario': () => {
     try { Sync.cambiarUsuario(); cerrarDialogo(); ui.login = ''; location.hash = ''; render(); } catch (e) { avisar(e.message, 'error'); }
@@ -2961,6 +3033,7 @@ document.addEventListener('input', (e) => {
     return;
   }
   if (k === 'fm-monto') { actualizarRestoMov(); return; }
+  if (k === 'pin') { ponerPin(el.value); return; }
   if (k === 'fecha-comp') {
     const borrando = e.inputType?.startsWith('delete');
     const v = borrando ? el.value : mascaraFecha(el.value);

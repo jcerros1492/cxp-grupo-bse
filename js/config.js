@@ -12,8 +12,11 @@ export const USUARIOS = [
   { usuario: 'daniel', nombre: 'Daniel Barquero', rol: 'aplica' },
 ];
 
+// PIN fijo de cada persona para entrar (se pide al tocar su nombre en la pantalla de inicio).
+export const PINES = { jonathan: '001', fernando: '002', daniel: '003', norman: '004' };
+
 // Versión de la aplicación: se muestra abajo en cada pantalla para confirmar qué versión está publicada.
-export const VERSION = '1.24.0';
+export const VERSION = '1.25.0';
 
 // Cada cuántos segundos se buscan cambios de los demás mientras la página está abierta.
 export const SEGUNDOS_SINCRONIZAR = 20;

@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.25.0 | PIN de entrada fijo por persona (Jonathan 001, Fernando 002, Daniel 003, Norman 004): se pide al tocar el nombre en la pantalla de inicio; entra al escribir el tercer número; teclado de números en pantalla. Configuración muestra los PIN solo al administrador. |
 | 1.24.0 | PDF: la nota de crédito guarda su PDF (al aplicarla desde Recibidas queda enlazado; a mano, se adjunta en el formulario) y se ve con «📄 Ver PDF». Canceladas tiene la columna «Documentos» (Factura · Pago · Nota de crédito). Se puede subir a mano el PDF que no vino con el XML (en Recibidas «📎 subir PDF», en el detalle de la factura «Adjuntar PDF de la factura») y adjuntar el PDF a un pago o NC ya registrado. Sin cambios en Apps Script. |
 | 1.23.0 | Facturas: casillas para marcar varias facturas del mismo proveedor, sociedad y moneda y «Pagar seleccionadas» (saldo completo de cada una). Banco (.txt): una sola transferencia por el total, queda en «Por aplicar» como un solo envío. Manual: un comprobante, una fecha y un PDF para todas. Norman no ve las casillas. |
 | 1.22.1 | Programar pagos y Facturas: el filtro de proveedor es tipo filtro de Excel: se abre, se escribe parte del nombre y muestra solo los que coinciden (Enter elige si queda uno). |
