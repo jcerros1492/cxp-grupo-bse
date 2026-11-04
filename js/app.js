@@ -278,7 +278,7 @@ function vistaLogin() {
   const elegido = lista.find((x) => x.usuario === ui.login);
   if (elegido) return vistaClave(elegido);
   const conPin = lista.find((x) => x.usuario === PINUI.usuario);
-  return `<section class="centro">
+  return `<section class="centro inicio ${conPin ? 'con-pin' : ''}">
     <img class="logo-inicio" src="img/logo.png" alt="Beneficiadora Santa Eduviges">
     <h1>¿Quién está usando la aplicación?</h1>
     <p class="sub">Toque su nombre y escriba su PIN.</p>
@@ -296,6 +296,7 @@ const PINUI = { usuario: '', valor: '', error: false };
 function panelPin(u) {
   const v = PINUI.valor;
   return `<div class="panel-pin">
+    <span class="avatar grande pin-avatar ${colorUsuario(u.usuario)}" aria-hidden="true">${iniciales(u.nombre)}</span>
     <strong>${esc(u.nombre)}</strong>
     <span class="sub">${PINUI.error ? '<span class="malo">PIN incorrecto. Intente de nuevo.</span>' : 'Escriba su PIN de 3 números'}</span>
     <label class="pin-cajas ${PINUI.error ? 'error' : ''}"><span class="vh">PIN de ${esc(u.nombre)}</span>
@@ -2750,7 +2751,7 @@ const acciones = {
     if (PINES[v]) {
       Object.assign(PINUI, { usuario: v, valor: '', error: false });
       render();
-      setTimeout(() => { const i = document.querySelector('.pin-real'); i?.focus({ preventScroll: true }); i?.closest('.panel-pin')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, 0);
+      setTimeout(() => { document.querySelector('.pin-real')?.focus({ preventScroll: true }); if (matchMedia('(max-width: 760px)').matches) scrollTo(0, 0); else document.querySelector('.panel-pin')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, 0);
       return;
     }
     if (!Sync.conexion()) { ui.login = v; render(); return; }

@@ -985,3 +985,20 @@ main:has(.barra-varias) { padding-bottom: 96px; }
 .pin-teclado button.suave { background: none; border: 0; font-size: 14px; color: var(--tenue); }
 .pin-ver { font-family: var(--mono); font-weight: 700; font-size: 15px; background: var(--azul-claro); border-radius: 6px; padding: 2px 8px; }
 @media (prefers-reduced-motion: reduce) { .pin-cajas.error .pin-caja { animation: none; } }
+/* Sin zoom al tocar seguido (doble toque) en la pantalla de inicio y el teclado del PIN */
+.inicio, .inicio button, .pin-teclado button, .pin-cajas { touch-action: manipulation; }
+.pin-avatar { display: none; }
+@media screen and (max-width: 760px) {
+  /* Celular: al elegir el nombre, solo queda esa persona, el PIN y el teclado, en una sola pantalla */
+  .con-pin .logo-inicio, .con-pin > h1, .con-pin > .sub, .con-pin .usuarios { display: none; }
+  .centro.con-pin { margin-top: 12px; margin-bottom: 12px; }
+  .con-pin .panel-pin { margin-top: 0; padding-top: 4px; border-top: 0; gap: 6px; }
+  .con-pin .pin-avatar { display: flex; width: 64px; height: 64px; font-size: 22px; }
+  .pin-teclado { grid-template-columns: repeat(3, minmax(64px, 84px)); gap: 10px; }
+  .pin-teclado button { height: 56px; }
+  .pin-caja { width: 50px; height: 58px; }
+}
+@media screen and (max-height: 640px) and (max-width: 760px) {
+  .pin-teclado button { height: 48px; }
+  .con-pin .pin-avatar { width: 52px; height: 52px; }
+}
