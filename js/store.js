@@ -152,9 +152,17 @@ export const guardarAdjLote = (loteId, archivo) => anotar('adj:lote:' + loteId, 
 /** PDF de la factura (el que llegó por correo a «Recibidas»): { id, nombre }. */
 export const pdfFactura = (facturaId) => nota('adj:fact:' + facturaId);
 export const guardarPdfFactura = (facturaId, archivo) => anotar('adj:fact:' + facturaId, archivo);
+/** PDF propio de un movimiento (p. ej. la nota de crédito): { id, nombre }. */
+export const pdfMov = (movId) => nota('adj:mov:' + movId);
+export const guardarPdfMov = (movId, archivo) => anotar('adj:mov:' + movId, archivo);
+/** PDF subido a mano para una factura de «Recibidas» que llegó sin PDF: { id, nombre }. */
+export const pdfRecibida = (clave) => nota('adj:rec:' + clave);
+export const guardarPdfRecibida = (clave, archivo) => anotar('adj:rec:' + clave, archivo);
 
 /** Comprobante para ver desde un movimiento: el individual del proveedor o, si no hay, el general (interno). */
 export function comprobanteDe(m) {
+  const propio = m?.id ? pdfMov(m.id) : null;
+  if (propio?.id) return { ...propio, individual: true };
   if (!m?.loteId) return null;
   const f = factura(m.facturaId);
   const ind = f ? docLinea(m.loteId, f.codigo).archivo : null;
@@ -350,7 +358,9 @@ export function registrarMovimiento(facturaId, m) {
   // Nota de crédito: movimiento propio de la factura (no pasa por el banco ni por Lotes).
   if (nc) {
     if (!String(m.comprobante || '').trim()) return { error: 'Falta el número de la nota de crédito' };
-    return Sync.ejecutar({ tipo: 'movimiento', tipoMov: 'nc', movId: Sync.nuevoId(), facturaId, monto: round2(m.monto), fecha: m.fecha, comprobante: String(m.comprobante).trim() });
+    const movId = Sync.nuevoId();
+    const r = Sync.ejecutar({ tipo: 'movimiento', tipoMov: 'nc', movId, facturaId, monto: round2(m.monto), fecha: m.fecha, comprobante: String(m.comprobante).trim() });
+    return r.error ? r : { ...r, ok: true, movId };
   }
   return pagoDirecto(f, {
     monto: m.monto, fecha: m.fecha, comprobante: m.comprobante, notaProg: nc ? NOTA_NC : NOTA_MANUAL,

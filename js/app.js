@@ -978,14 +978,31 @@ function vistaCanceladas() {
   </div>
   ${resumenLista(`${total} facturas canceladas`, t)}
   <div class="tabla-scroll"><table class="tabla clic">
-    <thead><tr><th>Sociedad</th><th>Proveedor</th><th>Factura</th><th>Fecha factura</th><th class="num">Monto</th><th>Pagada el</th><th>Comprobante</th></tr></thead>
+    <thead><tr><th>Sociedad</th><th>Proveedor</th><th>Factura</th><th>Fecha factura</th><th class="num">Monto</th><th>Pagada el</th><th>Comprobante</th><th>Documentos</th></tr></thead>
     <tbody>${lista.map(({ f, pago }) => `<tr data-act="f-abrir" data-v="${f.id}" tabindex="0">
       <td>${esc(S.nombreSociedad(f.sociedad))}</td><td>${esc(S.proveedor(f.codigo).nombre)}</td>
       <td><a href="#/canceladas" data-act="f-abrir" data-v="${f.id}">${esc(f.documento)}</a></td>
       <td>${fmtFecha(f.fechaFactura)}</td><td class="num">${money(f.monto, f.moneda)}</td>
-      <td>${pago?.fecha ? fmtFecha(pago.fecha) : '<span class="sub">sin fecha</span>'}</td><td>${esc(pago?.comprobante || '')}</td></tr>`).join('') || '<tr><td colspan="7" class="sub">No hay facturas canceladas con esos filtros.</td></tr>'}</tbody>
+      <td>${pago?.fecha ? fmtFecha(pago.fecha) : '<span class="sub">sin fecha</span>'}</td><td>${esc(pago?.comprobante || '')}</td>
+      <td class="docs-celda">${chipsDocumentos(f)}</td></tr>`).join('') || '<tr><td colspan="8" class="sub">No hay facturas canceladas con esos filtros.</td></tr>'}</tbody>
   </table></div>
   ${total > lista.length ? `<p class="centro-txt"><button class="btn" data-act="c-mas">Mostrar más (${total - lista.length} restantes)</button></p>` : ''}`;
+}
+
+/** Botoncitos para abrir los PDF de una factura: la factura, los comprobantes de pago y las notas de crédito. */
+function chipsDocumentos(f) {
+  const out = [];
+  const pf = S.pdfFactura(f.id);
+  out.push(pf?.id ? `<button class="doc-chip" data-act="ver-arch" data-v="${esc(pf.id)}">📄 Factura</button>` : '<span class="doc-chip no">sin PDF de factura</span>');
+  const vistos = new Set();
+  for (const m of S.movimientosDe(f)) {
+    if (m.tipo === 'cargo') continue;
+    const a = S.comprobanteDe(m);
+    if (!a?.id || vistos.has(a.id)) continue;
+    vistos.add(a.id);
+    out.push(m.tipo === 'nc' ? `<button class="doc-chip nc" data-act="ver-arch" data-v="${esc(a.id)}">📄 Nota de crédito</button>` : `<button class="doc-chip" data-act="ver-arch" data-v="${esc(a.id)}">📎 Pago</button>`);
+  }
+  return out.join('');
 }
 
 function dialogoFactura(id) {
@@ -1006,7 +1023,8 @@ function dialogoFactura(id) {
         <div><span>Pagado</span><strong>${money(S.pagado(f), f.moneda)}</strong></div>
         <div><span>Saldo</span><strong>${money(s, f.moneda)}</strong></div>
       </div>
-      ${S.pdfFactura(f.id)?.id ? `<div class="acciones-fila"><button class="btn" data-act="ver-arch" data-v="${esc(S.pdfFactura(f.id).id)}">📄 Ver factura (PDF)</button></div>` : ''}
+      ${S.pdfFactura(f.id)?.id ? `<div class="acciones-fila"><button class="btn" data-act="ver-arch" data-v="${esc(S.pdfFactura(f.id).id)}">📄 Ver factura (PDF)</button>${S.esNorman() ? '' : `<label class="btn-link subir-pdf">cambiar PDF<input type="file" accept="application/pdf,image/jpeg,image/png" data-in="fact-pdf" data-v="${f.id}" hidden></label>`}</div>`
+        : S.esNorman() ? '' : `<div class="acciones-fila"><label class="adjuntar">📎 <span>Adjuntar PDF de la factura</span><input type="file" accept="application/pdf,image/jpeg,image/png" data-in="fact-pdf" data-v="${f.id}" hidden></label></div>`}
       ${s > 0.004 && !S.esNorman() ? `<div class="acciones-fila"><button class="btn btn-norman" data-act="pn-abrir" data-v="${f.id}">✔ Pagar ahora</button></div>` : ''}
       <form class="form-grid" data-form="f-fechas" data-v="${f.id}">
         <label>Fecha de factura <input type="date" name="fechaFactura" value="${f.fechaFactura || ''}"></label>
@@ -1023,7 +1041,9 @@ ${f.revision ? `        <p class="ancho aviso-pruebas">Norman pidió revisar est
           const prog = m.loteId ? S.datos().programaciones[String(m.id).slice(String(m.loteId).length + 1)] : null;
           const tagNorman = S.esAutorizadoNorman(prog) ? ' <span class="tag-norman">Pagar ahora</span>' : '';
           const tipoTxt = String(prog?.nota || '').startsWith(S.NOTA_NC) ? 'Nota de crédito' : (tipos[m.tipo] || m.tipo);
-          return `<tr><td>${fmtFecha(m.fecha) || '<span class="sub">sin fecha</span>'}</td><td>${tipoTxt}${tagNorman}</td><td>${esc(m.comprobante)}${linkComprobante(S.comprobanteDe(m))}</td>
+          const arch = S.comprobanteDe(m);
+          const subir = !arch && m.tipo !== 'cargo' && !S.esNorman() ? ` <label class="btn-link subir-pdf no-imprimir">📎 adjuntar PDF<input type="file" accept="application/pdf,image/jpeg,image/png" data-in="mov-pdf" data-v="${esc(m.id)}" data-f="${f.id}" hidden></label>` : '';
+          return `<tr><td>${fmtFecha(m.fecha) || '<span class="sub">sin fecha</span>'}</td><td>${tipoTxt}${tagNorman}</td><td>${esc(m.comprobante)}${m.tipo === 'nc' && arch ? ` <button class="btn-link ver-arch no-imprimir" data-act="ver-arch" data-v="${esc(arch.id)}">📄 Ver PDF</button>` : linkComprobante(arch)}${subir}</td>
             <td class="num">${money(m.monto, f.moneda)}</td><td class="num">${m.tipo === 'cargo' ? '' : money(acumulado, f.moneda)}</td><td>${esc(m.por)}</td></tr>`;
         }).join('')}</tbody></table></div>` : '<p class="sub">Sin movimientos.</p>'}
       ${s > 0.004 ? `
@@ -1034,6 +1054,7 @@ ${f.revision ? `        <p class="ancho aviso-pruebas">Norman pidió revisar est
           <span class="pn-resto" id="fm-resto">${textoResto(f, s)}</span></label>
         <label>Fecha <input type="date" name="fecha" value="${hoyISO()}"></label>
         <label>N° comprobante o de nota <input type="text" name="comprobante" required autocomplete="off"></label>
+        <div class="ancho">${campoArchivo('mov|' + f.id, 'PDF de la nota de crédito o del comprobante · opcional')}</div>
         <div class="ancho"><button class="btn primario" type="submit">Registrar</button></div>
       </form>` : ''}
     </div>`);
@@ -1442,13 +1463,17 @@ async function cargarRecibidas(forzar) {
 }
 setInterval(() => { if (navigator.onLine && document.visibilityState === 'visible' && Date.now() - REC.cargadoEn > 10 * 60000) cargarRecibidas(); }, 60000);
 
+/** PDF de una factura recibida: el que vino con el XML o el que se subió a mano. */
+const pdfDeRecibida = (r) => (r.pdfId ? { id: r.pdfId, nombre: r.pdfNombre || 'Factura.pdf' } : S.pdfRecibida(r.clave)?.id ? S.pdfRecibida(r.clave) : null);
+
 /** El PDF recibido por correo queda también en la factura de cuentas por pagar (para verlo desde «Facturas»). */
 function enlazarPdfFacturas() {
   try {
     for (const x of listaRecibidas()) {
       const f = x.factura;
-      if (!f || !x.r.pdfId || S.pdfFactura(f.id)?.id) continue;
-      S.guardarPdfFactura(f.id, { id: x.r.pdfId, nombre: x.r.pdfNombre || 'Factura.pdf' });
+      const pdf = pdfDeRecibida(x.r);
+      if (!f || !pdf || x.r.tipo === 'NC' || S.pdfFactura(f.id)?.id) continue;
+      S.guardarPdfFactura(f.id, pdf);
     }
   } catch { /* se intenta en la próxima carga */ }
 }
@@ -1589,7 +1614,8 @@ function tablaRecibidas(lista) {
         <td class="mono">${esc(x.documento)}${r.tipo !== 'FE' ? `<div class="sub">${esc(TIPO_REC[r.tipo] || r.tipo)}</div>` : ''}</td>
         <td>${fmtFecha(r.fecha)}</td><td>${cond}</td><td>${x.cond === 'credito' ? fmtFecha(x.vence) : '—'}</td>
         <td class="num">${MONEDAS[x.moneda] ? money(x.total, x.moneda) : esc(x.moneda + ' ' + fmtNum(x.total))}</td>
-        <td class="rc-acc">${r.pdfId ? `<button class="btn-link" data-act="ver-arch" data-v="${esc(r.pdfId)}">PDF</button> ` : ''}${acc}</td></tr>`;
+        <td class="rc-acc">${pdfDeRecibida(r) ? `<button class="btn-link" data-act="ver-arch" data-v="${esc(pdfDeRecibida(r).id)}">PDF</button> `
+          : `<label class="btn-link subir-pdf" title="Esta factura llegó sin PDF: súbalo a mano">📎 subir PDF<input type="file" accept="application/pdf,image/jpeg,image/png" data-in="rc-pdf" data-k="${k}" hidden></label> `}${acc}</td></tr>`;
     }).join('')}</tbody></table></div>`;
 }
 
@@ -1697,7 +1723,7 @@ async function pasarRecibidasConfirmado(items, elegidos) {
       fechaVence: x.vence || x.r.fecha, monto: x.total, observaciones: `Céd. ${ced} · Correo · Clave ${x.r.clave}` });
     if (r.error) { errores.push(`Factura ${x.documento}: ${r.error}`); continue; }
     ok.push({ x, id });
-    if (x.r.pdfId) S.guardarPdfFactura(id, { id: x.r.pdfId, nombre: x.r.pdfNombre || 'Factura.pdf' });
+    if (pdfDeRecibida(x.r)) S.guardarPdfFactura(id, pdfDeRecibida(x.r));
   }
   try { localStorage.setItem('cxp-cedulas', JSON.stringify(mem)); } catch { /* sin almacenamiento */ }
   cerrarDialogo();
@@ -1750,6 +1776,7 @@ async function aplicarNCRecibida(clave) {
   if (!confirm(`¿Aplicar la nota de crédito ${x.documento} por ${money(monto, f.moneda)} a la factura ${f.documento} de ${S.proveedor(f.codigo).nombre}?`)) return;
   const r = S.registrarMovimiento(f.id, { tipo: 'nc', monto, fecha: x.r.fecha || hoyISO(), comprobante: x.documento });
   if (!resultado(r, 'Nota de crédito aplicada')) return;
+  if (r.movId && pdfDeRecibida(x.r)) S.guardarPdfMov(r.movId, pdfDeRecibida(x.r));
   try { await cambiarRecibidas([clave], { estado: 'cxp' }, { [clave]: { facturaId: f.id } }); } catch (e) { avisar(e.message, 'error'); }
 }
 
@@ -2593,7 +2620,7 @@ function despuesDeRender(ruta) {
  * redibujar la pantalla y cambiar el <input type=file> por otro; el archivo elegido quedaba en el viejo y
  * no pasaba nada (había que subirlo dos veces). Se abre un campo aparte, fuera de la pantalla que se redibuja.
  */
-const ARCHIVO_APARTE = new Set(['rc-subir', 'rc-gti', 'ap-pdf', 'ap-gen', 'imp-archivo', 'importar']);
+const ARCHIVO_APARTE = new Set(['rc-subir', 'rc-gti', 'ap-pdf', 'ap-gen', 'imp-archivo', 'importar', 'rc-pdf', 'fact-pdf', 'mov-pdf']);
 document.addEventListener('click', (e) => {
   const lbl = e.target.closest?.('label');
   const orig = lbl?.querySelector('input[type=file]');
@@ -3015,6 +3042,43 @@ document.addEventListener('change', async (e) => {
     for (const x of lista) { if (el.checked) REC.sel.add(x.r.clave); else REC.sel.delete(x.r.clave); }
     render(); return;
   }
+  if (k === 'rc-pdf' || k === 'fact-pdf' || k === 'mov-pdf') {
+    const file = el.files[0];
+    el.value = '';
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) { avisar('El archivo pesa más de 8 MB', 'error'); return; }
+    let nombre, guardar, despues;
+    if (k === 'rc-pdf') {
+      const r = REC.filas.find((y) => y.clave === el.dataset.k);
+      if (!r) return;
+      nombre = `Factura ${r.consecutivo || r.clave} ${limpioArchivo(r.nombreEmisor || '').slice(0, 40)}`;
+      guardar = (a) => {
+        const x = S.guardarPdfRecibida(r.clave, a);
+        const f = r.facturaId && S.factura(r.facturaId);
+        if (f && !S.pdfFactura(f.id)?.id && r.tipo !== 'NC') S.guardarPdfFactura(f.id, a);
+        return x;
+      };
+      despues = () => render();
+    } else if (k === 'fact-pdf') {
+      const f = S.factura(el.dataset.v);
+      if (!f) return;
+      nombre = `Factura ${f.documento} ${limpioArchivo(S.proveedor(f.codigo).nombre).slice(0, 40)}`;
+      guardar = (a) => S.guardarPdfFactura(f.id, a);
+      despues = () => dialogoFactura(f.id);
+    } else {
+      const f = S.factura(el.dataset.f), m = S.movimientosDe(f || {}).find((y) => y.id === el.dataset.v);
+      if (!f || !m) return;
+      nombre = `${m.tipo === 'nc' ? 'NC' : 'Pago'} ${limpioArchivo(S.proveedor(f.codigo).nombre).slice(0, 40)} ${m.comprobante || ''}`;
+      guardar = (a) => S.guardarPdfMov(m.id, a);
+      despues = () => dialogoFactura(f.id);
+    }
+    avisar('Subiendo PDF…');
+    try {
+      const a = await subirComprobante(file, nombre.trim());
+      if (resultado(guardar(a), 'PDF guardado')) despues();
+    } catch (err) { avisar('No se pudo subir: ' + err.message, 'error'); }
+    return;
+  }
   if (k === 'rc-subir') { const files = [...el.files]; el.value = ''; if (files.length) await subirXmlRecibidas(files); return; }
   if (k === 'rc-gti') { const f = el.files[0]; el.value = ''; if (f) await compararGTI(f); return; }
   if (k === 'fecha-nativa') { ponerFiltroFecha(el.dataset.k, el.value); return; }
@@ -3220,7 +3284,15 @@ document.addEventListener('submit', (e) => {
       adjuntarDespues(clave, `${limpioArchivo(S.proveedor(fs[0].codigo).nombre).slice(0, 40)} ${comp}`, (a) => S.guardarDocLinea(r.loteId, r.codigo, { archivo: a }));
     }
   } else if (k === 'f-mov') {
-    if (resultado(S.registrarMovimiento(form.dataset.v, { tipo: d.tipo, monto: parseMonto(d.monto), fecha: d.fecha, comprobante: d.comprobante }), 'Movimiento registrado')) dialogoFactura(form.dataset.v);
+    const fid = form.dataset.v, f = S.factura(fid);
+    const r = S.registrarMovimiento(fid, { tipo: d.tipo, monto: parseMonto(d.monto), fecha: d.fecha, comprobante: d.comprobante });
+    if (resultado(r, 'Movimiento registrado')) {
+      dialogoFactura(fid);
+      const nombre = `${d.tipo === 'nc' ? 'NC' : 'Pago'} ${limpioArchivo(S.proveedor(f.codigo).nombre).slice(0, 40)} ${d.comprobante}`;
+      if (r.movId) adjuntarDespues('mov|' + fid, nombre, (a) => { S.guardarPdfMov(r.movId, a); if (S.factura(fid) && document.querySelector('dialog[open] .cifras')) dialogoFactura(fid); });
+      else if (r.loteId) adjuntarDespues('mov|' + fid, nombre, (a) => { S.guardarDocLinea(r.loteId, r.codigo, { archivo: a }); if (document.querySelector('dialog[open] .cifras')) dialogoFactura(fid); });
+      else delete ui.adj['mov|' + fid];
+    }
   } else if (k === 'f-crear') {
     const codigo = (d.proveedor.match(/·\s*(\S+)$/) || [])[1];
     if (!codigo || !S.datos().proveedores[codigo]) { avisar('Elija el proveedor de la lista (o créelo en Proveedores)', 'error'); return; }
