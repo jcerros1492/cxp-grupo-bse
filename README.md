@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.26.0 | Proveedores con el código del sistema contable: «Proveedores nuevos» (Recibidas) pregunta «Ya existe» o «Es nuevo» y pide el código contable (no deja uno repetido); «+ Nuevo proveedor» trae el código vacío, dice si está libre y avisa si el nombre se parece a otro. Reconoce nombres que contienen todas las palabras de otro («RODOLFO JESUS RAMIREZ RODRIGUEZ» = «RAMIREZ RODRIGUEZ RODOLFO»). |
 | 1.25.3 | Los cambios que quedaron pendientes en un dispositivo (por ejemplo, hechos sin señal) se envían a Google apenas hay internet, aunque esa persona no haya vuelto a entrar y aunque el dispositivo esté en la pantalla de usuarios o con otra persona. Quedan a nombre de quien los hizo. |
 | 1.25.2 | Corrige «Hay cambios de otra persona que aún no llegan a Google» que no dejaba entrar: los cambios pendientes de una persona esperan en el dispositivo y se envían cuando esa persona entra; ya no bloquean la entrada de nadie. |
 | 1.25.1 | PIN en el celular: al tocar el nombre queda solo esa persona, las casillas y el teclado, todo en una pantalla; los botones ya no hacen zoom al tocarlos seguido. |

@@ -175,6 +175,17 @@ export function buscarPorNombre(nombre, provs) {
     const mismas = provs.filter((p) => palabras(p.nombre) === pc);
     if (mismas.length === 1) return mismas[0];
   }
+  // Un nombre contiene todas las palabras del otro (3 o más): «RODOLFO JESUS RAMIREZ RODRIGUEZ» = «RAMIREZ RODRIGUEZ RODOLFO».
+  const conj = new Set(pc.split(' ').filter(Boolean));
+  if (conj.size >= 3) {
+    const contenidos = provs.filter((p) => {
+      const q = palabras(p.nombre).split(' ').filter(Boolean);
+      if (q.length < 3) return false;
+      const qs = new Set(q);
+      return q.every((w) => conj.has(w)) || [...conj].every((w) => qs.has(w));
+    });
+    if (contenidos.length === 1) return contenidos[0];
+  }
   if (c.length < 6) return null;
   const parecidos = provs.filter((p) => { const q = nombreClave(p.nombre); return q.length >= 6 && (q.includes(c) || c.includes(q)); });
   return parecidos.length === 1 ? parecidos[0] : null;

@@ -1723,6 +1723,23 @@ function dialogoCreditoRecibida(clave) {
 }
 
 /** Paso 1 al pasar a cuentas por pagar: proveedores que no se reconocieron. */
+/** Proveedores con al menos dos palabras del nombre en común (para avisar «¿es el mismo?»). */
+function proveedoresParecidos(nombre, excepto = '') {
+  const pal = (t) => new Set(String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().split(/[^A-Z0-9]+/).filter((w) => w.length > 2 && !/^(LAS|LOS|DEL|SOCIEDAD|ANONIMA|LIMITADA|LTDA|SRL)$/.test(w)));
+  const a = pal(nombre);
+  if (a.size < 2) return [];
+  return S.proveedoresActivos().filter((p) => String(p.codigo) !== String(excepto) && [...pal(p.nombre)].filter((w) => a.has(w)).length >= 2).slice(0, 3);
+}
+/** Texto de estado de un código que se escribe: libre o de quién es. */
+function estadoCodigo(cod) {
+  const c = String(cod || '').trim();
+  if (!c) return { ok: false, html: '' };
+  if (!/^[A-Za-z0-9-]{1,10}$/.test(c)) return { ok: false, html: '<span class="malo">✗ Use solo números (o letras), sin espacios</span>' };
+  const p = S.datos().proveedores[c];
+  if (p) return { ok: false, html: `<span class="malo">✗ El ${esc(c)} ya es de ${esc(p.nombre)}</span>` };
+  return { ok: true, html: `<span class="bien">✓ El código ${esc(c)} está libre</span>` };
+}
+
 /** Proveedor con al menos dos palabras del nombre en común (p. ej. los dos apellidos); solo si hay uno. */
 function sugerenciaProveedor(nombre, provs) {
   const pal = (t) => new Set(String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().split(/[^A-Z0-9]+/).filter((w) => w.length > 2 && !/^(LAS|LOS|DEL|SOCIEDAD|ANONIMA|LIMITADA|LTDA|SRL)$/.test(w)));
@@ -1744,19 +1761,27 @@ function pasarRecibidas() {
   }
   REC.provsPend = items;
   const provs = S.proveedoresActivos().sort((a, b) => a.nombre.localeCompare(b.nombre));
-  let sig = Number(S.siguienteCodigoProveedor());
-  abrirDialogo(`<header class="dlg-cab"><div><h2>Proveedores nuevos</h2><p class="sub">${nuevos.size} ${nuevos.size === 1 ? 'proveedor no está' : 'proveedores no están'} en la aplicación. Elija si se crea o si ya existe con otro nombre.</p></div><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+  abrirDialogo(`<header class="dlg-cab"><div><h2>Proveedores nuevos</h2><p class="sub">${nuevos.size} ${nuevos.size === 1 ? 'proveedor no está' : 'proveedores no están'} en la aplicación. Elija si ya existe con otro nombre o créelo con su código del sistema contable.</p></div><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
     <form class="dlg-cuerpo" data-form="rc-provs">
-      <div class="imp-emisores">${[...nuevos.values()].map((x) => `
-        <div class="imp-emisor es-nuevo"><div><strong>${esc(x.r.nombreEmisor)}</strong><span class="sub">Céd. ${esc(x.r.cedulaEmisor)}${x.r.nombreComercial ? ' · ' + esc(x.r.nombreComercial) : ''}</span></div>
-          ${(() => { const sug = sugerenciaProveedor(x.r.nombreEmisor, provs); return `<select name="p_${esc(x.r.cedulaEmisor)}"><option value="">➕ Crear proveedor nuevo (código ${sig++})</option>
-            ${sug ? `<option value="${esc(sug.codigo)}" selected>${esc(sug.codigo)} · ${esc(sug.nombre)} (parecido)</option>` : ''}
-            ${provs.map((p) => `<option value="${esc(p.codigo)}">${esc(p.codigo)} · ${esc(p.nombre)}</option>`).join('')}</select>`; })()}</div>`).join('')}</div>
+      <div class="imp-emisores">${[...nuevos.values()].map((x) => {
+        const ced = esc(x.r.cedulaEmisor), sug = sugerenciaProveedor(x.r.nombreEmisor, provs);
+        return `<div class="rc-nuevo" data-ced="${ced}" data-modo="${sug ? 'existe' : 'nuevo'}">
+          <div><strong>${esc(x.r.nombreEmisor)}</strong> <span class="sub">Céd. ${ced}${x.r.nombreComercial ? ' · ' + esc(x.r.nombreComercial) : ''}</span></div>
+          <div class="pa-formas rc-modos">
+            <label class="pa-forma"><input type="radio" name="m_${ced}" value="existe" data-in="rc-modo" ${sug ? 'checked' : ''}><span><b>Ya existe</b>${sug ? `${esc(sug.codigo)} · ${esc(sug.nombre)} <span class="bien">(parecido)</span>` : 'elegir de la lista'}</span></label>
+            <label class="pa-forma"><input type="radio" name="m_${ced}" value="nuevo" data-in="rc-modo" ${sug ? '' : 'checked'}><span><b>Es nuevo</b>crear con su código del sistema contable</span></label>
+          </div>
+          <label class="solo-existe">Proveedor <select name="p_${ced}"><option value="">— Elija el proveedor —</option>
+            ${provs.map((p) => `<option value="${esc(p.codigo)}" ${sug && sug.codigo === p.codigo ? 'selected' : ''}>${esc(p.codigo)} · ${esc(p.nombre)}</option>`).join('')}</select></label>
+          <label class="solo-nuevo">Código en el sistema contable <input name="c_${ced}" inputmode="numeric" autocomplete="off" data-in="rc-cod" style="max-width:160px">
+            <span class="cod-estado" aria-live="polite"></span></label>
+        </div>`;
+      }).join('')}</div>
       <div class="acciones-fila" style="margin-top:12px"><button class="btn primario" type="submit">Continuar y pasar ${items.length} ${items.length === 1 ? 'factura' : 'facturas'}</button><button class="btn" type="button" data-act="cerrar">Cancelar</button></div>
     </form>`);
 }
 
-async function pasarRecibidasConfirmado(items, elegidos) {
+async function pasarRecibidasConfirmado(items, elegidos, codigosNuevos = {}) {
   const creados = {}, errores = [], ok = [];
   let sig = Number(S.siguienteCodigoProveedor());
   const mem = memoriaCedulas();
@@ -1764,7 +1789,7 @@ async function pasarRecibidasConfirmado(items, elegidos) {
     const ced = x.r.cedulaEmisor;
     let codigo = x.codigo || creados[ced] || elegidos[ced] || '';
     if (!codigo) {
-      codigo = String(sig++);
+      codigo = codigosNuevos[ced] || String(sig++);
       const r = S.guardarProveedor(codigo, { nombre: nombreLegible(x.r.nombreEmisor), alias: '', ibanCRC: '', ibanUSD: '', plazo: x.plazo || 30 }, true);
       if (r.error) { errores.push(`${x.r.nombreEmisor}: ${r.error}`); continue; }
       creados[ced] = codigo;
@@ -1970,13 +1995,15 @@ function seccionUnir(p) {
 
 function dialogoProveedor(codigo) {
   const nuevo = !codigo;
-  const p = nuevo ? { codigo: S.siguienteCodigoProveedor(), nombre: '', alias: '', ibanCRC: '', ibanUSD: '', plazo: 30 } : S.proveedor(codigo);
+  const p = nuevo ? { codigo: '', nombre: '', alias: '', ibanCRC: '', ibanUSD: '', plazo: 30 } : S.proveedor(codigo);
   abrirDialogo(`
     <header class="dlg-cab"><h2>${nuevo ? 'Nuevo proveedor' : esc(p.nombre)}</h2><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
     <form class="dlg-cuerpo form-grid" data-form="pv-guardar" data-v="${esc(p.codigo)}">
-      <label>Código <input name="codigo" value="${esc(p.codigo)}" ${nuevo ? '' : 'readonly'}></label>
+      <label>${nuevo ? 'Código (el del sistema contable)' : 'Código'} <input name="codigo" value="${esc(p.codigo)}" ${nuevo ? 'required inputmode="numeric" autocomplete="off" data-in="pv-cod" placeholder="Ej. 366"' : 'readonly'}>
+        ${nuevo ? '<span class="cod-estado" aria-live="polite"></span>' : ''}</label>
       <label>Plazo habitual (días) <input type="number" name="plazo" min="0" value="${esc(p.plazo ?? 30)}"></label>
-      <label class="ancho">Nombre <input name="nombre" value="${esc(p.nombre)}" required></label>
+      <label class="ancho">Nombre <input name="nombre" value="${esc(p.nombre)}" required ${nuevo ? 'data-in="pv-nom" autocomplete="off"' : ''}></label>
+      ${nuevo ? '<div class="ancho pv-parecido" hidden></div>' : ''}
       <label class="ancho">Alias para la descripción del banco <input name="alias" value="${esc(p.alias)}" placeholder="Ej. Resusa, DAC"></label>
       <label class="ancho">IBAN en colones <input name="ibanCRC" class="mono" value="${esc(fmtIBAN(p.ibanCRC))}" placeholder="CR00 0000 0000 0000 0000 00" data-in="iban"><span class="ayuda" data-ayuda></span></label>
       <label class="ancho">IBAN en dólares <input name="ibanUSD" class="mono" value="${esc(fmtIBAN(p.ibanUSD))}" placeholder="CR00 0000 0000 0000 0000 00" data-in="iban"><span class="ayuda" data-ayuda></span></label>
@@ -3035,6 +3062,15 @@ document.addEventListener('input', (e) => {
   }
   if (k === 'fm-monto') { actualizarRestoMov(); return; }
   if (k === 'pin') { ponerPin(el.value); return; }
+  if (k === 'pv-cod' || k === 'rc-cod') { const sp = el.parentElement.querySelector('.cod-estado'); if (sp) sp.innerHTML = estadoCodigo(el.value).html; return; }
+  if (k === 'pv-nom') {
+    const box = el.form?.querySelector('.pv-parecido');
+    if (!box) return;
+    const par = el.value.trim().length >= 6 ? proveedoresParecidos(el.value) : [];
+    box.hidden = !par.length;
+    box.innerHTML = par.length ? `<div class="aviso">⚠ <b>Parecido a ${par.length === 1 ? 'un proveedor que ya existe' : 'proveedores que ya existen'}:</b> ${par.map((x) => `<button type="button" class="btn chico" data-act="pv-abrir" data-v="${esc(x.codigo)}">Abrir el ${esc(x.codigo)} · ${esc(x.nombre)}</button>`).join(' ')} <span class="sub">¿Es el mismo? Si es otro, siga y guarde.</span></div>` : '';
+    return;
+  }
   if (k === 'fecha-comp') {
     const borrando = e.inputType?.startsWith('delete');
     const v = borrando ? el.value : mascaraFecha(el.value);
@@ -3153,6 +3189,7 @@ document.addEventListener('change', async (e) => {
     } catch (err) { avisar('No se pudo subir: ' + err.message, 'error'); }
     return;
   }
+  if (k === 'rc-modo') { const b = el.closest('.rc-nuevo'); if (b) { b.dataset.modo = el.value; if (el.value === 'nuevo') b.querySelector('[data-in="rc-cod"]')?.focus(); } return; }
   if (k === 'rc-subir') { const files = [...el.files]; el.value = ''; if (files.length) await subirXmlRecibidas(files); return; }
   if (k === 'rc-gti') { const f = el.files[0]; el.value = ''; if (f) await compararGTI(f); return; }
   if (k === 'fecha-nativa') { ponerFiltroFecha(el.dataset.k, el.value); return; }
@@ -3387,17 +3424,35 @@ document.addEventListener('submit', (e) => {
       })
       .catch((e) => avisar(e.message, 'error'));
   } else if (k === 'rc-provs') {
-    const elegidos = {};
-    for (const [n, v] of Object.entries(d)) if (n.startsWith('p_') && v) elegidos[n.slice(2)] = v;
+    const elegidos = {}, codigosNuevos = {}, usados = new Set();
+    for (const bloque of form.querySelectorAll('.rc-nuevo')) {
+      const ced = bloque.dataset.ced, nombre = bloque.querySelector('strong').textContent;
+      if (bloque.dataset.modo === 'existe') {
+        const v = form.elements['p_' + ced].value;
+        if (!v) { avisar(`Elija el proveedor de ${nombre}, o marque «Es nuevo»`, 'error'); return; }
+        elegidos[ced] = v;
+      } else {
+        const c = form.elements['c_' + ced].value.trim(), e = estadoCodigo(c);
+        if (!c) { avisar(`Escriba el código del sistema contable de ${nombre}`, 'error'); form.elements['c_' + ced].focus(); return; }
+        if (!e.ok || usados.has(c)) { avisar(usados.has(c) ? `El código ${c} está repetido en esta lista` : `${nombre}: ${e.html.replace(/<[^>]+>/g, '')}`, 'error'); form.elements['c_' + ced].focus(); return; }
+        usados.add(c); codigosNuevos[ced] = c;
+      }
+    }
     const items = REC.provsPend || [];
     REC.provsPend = null;
-    pasarRecibidasConfirmado(items, elegidos);
+    pasarRecibidasConfirmado(items, elegidos, codigosNuevos);
   } else if (k === 'pv-iban') {
     const p = S.proveedor(form.dataset.v);
     if ([...form.querySelectorAll('[data-in="iban"]')].some((i) => !validarCampoIBAN(i))) { avisar('Revise la cuenta IBAN', 'error'); return; }
     if (resultado(S.guardarProveedor(p.codigo, { ...p, ibanCRC: d.ibanCRC, ibanUSD: d.ibanUSD, alias: d.alias }, false), 'Cuenta guardada · ya se puede generar el archivo')) { cerrarDialogo(); render(); }
   } else if (k === 'pv-guardar') {
     const nuevo = !form.querySelector('[name=codigo]').readOnly;
+    if (nuevo) {
+      const e = estadoCodigo(d.codigo);
+      if (!e.ok) { avisar(d.codigo.trim() ? e.html.replace(/<[^>]+>/g, '') : 'Escriba el código del sistema contable', 'error'); form.codigo.focus(); return; }
+      const par = proveedoresParecidos(d.nombre);
+      if (par.length && !form.dataset.confirmado && !confirm(`Se parece a ${par.map((x) => x.codigo + ' · ' + x.nombre).join(', ')}. ¿Crear de todos modos el ${d.codigo.trim()} como proveedor distinto?`)) return;
+    }
     if (resultado(S.guardarProveedor(d.codigo.trim(), { nombre: d.nombre, alias: d.alias, ibanCRC: d.ibanCRC, ibanUSD: d.ibanUSD, plazo: d.plazo }, nuevo), 'Proveedor guardado')) cerrarDialogo();
   } else if (k === 'cfg-banco') {
     const ced = d.controlEncabezado.replace(/\D/g, '');

@@ -1002,3 +1002,13 @@ main:has(.barra-varias) { padding-bottom: 96px; }
   .pin-teclado button { height: 48px; }
   .con-pin .pin-avatar { width: 52px; height: 52px; }
 }
+
+/* Código del sistema contable al crear proveedores (1.26) */
+.cod-estado { display: block; font-size: 12.5px; font-weight: 600; margin-top: 4px; }
+.cod-estado .bien, .bien { color: var(--verde); }
+.cod-estado .malo { color: var(--rojo); }
+.rc-nuevo { border: 1px solid var(--borde); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px; }
+.rc-nuevo .rc-modos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rc-nuevo[data-modo="existe"] .solo-nuevo, .rc-nuevo[data-modo="nuevo"] .solo-existe { display: none; }
+.pv-parecido .aviso { margin: 0; }
+@media screen and (max-width: 760px) { .rc-nuevo .rc-modos { grid-template-columns: 1fr; } }
