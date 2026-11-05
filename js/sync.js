@@ -219,9 +219,6 @@ export async function entrarDirecto(usuario) {
     throw new Error(/desactivado/i.test(r.error || '') ? r.error
       : `No se pudo entrar como ${usuario}. En la hoja de Google, pestaña Usuarios, escriba «${CLAVE_INICIAL}» en la columna contrasenaTemporal de esa persona.`);
   }
-  if (estado.pendientes.length && estado.sesion?.usuario && estado.sesion.usuario !== r.usuario.usuario) {
-    throw new Error('Hay cambios de otra persona que aún no llegan a Google. Espere a que se sincronicen.');
-  }
   estado.sesion = { token: r.token, ...r.usuario };
   estado.hoja = r.hoja || estado.hoja;
   if (r.usuario.debeCambiar) {
@@ -271,9 +268,9 @@ function olvidarSesionUsuario(usuario) {
 export function entrarGuardado(usuario) {
   const s = sesionesGuardadas()[usuario];
   if (!s || s.debeCambiar) return false;
-  if (estado.pendientes.length && estado.sesion?.usuario !== usuario) {
-    throw new Error('Hay cambios de ' + (estado.sesion?.nombre || 'otra persona') + ' que aún no llegan a Google. Espere a que se sincronicen.');
-  }
+  // 1.25.2: ya no se bloquea la entrada. Cada cambio pendiente lleva quién lo hizo (hechoPor) y solo se
+  // envía con la sesión de esa persona: los de otra persona esperan en este dispositivo hasta que ella entre.
+  // Antes, con la sesión por pestaña, una pestaña nueva (sin sesión) con cambios pendientes no dejaba entrar a nadie.
   estado.sesion = { ...s };
   guardarLocal();
   notificar();
@@ -374,12 +371,46 @@ async function api(payload, c = conexion()) {
 
 let sincronizando = false;
 
+/**
+ * 1.25.3: cambios pendientes de otra persona que quedaron en este dispositivo (por ejemplo, hechos sin señal):
+ * se envían de una vez con la sesión guardada de esa persona, sin esperar a que vuelva a entrar.
+ * Quedan registrados a nombre de quien los hizo.
+ */
+async function enviarAjenos() {
+  const actual = estado.sesion?.usuario || '';
+  const quienes = [...new Set(estado.pendientes.map((op) => op.hechoPor).filter((u) => u && u !== actual))];
+  let algo = false;
+  for (const u of quienes) {
+    const s = sesionesGuardadas()[u];
+    if (!s?.token || s.debeCambiar) continue;
+    const ops = estado.pendientes.filter((op) => op.hechoPor === u).slice(0, 100);
+    if (!ops.length) continue;
+    try {
+      // Solo se envían los cambios; lo nuevo de la hoja llega en la sincronización normal.
+      const r = await api({ accion: 'sync', token: s.token, desde: Date.now() + 864e5, epoca: estado.epoca, ops });
+      if (!r.ok) { if (r.auth === false) olvidarSesionToken(s.token); continue; }
+      const procesadas = new Set((r.resultados || []).map((x) => x.opId));
+      for (const x of r.resultados || []) if (!x.ok) avisar(`No se guardó un cambio de ${s.nombre || u}: ${x.error}`, 'error');
+      estado.pendientes = estado.pendientes.filter((op) => !procesadas.has(op.opId));
+      algo = algo || procesadas.size > 0;
+    } catch { /* sin conexión: se intenta en la próxima vuelta */ }
+  }
+  if (algo) { guardarLocal(); recomputar(); notificar(); }
+  return algo;
+}
+
 export async function sincronizar() {
-  if (sincronizando || !estado.sesion || estado.sesion.debeCambiar) return;
+  if (sincronizando) return;
+  if (!estado.sesion || estado.sesion.debeCambiar) {
+    // Pantalla de usuarios: igual se envían los cambios que quedaron pendientes en este dispositivo.
+    if (navigator.onLine && estado.pendientes.length) { sincronizando = true; try { await enviarAjenos(); } finally { sincronizando = false; } }
+    return;
+  }
   if (!navigator.onLine) { estado.red = 'offline'; notificar(); return; }
   sincronizando = true;
   estado.red = 'sync';
   notificar();
+  await enviarAjenos();
   // Solo los cambios de este usuario (si otra pestaña dejó cambios de otra persona, los envía esa persona).
   const enviadas = estado.pendientes.filter((op) => !op.hechoPor || op.hechoPor === estado.sesion.usuario).slice(0, 100);
   // La respuesta puede llegar cuando ya se cambió de usuario: solo se toma la sesión si sigue siendo la misma.
@@ -399,7 +430,7 @@ export async function sincronizar() {
     recibir(r, misma());
     estado.red = 'ok';
     estado.error = '';
-    if (estado.pendientes.length) programarSync(100);
+    if (estado.pendientes.some((op) => !op.hechoPor || op.hechoPor === estado.sesion?.usuario)) programarSync(100);
   } catch (e) {
     estado.red = navigator.onLine ? 'error' : 'offline';
     estado.error = e.name === 'AbortError' ? 'El servicio tardó demasiado en responder' : e.message;

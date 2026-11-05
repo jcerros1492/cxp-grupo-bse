@@ -12,6 +12,8 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.25.3 | Los cambios que quedaron pendientes en un dispositivo (por ejemplo, hechos sin señal) se envían a Google apenas hay internet, aunque esa persona no haya vuelto a entrar y aunque el dispositivo esté en la pantalla de usuarios o con otra persona. Quedan a nombre de quien los hizo. |
+| 1.25.2 | Corrige «Hay cambios de otra persona que aún no llegan a Google» que no dejaba entrar: los cambios pendientes de una persona esperan en el dispositivo y se envían cuando esa persona entra; ya no bloquean la entrada de nadie. |
 | 1.25.1 | PIN en el celular: al tocar el nombre queda solo esa persona, las casillas y el teclado, todo en una pantalla; los botones ya no hacen zoom al tocarlos seguido. |
 | 1.25.0 | PIN de entrada fijo por persona (Jonathan 001, Fernando 002, Daniel 003, Norman 004): se pide al tocar el nombre en la pantalla de inicio; entra al escribir el tercer número; teclado de números en pantalla. Configuración muestra los PIN solo al administrador. |
 | 1.24.0 | PDF: la nota de crédito guarda su PDF (al aplicarla desde Recibidas queda enlazado; a mano, se adjunta en el formulario) y se ve con «📄 Ver PDF». Canceladas tiene la columna «Documentos» (Factura · Pago · Nota de crédito). Se puede subir a mano el PDF que no vino con el XML (en Recibidas «📎 subir PDF», en el detalle de la factura «Adjuntar PDF de la factura») y adjuntar el PDF a un pago o NC ya registrado. Sin cambios en Apps Script. |

@@ -72,7 +72,7 @@ function indicadorRed() {
 }
 
 function indicadorConexion() {
-  const e = Sync.estado, n = e.pendientes.length;
+  const e = Sync.estado, n = e.pendientes.filter((op) => !op.hechoPor || op.hechoPor === e.sesion?.usuario).length;
   const pend = n ? ` · ${n} ${n === 1 ? 'cambio por enviar' : 'cambios por enviar'}` : '';
   if (e.red === 'offline') return `<span class="red off" title="Los cambios se guardan aquí y se envían al volver la conexión">Sin internet${pend}</span>`;
   if (e.red === 'sync') return `<span class="red sync">Sincronizando…${pend}</span>`;
