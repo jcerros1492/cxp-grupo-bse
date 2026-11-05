@@ -1736,6 +1736,7 @@ function estadoCodigo(cod) {
   if (!c) return { ok: false, html: '' };
   if (!/^[A-Za-z0-9-]{1,10}$/.test(c)) return { ok: false, html: '<span class="malo">✗ Use solo números (o letras), sin espacios</span>' };
   const p = S.datos().proveedores[c];
+  if (p && S.codigoReutilizable(c)) return { ok: true, html: `<span class="bien">✓ El ${esc(c)} se puede usar: era un repetido de ${esc(p.nombre)} ya unido al ${esc(S.unidoA(c))}, sin facturas</span>` };
   if (p) return { ok: false, html: `<span class="malo">✗ El ${esc(c)} ya es de ${esc(p.nombre)}</span>` };
   return { ok: true, html: `<span class="bien">✓ El código ${esc(c)} está libre</span>` };
 }
@@ -1790,7 +1791,7 @@ async function pasarRecibidasConfirmado(items, elegidos, codigosNuevos = {}) {
     let codigo = x.codigo || creados[ced] || elegidos[ced] || '';
     if (!codigo) {
       codigo = codigosNuevos[ced] || String(sig++);
-      const r = S.guardarProveedor(codigo, { nombre: nombreLegible(x.r.nombreEmisor), alias: '', ibanCRC: '', ibanUSD: '', plazo: x.plazo || 30 }, true);
+      const r = S.crearProveedorConCodigo(codigo, { nombre: nombreLegible(x.r.nombreEmisor), alias: '', ibanCRC: '', ibanUSD: '', plazo: x.plazo || 30 });
       if (r.error) { errores.push(`${x.r.nombreEmisor}: ${r.error}`); continue; }
       creados[ced] = codigo;
     }
@@ -3453,7 +3454,8 @@ document.addEventListener('submit', (e) => {
       const par = proveedoresParecidos(d.nombre);
       if (par.length && !form.dataset.confirmado && !confirm(`Se parece a ${par.map((x) => x.codigo + ' · ' + x.nombre).join(', ')}. ¿Crear de todos modos el ${d.codigo.trim()} como proveedor distinto?`)) return;
     }
-    if (resultado(S.guardarProveedor(d.codigo.trim(), { nombre: d.nombre, alias: d.alias, ibanCRC: d.ibanCRC, ibanUSD: d.ibanUSD, plazo: d.plazo }, nuevo), 'Proveedor guardado')) cerrarDialogo();
+    const datosProv = { nombre: d.nombre, alias: d.alias, ibanCRC: d.ibanCRC, ibanUSD: d.ibanUSD, plazo: d.plazo };
+    if (resultado(nuevo ? S.crearProveedorConCodigo(d.codigo.trim(), datosProv) : S.guardarProveedor(d.codigo.trim(), datosProv, false), 'Proveedor guardado')) { cerrarDialogo(); render(); }
   } else if (k === 'cfg-banco') {
     const ced = d.controlEncabezado.replace(/\D/g, '');
     if (d.controlEncabezado.trim() && (!ced || ced.length > 12)) { avisar('La cédula del empleado debe tener solo números (hasta 12)', 'error'); return; }

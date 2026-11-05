@@ -380,7 +380,29 @@ export function faltaIban() {
   return [...m.values()].map((x) => ({ ...x, falta: [...x.falta] })).sort((a, b) => a.prov.nombre.localeCompare(b.prov.nombre));
 }
 /** Códigos ocultos porque se unieron a otro (1.20). */
-export const unidoA = (codigo) => datos().config['unido:' + codigo]?.valor || '';
+export const unidoA = (codigo) => {
+  const u = datos().config['unido:' + codigo]?.valor || '';
+  if (!u) return '';
+  // 1.26.1: un código que se unió a otro y después se volvió a usar para un proveedor distinto.
+  const r = nota('doc:reuso:' + codigo);
+  return r && String(r.antes) === String(u) ? '' : u;
+};
+/** El código está ocupado solo por un repetido ya unido a otro y sin facturas: se puede volver a usar. */
+export function codigoReutilizable(codigo) {
+  const c = String(codigo || '').trim();
+  return !!(c && datos().proveedores[c] && unidoA(c) && !Object.values(datos().facturas).some((f) => String(f.codigo) === c));
+}
+/** Crea un proveedor; si el código es un repetido ya unido y sin facturas, lo vuelve a usar para este proveedor. */
+export function crearProveedorConCodigo(codigo, datosProv) {
+  const c = String(codigo || '').trim();
+  if (codigoReutilizable(c)) {
+    const antes = unidoA(c);
+    const r = guardarProveedor(c, datosProv, false);
+    if (r.error) return r;
+    return anotar('doc:reuso:' + c, { antes, fecha: new Date().toISOString() });
+  }
+  return guardarProveedor(c, datosProv, true);
+}
 /** Proveedores visibles (sin los códigos unidos a otro). */
 export const proveedoresActivos = () => Object.values(datos().proveedores).filter((p) => !unidoA(p.codigo));
 const nombreClave = (n) => String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '');
