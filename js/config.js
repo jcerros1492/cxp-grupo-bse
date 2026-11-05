@@ -16,7 +16,7 @@ export const USUARIOS = [
 export const PINES = { jonathan: '001', fernando: '002', daniel: '003', norman: '004' };
 
 // Versión de la aplicación: se muestra abajo en cada pantalla para confirmar qué versión está publicada.
-export const VERSION = '1.26.1';
+export const VERSION = '1.26.2';
 
 // Cada cuántos segundos se buscan cambios de los demás mientras la página está abierta.
 export const SEGUNDOS_SINCRONIZAR = 20;

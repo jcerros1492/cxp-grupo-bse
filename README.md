@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.26.2 | Celular y tablet: los PDF (aviso de pago con su comprobante, facturas, comprobantes) muestran todas las hojas, una debajo de otra; antes Safari solo mostraba la primera. Usa PDF.js (incluido en la aplicación). |
 | 1.26.1 | Un código repetido que ya se unió a otro y quedó sin facturas (p. ej. el 376 unido al 366) se puede volver a usar para un proveedor nuevo, en «Proveedores nuevos» y en «+ Nuevo proveedor». |
 | 1.26.0 | Proveedores con el código del sistema contable: «Proveedores nuevos» (Recibidas) pregunta «Ya existe» o «Es nuevo» y pide el código contable (no deja uno repetido); «+ Nuevo proveedor» trae el código vacío, dice si está libre y avisa si el nombre se parece a otro. Reconoce nombres que contienen todas las palabras de otro («RODOLFO JESUS RAMIREZ RODRIGUEZ» = «RAMIREZ RODRIGUEZ RODOLFO»). |
 | 1.25.3 | Los cambios que quedaron pendientes en un dispositivo (por ejemplo, hechos sin señal) se envían a Google apenas hay internet, aunque esa persona no haya vuelto a entrar y aunque el dispositivo esté en la pantalla de usuarios o con otra persona. Quedan a nombre de quien los hizo. |

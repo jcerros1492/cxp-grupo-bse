@@ -1218,12 +1218,60 @@ function mostrarArchivo(archivo, titulo, sub) {
   ui.archivoAbierto = archivo;
   abrirDialogo(`<header class="dlg-cab"><div><h2>${esc(titulo)}</h2><p class="sub">${esc(sub || archivo.name)}</p></div><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
     <div class="dlg-cuerpo ver-comprobante">
-      ${archivo.type.startsWith('image/') ? `<img src="${url}" alt="${esc(titulo)}">` : `<iframe src="${url}" title="${esc(titulo)}"></iframe>`}
+      ${archivo.type.startsWith('image/') ? `<img src="${url}" alt="${esc(titulo)}">`
+        : verPdfConPaginas() ? '<div class="pdf-paginas" aria-label="Vista del PDF"><p class="vacio">Abriendo el PDF…</p></div>'
+        : `<iframe src="${url}" title="${esc(titulo)}"></iframe>`}
       <div class="acciones-fila">
         ${puedeCompartirArchivos() ? '<button class="btn primario" data-act="arch-compartir">Compartir (WhatsApp…)</button>' : ''}
         <button class="btn${puedeCompartirArchivos() ? '' : ' primario'}" data-act="arch-descargar">Descargar</button>
         <a class="btn" href="${url}" target="_blank" rel="noopener">Abrir en otra pestaña</a></div>
     </div>`);
+  const cont = $dialog.querySelector('.pdf-paginas');
+  if (cont) pintarPdf(archivo, cont, url, titulo);
+}
+
+/**
+ * En el celular y la tablet el visor del sistema solo muestra la primera hoja del PDF (Safari en iPhone).
+ * Ahí se dibujan todas las hojas, una debajo de otra, con PDF.js (se carga solo cuando hace falta).
+ */
+const verPdfConPaginas = () => matchMedia('(pointer: coarse), (max-width: 900px)').matches;
+let cargandoPdfJs = null;
+function cargarPdfJs() {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  cargandoPdfJs ??= new Promise((ok, mal) => {
+    const sc = document.createElement('script');
+    sc.src = 'js/vendor/pdfjs/pdf.min.js';
+    sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'js/vendor/pdfjs/pdf.worker.min.js'; ok(window.pdfjsLib); };
+    sc.onerror = () => { cargandoPdfJs = null; mal(new Error('No se pudo cargar el visor de PDF')); };
+    document.head.append(sc);
+  });
+  return cargandoPdfJs;
+}
+async function pintarPdf(archivo, cont, url, titulo) {
+  try {
+    const pdfjs = await cargarPdfJs();
+    const pdf = await pdfjs.getDocument({ data: new Uint8Array(await archivo.arrayBuffer()) }).promise;
+    if (!cont.isConnected) return;
+    cont.innerHTML = '';
+    const ancho = Math.max(280, cont.clientWidth - 2), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const pag = await pdf.getPage(i);
+      const vp = pag.getViewport({ scale: (ancho / pag.getViewport({ scale: 1 }).width) * dpr });
+      const cv = document.createElement('canvas');
+      cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
+      cv.setAttribute('aria-label', `Hoja ${i} de ${pdf.numPages}`);
+      const hoja = document.createElement('div');
+      hoja.className = 'pdf-hoja';
+      hoja.append(cv);
+      if (pdf.numPages > 1) { const et = document.createElement('span'); et.className = 'pdf-num'; et.textContent = `Hoja ${i} de ${pdf.numPages}`; hoja.append(et); }
+      cont.append(hoja);
+      await pag.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+      if (!cont.isConnected) return;
+    }
+  } catch (e) {
+    console.error(e);
+    if (cont.isConnected) cont.outerHTML = `<iframe src="${url}" title="${esc(titulo)}"></iframe>`;
+  }
 }
 
 /** Debajo del monto: si es abono, cuánto queda; si es el saldo completo, que queda cancelada. */
