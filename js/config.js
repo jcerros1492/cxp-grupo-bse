@@ -1,7 +1,10 @@
 // Dirección del servicio de Google Sheets (la URL que termina en /exec).
 // Puede quedar aquí aunque el repositorio sea público: sin la contraseña del
 // servicio, que vive solo en Apps Script, la dirección no da acceso a nada.
-export const API_URL = 'https://script.google.com/macros/s/AKfycbxBud0gvtSXjPFC9YKhSvlTxXSwIRgfENyvxSaW7ZwAYiHdcnRcXKa8PK9HYc4njTi9/exec';
+// 1.27.0: el servicio pasó a la cuenta cxp.grupobse@gmail.com (implementación nueva).
+export const API_URL = 'https://script.google.com/macros/s/AKfycbygku2f13_dnO6IgFW3P22ua0RIS4sEpCiWh8seWAZxtkhwjNqVZMYb0cGSe41LUP77/exec';
+// Direcciones anteriores: los dispositivos que las tengan guardadas se pasan solos a la nueva.
+export const URLS_ANTERIORES = ['https://script.google.com/macros/s/AKfycbxBud0gvtSXjPFC9YKhSvlTxXSwIRgfENyvxSaW7ZwAYiHdcnRcXKa8PK9HYc4njTi9/exec'];
 
 // Personas de la pantalla de inicio la primera vez en un dispositivo. Después se usa
 // la lista de la hoja de Google (pestaña Usuarios), que se administra desde Configuración.
@@ -16,7 +19,7 @@ export const USUARIOS = [
 export const PINES = { jonathan: '001', fernando: '002', daniel: '003', norman: '004' };
 
 // Versión de la aplicación: se muestra abajo en cada pantalla para confirmar qué versión está publicada.
-export const VERSION = '1.26.2';
+export const VERSION = '1.27.0';
 
 // Cada cuántos segundos se buscan cambios de los demás mientras la página está abierta.
 export const SEGUNDOS_SINCRONIZAR = 20;

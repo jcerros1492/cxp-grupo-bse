@@ -5,7 +5,7 @@
 // - Cuando hay internet, la cola se envía al servicio de Google, que la valida y
 //   devuelve lo que cambiaron los demás. Si no hay internet, se reintenta luego.
 
-import { API_URL, SEGUNDOS_SINCRONIZAR } from './config.js';
+import { API_URL, URLS_ANTERIORES, SEGUNDOS_SINCRONIZAR } from './config.js';
 
 const L = window.Logica;
 
@@ -146,6 +146,10 @@ const CLAVE_CONEXION = 'cxp-conexion';
 export function conexion() {
   try {
     const c = JSON.parse(localStorage.getItem(CLAVE_CONEXION) || 'null');
+    if (c?.url && c?.clave && URLS_ANTERIORES.includes(String(c.url).trim())) {
+      c.url = API_URL; // el servicio se mudó: se usa la dirección nueva con la misma contraseña
+      try { localStorage.setItem(CLAVE_CONEXION, JSON.stringify(c)); } catch { /* */ }
+    }
     if (c?.url && c?.clave) return c;
   } catch { /* sin almacenamiento */ }
   return null;
