@@ -2754,6 +2754,52 @@ function despuesDeRender(ruta) {
 }
 
 /**
+ * 1.28.0: arrastrar archivos desde una carpeta y soltarlos sobre cualquier botón de adjuntar/subir.
+ * Sigue funcionando igual tocando el botón para buscarlos. Lo que se suelta fuera de un botón no hace nada
+ * (antes el navegador abría el archivo y se salía de la aplicación).
+ */
+const llevaArchivos = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+const destinoArchivo = (el) => {
+  const lbl = el?.closest?.('label');
+  const inp = lbl?.querySelector('input[type=file]');
+  return inp && !inp.disabled ? { lbl, inp } : null;
+};
+function aceptaArchivo(inp, f) {
+  const acc = (inp.accept || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+  if (!acc.length) return true;
+  const nom = f.name.toLowerCase(), tipo = (f.type || '').toLowerCase();
+  return acc.some((a) => (a.startsWith('.') ? nom.endsWith(a) : a.endsWith('/*') ? tipo.startsWith(a.slice(0, -1)) : tipo === a));
+}
+let arrastres = 0;
+const limpiarArrastre = () => { arrastres = 0; document.body.classList.remove('arrastrando'); document.querySelectorAll('.soltar-aqui').forEach((x) => x.classList.remove('soltar-aqui')); };
+document.addEventListener('dragenter', (e) => { if (!llevaArchivos(e)) return; arrastres++; document.body.classList.add('arrastrando'); });
+document.addEventListener('dragleave', (e) => { if (!llevaArchivos(e)) return; if (--arrastres <= 0) limpiarArrastre(); });
+document.addEventListener('dragover', (e) => {
+  if (!llevaArchivos(e)) return;
+  e.preventDefault();
+  const d = destinoArchivo(e.target);
+  e.dataTransfer.dropEffect = d ? 'copy' : 'none';
+  document.querySelectorAll('.soltar-aqui').forEach((x) => { if (x !== d?.lbl) x.classList.remove('soltar-aqui'); });
+  d?.lbl.classList.add('soltar-aqui');
+});
+document.addEventListener('drop', (e) => {
+  if (!llevaArchivos(e)) return;
+  e.preventDefault();
+  const d = destinoArchivo(e.target);
+  limpiarArrastre();
+  if (!d) { avisar('Suelte el archivo encima del botón para adjuntar o subir', 'error'); return; }
+  const todos = [...e.dataTransfer.files];
+  const ok = todos.filter((f) => aceptaArchivo(d.inp, f));
+  if (!ok.length) { avisar(`Ese archivo no corresponde aquí (${esc(d.inp.accept.replace(/application\/|text\/|image\//g, '').replace(/,/g, ', '))})`, 'error'); return; }
+  if (ok.length < todos.length) avisar(`Se ignoraron ${todos.length - ok.length} ${todos.length - ok.length === 1 ? 'archivo que no corresponde' : 'archivos que no corresponden'}`, 'error');
+  const dt = new DataTransfer();
+  (d.inp.multiple ? ok : ok.slice(0, 1)).forEach((f) => dt.items.add(f));
+  try { d.inp.files = dt.files; } catch { avisar('Este navegador no permite soltar archivos aquí: toque el botón para buscarlo', 'error'); return; }
+  d.inp.dispatchEvent(new Event('change', { bubbles: true }));
+});
+document.addEventListener('dragend', limpiarArrastre);
+
+/**
  * Elegir archivos sin perderlos: mientras la ventana de Windows está abierta, una sincronización puede
  * redibujar la pantalla y cambiar el <input type=file> por otro; el archivo elegido quedaba en el viejo y
  * no pasaba nada (había que subirlo dos veces). Se abre un campo aparte, fuera de la pantalla que se redibuja.

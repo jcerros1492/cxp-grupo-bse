@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.28.0 | Arrastrar y soltar: cualquier botón para adjuntar o subir archivos (PDF de facturas, pagos y notas de crédito, Subir XML, Comparar con GTI, importar) acepta archivos arrastrados desde una carpeta; tocar el botón para buscarlos sigue igual. Avisa si el archivo no corresponde. |
 | 1.27.0 | Traslado: la aplicación usa el servicio de la cuenta cxp.grupobse@gmail.com (dirección nueva). Los dispositivos que tenían guardada la dirección anterior se pasan solos a la nueva, con la misma contraseña del servicio. |
 | 1.26.2 | Celular y tablet: los PDF (aviso de pago con su comprobante, facturas, comprobantes) muestran todas las hojas, una debajo de otra; antes Safari solo mostraba la primera. Usa PDF.js (incluido en la aplicación). |
 | 1.26.1 | Un código repetido que ya se unió a otro y quedó sin facturas (p. ej. el 376 unido al 366) se puede volver a usar para un proveedor nuevo, en «Proveedores nuevos» y en «+ Nuevo proveedor». |
