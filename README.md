@@ -12,6 +12,8 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.29.1 | Cierre automático: si nadie usa la aplicación durante 1 hora, se sale sola (envía lo pendiente) y al volver pide usuario y PIN, con el aviso de por qué se cerró. |
+| 1.29.0 | Seguridad: cada vez que se abre la aplicación (ventana o pestaña nueva, ícono del celular) hay que elegir usuario y escribir el PIN. Botón rojo «Salir» arriba: envía lo pendiente a Google y vuelve a la pantalla de usuarios con el aviso «Ya puede cerrar la ventana». Los cambios pendientes siguen enviándose aunque nadie esté dentro. |
 | 1.28.0 | Arrastrar y soltar: cualquier botón para adjuntar o subir archivos (PDF de facturas, pagos y notas de crédito, Subir XML, Comparar con GTI, importar) acepta archivos arrastrados desde una carpeta; tocar el botón para buscarlos sigue igual. Avisa si el archivo no corresponde. |
 | 1.27.0 | Traslado: la aplicación usa el servicio de la cuenta cxp.grupobse@gmail.com (dirección nueva). Los dispositivos que tenían guardada la dirección anterior se pasan solos a la nueva, con la misma contraseña del servicio. |
 | 1.26.2 | Celular y tablet: los PDF (aviso de pago con su comprobante, facturas, comprobantes) muestran todas las hojas, una debajo de otra; antes Safari solo mostraba la primera. Usa PDF.js (incluido en la aplicación). |

@@ -90,7 +90,7 @@ function render() {
     return `<a href="#/${r}" class="${r === ruta ? 'activo' : ''}" ${r === ruta ? 'aria-current="page"' : ''}>${RUTAS[r].titulo}${n ? ` <span class="burbuja">${n}</span>` : ''}</a>`;
   }).join('') : '';
   $user.innerHTML = u
-    ? `${indicadorRed()}<button class="usuario-info" data-act="cambiar-usuario" title="Cambiar de usuario"><span class="avatar ${colorUsuario(u.usuario)}" aria-hidden="true">${esc(u.nombre.split(' ').map((p) => p[0]).join('').slice(0, 2))}</span><span><strong>${esc(u.nombre)}</strong><small>${esc(ROLES[u.rol] || u.rol)}</small></span></button>`
+    ? `${indicadorRed()}<button class="usuario-info" data-act="cambiar-usuario" title="Cambiar de usuario"><span class="avatar ${colorUsuario(u.usuario)}" aria-hidden="true">${esc(u.nombre.split(' ').map((p) => p[0]).join('').slice(0, 2))}</span><span><strong>${esc(u.nombre)}</strong><small>${esc(ROLES[u.rol] || u.rol)}</small></span></button><button class="btn-salir" data-act="salir-usuario" title="Salir de la aplicación"><span aria-hidden="true">⎋</span> Salir</button>`
     : '';
   document.title = `${RUTAS[ruta].titulo} · Cuentas por Pagar`;
 
@@ -278,7 +278,9 @@ function vistaLogin() {
   const elegido = lista.find((x) => x.usuario === ui.login);
   if (elegido) return vistaClave(elegido);
   const conPin = lista.find((x) => x.usuario === PINUI.usuario);
+  const av = ui.avisoSalida;
   return `<section class="centro inicio ${conPin ? 'con-pin' : ''}">
+    ${av && !conPin ? `<div class="aviso-salida ${av.ok ? '' : 'pend'}" role="status">✓ ${esc(av.texto)}${av.sub ? `<small>${esc(av.sub)}</small>` : ''}</div>` : ''}
     <img class="logo-inicio" src="img/logo.png" alt="Beneficiadora Santa Eduviges">
     <h1>¿Quién está usando la aplicación?</h1>
     <p class="sub">Toque su nombre y escriba su PIN.</p>
@@ -2753,6 +2755,19 @@ function despuesDeRender(ruta) {
   if (ruta === 'config') document.querySelectorAll('[data-in="iban"]').forEach(validarCampoIBAN);
 }
 
+/** 1.29.1: si nadie usa la aplicación durante 1 hora, se sale sola (pide el PIN al volver). */
+const MINUTOS_INACTIVIDAD = 60;
+let ultimaActividad = Date.now(), saliendoSolo = false;
+const marcarActividad = () => { ultimaActividad = Date.now(); };
+['pointerdown', 'keydown', 'wheel', 'touchstart', 'input'].forEach((t) => document.addEventListener(t, marcarActividad, { passive: true, capture: true }));
+async function revisarInactividad() {
+  if (saliendoSolo || !S.usuarioActual() || Date.now() - ultimaActividad < MINUTOS_INACTIVIDAD * 60000) return;
+  saliendoSolo = true;
+  try { await acciones['salir-usuario']('inactividad'); } finally { saliendoSolo = false; marcarActividad(); }
+}
+setInterval(revisarInactividad, 60000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') revisarInactividad(); });
+
 /**
  * 1.28.0: arrastrar archivos desde una carpeta y soltarlos sobre cualquier botón de adjuntar/subir.
  * Sigue funcionando igual tocando el botón para buscarlos. Lo que se suelta fuera de un botón no hace nada
@@ -2884,8 +2899,24 @@ const acciones = {
     else if (v === 'atras') ponerPin(PINUI.valor.slice(0, -1));
     else ponerPin(PINUI.valor + v);
   },
-  'cambiar-usuario': () => {
-    try { Sync.cambiarUsuario(); cerrarDialogo(); ui.login = ''; location.hash = ''; render(); } catch (e) { avisar(e.message, 'error'); }
+  'cambiar-usuario': () => acciones['salir-usuario'](),
+  'salir-usuario': async (v, el) => {
+    if (el) { el.disabled = true; el.textContent = 'Saliendo…'; }
+    cerrarDialogo();
+    // Antes de salir se envía a Google lo que esté pendiente (si hay internet).
+    if (navigator.onLine && Sync.pendientesPropios()) { try { await Sync.sincronizar(); } catch { /* se envía después */ } }
+    const quedan = Sync.pendientesPropios(), porInactividad = v === 'inactividad';
+    Sync.cambiarUsuario();
+    Object.assign(PINUI, { usuario: '', valor: '', error: false });
+    ui.login = '';
+    ui.avisoSalida = quedan
+      ? { ok: false, texto: `Salió de la aplicación. ${quedan} ${quedan === 1 ? 'cambio se enviará' : 'cambios se enviarán'} a Google cuando haya internet (no se pierden). Ya puede cerrar la ventana.` }
+      : { ok: true, texto: 'Salió de la aplicación. Ya puede cerrar la ventana.', sub: 'Los cambios ya están en Google.' };
+    if (porInactividad) { ui.avisoSalida.texto = 'Se cerró la sesión porque pasó 1 hora sin usar la aplicación. Toque su nombre y escriba su PIN para volver a entrar.'; ui.avisoSalida.sub = quedan ? 'Los cambios pendientes se enviarán solos.' : 'Los cambios ya están en Google.'; }
+    location.hash = '';
+    render();
+    clearTimeout(ui.tAvisoSalida);
+    if (!porInactividad) ui.tAvisoSalida = setTimeout(() => { ui.avisoSalida = null; if (!S.usuarioActual()) render(); }, 60000);
   },
   cuenta: () => acciones['cambiar-usuario'](),
   salir: async () => {

@@ -92,7 +92,11 @@ export async function iniciar() {
     if (g) Object.assign(estado, g);
     let propio = null;
     try { propio = sessionStorage.getItem(CLAVE_PESTANA); } catch { /* sin almacenamiento */ }
-    if (propio !== null && propio !== (estado.sesion?.usuario || '')) {
+    if (propio === null) {
+      // 1.29.0: ventana o pestaña nueva (o la aplicación del celular recién abierta): siempre se elige usuario
+      // y se escribe el PIN. Los datos guardados y los accesos de cada persona se conservan.
+      estado.sesion = null;
+    } else if (propio !== (estado.sesion?.usuario || '')) {
       const s = propio ? sesionesGuardadas()[propio] : null;
       estado.sesion = s && !s.debeCambiar ? { ...s } : null; // sin sesión guardada: vuelve a la pantalla de usuarios
     }
@@ -284,7 +288,7 @@ export function entrarGuardado(usuario) {
 
 /** Vuelve a la pantalla de usuarios sin borrar los datos de este dispositivo. */
 export function cambiarUsuario() {
-  if (estado.pendientes.length) throw new Error('Hay cambios que aún no llegan a Google. Espere a que se sincronicen antes de cambiar de usuario.');
+  // Los cambios pendientes no se pierden: se envían solos con el acceso de quien los hizo (1.25.3).
   estado.sesion = null;
   guardarLocal();
   notificar();
@@ -402,6 +406,9 @@ async function enviarAjenos() {
   if (algo) { guardarLocal(); recomputar(); notificar(); }
   return algo;
 }
+
+/** Cambios de la persona que está usando la aplicación que todavía no llegan a Google. */
+export const pendientesPropios = () => estado.pendientes.filter((op) => !op.hechoPor || op.hechoPor === estado.sesion?.usuario).length;
 
 export async function sincronizar() {
   if (sincronizando) return;
