@@ -151,6 +151,23 @@ export const adjLote = (loteId) => nota('adj:lote:' + loteId);
 export const guardarAdjLote = (loteId, archivo) => anotar('adj:lote:' + loteId, archivo);
 /** PDF de la factura (el que llegó por correo a «Recibidas»): { id, nombre }. */
 export const pdfFactura = (facturaId) => nota('adj:fact:' + facturaId);
+// ---------------------------------------------------------------- Anular facturas (1.30.0, solo administrador)
+/** Se puede anular: sin pagos, abonos ni notas de crédito, y sin programar. */
+export const puedeAnular = (f) => esAdmin() && !!f && !movimientosDe(f).length && !programacionDe(f);
+export function anularFactura(id, motivo) {
+  const f = factura(id);
+  if (!esAdmin()) return { error: 'Solo el administrador puede anular facturas' };
+  if (!f) return { error: 'La factura no existe' };
+  if (movimientosDe(f).length) return { error: 'La factura tiene pagos o notas de crédito: corrija primero esos movimientos' };
+  if (programacionDe(f)) return { error: 'La factura está programada: quítela primero de Por aplicar' };
+  return anotar('doc:anulada:' + id, { motivo: String(motivo || '').trim() || 'Sin motivo', por: Sync.estado.sesion?.nombre || '', fecha: new Date().toISOString() });
+}
+export function restaurarFactura(id) {
+  if (!esAdmin()) return { error: 'Solo el administrador puede restaurar facturas' };
+  return anotar('doc:anulada:' + id, '');
+}
+export const listaAnuladas = () => Object.values(datos().anuladas || {})
+  .sort((a, b) => String(b.anulada?.fecha || '').localeCompare(String(a.anulada?.fecha || '')));
 export const guardarPdfFactura = (facturaId, archivo) => anotar('adj:fact:' + facturaId, archivo);
 /** PDF propio de un movimiento (p. ej. la nota de crédito): { id, nombre }. */
 export const pdfMov = (movId) => nota('adj:mov:' + movId);

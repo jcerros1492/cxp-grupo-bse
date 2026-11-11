@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.30.0 | «Anular factura» (solo Jonathan): en el detalle de una factura sin pagos, notas de crédito ni programación; pide motivo y deja de contar en saldos, Tablero, Programar pagos y reportes en todos los dispositivos. Configuración → «Facturas anuladas» (solo Jonathan) con motivo, quién y cuándo, y «Restaurar». Sin cambios en Apps Script (usa las anotaciones doc:). |
 | 1.29.1 | Cierre automático: si nadie usa la aplicación durante 1 hora, se sale sola (envía lo pendiente) y al volver pide usuario y PIN, con el aviso de por qué se cerró. |
 | 1.29.0 | Seguridad: cada vez que se abre la aplicación (ventana o pestaña nueva, ícono del celular) hay que elegir usuario y escribir el PIN. Botón rojo «Salir» arriba: envía lo pendiente a Google y vuelve a la pantalla de usuarios con el aviso «Ya puede cerrar la ventana». Los cambios pendientes siguen enviándose aunque nadie esté dentro. |
 | 1.28.0 | Arrastrar y soltar: cualquier botón para adjuntar o subir archivos (PDF de facturas, pagos y notas de crédito, Subir XML, Comparar con GTI, importar) acepta archivos arrastrados desde una carpeta; tocar el botón para buscarlos sigue igual. Avisa si el archivo no corresponde. |

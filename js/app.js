@@ -1079,7 +1079,7 @@ function dialogoFactura(id) {
       </div>
       ${S.pdfFactura(f.id)?.id ? `<div class="acciones-fila"><button class="btn" data-act="ver-arch" data-v="${esc(S.pdfFactura(f.id).id)}">📄 Ver factura (PDF)</button>${S.esNorman() ? '' : `<label class="btn-link subir-pdf">cambiar PDF<input type="file" accept="application/pdf,image/jpeg,image/png" data-in="fact-pdf" data-v="${f.id}" hidden></label>`}</div>`
         : S.esNorman() ? '' : `<div class="acciones-fila"><label class="adjuntar">📎 <span>Adjuntar PDF de la factura</span><input type="file" accept="application/pdf,image/jpeg,image/png" data-in="fact-pdf" data-v="${f.id}" hidden></label></div>`}
-      ${s > 0.004 && !S.esNorman() ? `<div class="acciones-fila"><button class="btn btn-norman" data-act="pn-abrir" data-v="${f.id}">✔ Pagar ahora</button></div>` : ''}
+      ${s > 0.004 && !S.esNorman() ? `<div class="acciones-fila"><button class="btn btn-norman" data-act="pn-abrir" data-v="${f.id}">✔ Pagar ahora</button>${S.puedeAnular(f) ? `<button class="btn btn-anular" data-act="f-anular" data-v="${f.id}">🗑 Anular factura</button>` : ''}</div>` : ''}
       <form class="form-grid" data-form="f-fechas" data-v="${f.id}">
         <label>Fecha de factura <input type="date" name="fechaFactura" value="${f.fechaFactura || ''}"></label>
         <label>Vencimiento ${f.venceEstimado ? '<span class="est">EST</span>' : ''}<input type="date" name="fechaVence" value="${f.fechaVence || ''}"></label>
@@ -2599,6 +2599,34 @@ function pdfEstado() {
 
 // ---------------------------------------------------------------- Configuración
 
+const MOTIVOS_ANULAR = ['Es de contado', 'Duplicada', 'Venía por error en el archivo inicial', 'No es de cuentas por pagar'];
+function dialogoAnular(id) {
+  const f = S.factura(id);
+  if (!f || !S.puedeAnular(f)) { avisar('Esta factura no se puede anular (tiene pagos, notas de crédito o está programada)', 'error'); return; }
+  abrirDialogo(`<header class="dlg-cab"><div><h2>¿Anular la factura ${esc(f.documento)}?</h2>
+      <p class="sub">${esc(S.proveedor(f.codigo).nombre)} · ${esc(S.nombreSociedad(f.sociedad))} · ${money(f.monto, f.moneda)}</p></div>
+      <button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+    <form class="dlg-cuerpo form-grid" data-form="anular" data-v="${f.id}">
+      <label class="ancho">Motivo <select name="motivo" data-in="anular-motivo">${MOTIVOS_ANULAR.map((m) => `<option>${esc(m)}</option>`).join('')}<option value="otro">Otro (escribir)</option></select></label>
+      <label class="ancho anular-otro" hidden>Escriba el motivo <input name="otro" maxlength="120" autocomplete="off"></label>
+      <div class="ancho aviso">Deja de contar en saldos, Tablero, Programar pagos, reportes y estados de cuenta, en todos los dispositivos. Se puede <b>restaurar</b> después desde Configuración → Facturas anuladas.</div>
+      <div class="ancho acciones-fila"><button class="btn btn-anular-ok" type="submit">Anular factura</button><button class="btn" type="button" data-act="cerrar">Cancelar</button></div>
+    </form>`);
+}
+
+function seccionAnuladas() {
+  const l = S.listaAnuladas();
+  return `<section class="bloque">
+    <h2>Facturas anuladas</h2>
+    <p class="sub">Solo usted ve esta lista. Las anuladas no cuentan en saldos, reportes ni estados de cuenta. «Restaurar» la devuelve tal como estaba.</p>
+    ${l.length ? `<div class="tabla-scroll"><table class="tabla"><thead><tr><th>Factura</th><th>Sociedad</th><th>Proveedor</th><th class="num">Monto</th><th>Motivo</th><th>Anuló</th><th></th></tr></thead><tbody>
+      ${l.map((f) => `<tr><td class="tachado">${esc(f.documento)}</td><td>${esc(S.nombreSociedad(f.sociedad))}</td><td>${esc(S.proveedor(f.codigo).nombre)}</td><td class="num">${money(f.monto, f.moneda)}</td>
+        <td>${esc(f.anulada.motivo || '')}</td><td>${esc(f.anulada.por || '')}${f.anulada.fecha ? ' · ' + fmtFecha(String(f.anulada.fecha).slice(0, 10)) : ''}</td>
+        <td><button class="btn chico" data-act="f-restaurar" data-v="${esc(f.id)}">Restaurar</button></td></tr>`).join('')}</tbody></table></div>`
+      : '<p class="vacio">No hay facturas anuladas.</p>'}
+  </section>`;
+}
+
 function seccionPines() {
   const lista = (Sync.usuariosConocidos() || USUARIOS).filter((u) => PINES[u.usuario]);
   return `<section class="bloque">
@@ -2701,7 +2729,7 @@ function vistaConfig() {
     </form>`).join('') : '<p class="sub">Aparecerán al cargar el Excel.</p>'}
   </section>
 
-  ${S.esAdmin() ? seccionUsuarios() + seccionPines() : ''}
+  ${S.esAdmin() ? seccionUsuarios() + seccionPines() + seccionAnuladas() : ''}
 
   ${S.esAdmin() ? `<section class="bloque">
     <h2>Volver a cargar el Excel</h2>
@@ -2934,6 +2962,12 @@ const acciones = {
   'f-tramo': (v) => { ui.fact.tramo = v; ui.fact.limite = 150; render(); },
   'nada': () => {},
   'f-sel-quitar': () => { ui.fact.sel.clear(); render(); },
+  'f-anular': (v) => dialogoAnular(v),
+  'f-restaurar': (v) => {
+    const f = S.datos().anuladas?.[v];
+    if (!f || !confirm(`¿Restaurar la factura ${f.documento} de ${S.proveedor(f.codigo).nombre}? Vuelve a contar en saldos y reportes.`)) return;
+    if (resultado(S.restaurarFactura(v), 'Factura restaurada')) render();
+  },
   'f-pagar-varias': () => dialogoPagarVarias(),
   'p-todas': (v) => { for (const id of v.split(',')) { const f = S.factura(id); if (!S.programacionDe(f) && !ui.prog.sel.has(id)) ui.prog.sel.set(id, fmtNum(S.saldo(f))); } render(); },
   'p-quitar': (v) => { if (confirm('¿Quitar este pago de lo programado?')) resultado(S.quitarProgramacion(v, 'Quitado por Norman'), 'Pago quitado'); },
@@ -3315,6 +3349,7 @@ document.addEventListener('change', async (e) => {
     } catch (err) { avisar('No se pudo subir: ' + err.message, 'error'); }
     return;
   }
+  if (k === 'anular-motivo') { const o = el.form.querySelector('.anular-otro'); o.hidden = el.value !== 'otro'; if (!o.hidden) o.querySelector('input').focus(); return; }
   if (k === 'rc-modo') { const b = el.closest('.rc-nuevo'); if (b) { b.dataset.modo = el.value; if (el.value === 'nuevo') b.querySelector('[data-in="rc-cod"]')?.focus(); } return; }
   if (k === 'rc-subir') { const files = [...el.files]; el.value = ''; if (files.length) await subirXmlRecibidas(files); return; }
   if (k === 'rc-gti') { const f = el.files[0]; el.value = ''; if (f) await compararGTI(f); return; }
@@ -3488,6 +3523,11 @@ document.addEventListener('submit', (e) => {
       cerrarDialogo(); render();
       adjuntarDespues('pn|' + f.id, `${limpioArchivo(S.proveedor(f.codigo).nombre).slice(0, 40)} ${x.comprobante}`, (a) => S.guardarDocLinea(r.loteId, r.codigo, { archivo: a }));
     }
+  } else if (k === 'anular') {
+    const motivo = form.motivo.value === 'otro' ? form.otro.value.trim() : form.motivo.value;
+    if (!motivo) { avisar('Escriba el motivo', 'error'); form.otro.focus(); return; }
+    const f = S.factura(form.dataset.v);
+    if (resultado(S.anularFactura(form.dataset.v, motivo), `Factura ${f?.documento || ''} anulada`)) { cerrarDialogo(); render(); }
   } else if (k === 'pagar-varias') {
     const fs = facturasMarcadas();
     const pr = S.problemaVarias(fs);

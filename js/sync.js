@@ -66,6 +66,16 @@ function recomputar() {
   L.prepararIndices(d);
   const ctx = { usuario: estado.sesion, ahora: Date.now() };
   for (const op of estado.pendientes) L.aplicarOp(d, op, ctx);
+  // 1.30.0: facturas anuladas (anotación doc:anulada:<id>) se sacan de la vista: no cuentan en ningún lado.
+  const anuladas = {};
+  for (const k of Object.keys(d.config || {})) {
+    if (!k.startsWith('doc:anulada:')) continue;
+    const id = k.slice(12);
+    let v = null;
+    try { v = JSON.parse(d.config[k].valor || 'null'); } catch { v = null; }
+    if (v && d.facturas[id]) { anuladas[id] = { ...d.facturas[id], anulada: v }; delete d.facturas[id]; }
+  }
+  Object.defineProperty(d, 'anuladas', { value: anuladas, enumerable: false, configurable: true, writable: true });
   vista = d;
 }
 

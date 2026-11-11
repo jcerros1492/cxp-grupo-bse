@@ -1032,3 +1032,9 @@ label.soltar-aqui::after { content: 'Suelte aquí'; position: absolute; left: 50
 .aviso-salida small { display: block; font-weight: 400; opacity: .9; margin-top: 2px; }
 .aviso-salida.pend { background: var(--ambar); }
 @media screen and (max-width: 760px) { .btn-salir { padding: 5px 9px; font-size: 12.5px; } .btn-salir span { display: none; } }
+
+/* Anular facturas (1.30.0) */
+.btn-anular { color: var(--rojo); border-color: #f3b0a8; background: #fff5f4; }
+.btn-anular:hover { background: #fde8e6; }
+.btn-anular-ok { background: var(--rojo); color: #fff; border-color: var(--rojo); }
+.tabla td.tachado { text-decoration: line-through; color: var(--tenue); }
