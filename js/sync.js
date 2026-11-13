@@ -111,6 +111,7 @@ export async function iniciar() {
       estado.sesion = s && !s.debeCambiar ? { ...s } : null; // sin sesión guardada: vuelve a la pantalla de usuarios
     }
     recordarPestana();
+    setTimeout(limpiarCopias, 15000);
   } catch (e) {
     console.error('No se pudo leer la copia local', e);
   }
@@ -345,11 +346,61 @@ export async function recibidas(accion, datos = {}) {
   return r;
 }
 
+// ---------------------------------------------------------------- Copia rápida de comprobantes (1.31.0)
+// El original siempre queda en Google Drive. Cada dispositivo guarda una copia de los PDF que abrió, subió o
+// precargó para mostrarlos al instante; se borra sola a los 30 días sin usarse (y como máximo 300 archivos).
+const DIAS_COPIA = 30, MAX_COPIAS = 300, PREF_ARCH = 'arch:';
+const enCamino = new Map();
+const idbClaves = () => idb('readonly', (s) => s.getAllKeys());
+export async function guardarArchivoLocal(id, a) {
+  if (!id || !a?.base64) return;
+  try { await idbSet(PREF_ARCH + id, { nombre: a.nombre, tipo: a.tipo, base64: a.base64, t: Date.now() }); } catch { /* sin espacio: se trae de Google */ }
+}
+async function copiaLocal(id) {
+  try {
+    const c = await idbGet(PREF_ARCH + id);
+    if (!c?.base64) return null;
+    if (Date.now() - (c.t || 0) > 864e5) idbSet(PREF_ARCH + id, { ...c, t: Date.now() }).catch(() => {});
+    return c;
+  } catch { return null; }
+}
+export const tieneCopia = async (id) => !!(await copiaLocal(id));
+export async function limpiarCopias() {
+  try {
+    const claves = (await idbClaves()).filter((k) => String(k).startsWith(PREF_ARCH));
+    const datos = [];
+    for (const k of claves) { const c = await idbGet(k); datos.push({ k, t: c?.t || 0 }); }
+    datos.sort((a, b) => b.t - a.t);
+    const limite = Date.now() - DIAS_COPIA * 864e5;
+    for (const [i, x] of datos.entries()) if (x.t < limite || i >= MAX_COPIAS) await idbDel(x.k);
+  } catch { /* nada */ }
+}
 export async function leerArchivo(id) {
-  if (!navigator.onLine) throw new Error('Para ver comprobantes se necesita internet');
-  const r = await api({ accion: 'leerArchivo', token: estado.sesion?.token, id });
-  if (!r.ok) throw new Error(r.error || 'No se pudo abrir el comprobante');
-  return r;
+  const c = await copiaLocal(id);
+  if (c) return { ok: true, id, nombre: c.nombre, tipo: c.tipo, base64: c.base64, local: true };
+  if (enCamino.has(id)) return enCamino.get(id);
+  const p = (async () => {
+    if (!navigator.onLine) throw new Error('Para ver comprobantes se necesita internet');
+    const r = await api({ accion: 'leerArchivo', token: estado.sesion?.token, id });
+    if (!r.ok) throw new Error(r.error || 'No se pudo abrir el comprobante');
+    guardarArchivoLocal(id, r);
+    return r;
+  })();
+  enCamino.set(id, p);
+  try { return await p; } finally { enCamino.delete(id); }
+}
+/** Trae en segundo plano, de a uno, los comprobantes que todavía no están en el dispositivo. */
+let precargando = false;
+export async function precargarArchivos(ids) {
+  if (precargando || !navigator.onLine || !estado.sesion?.token) return;
+  precargando = true;
+  try {
+    for (const id of [...new Set(ids.filter(Boolean))]) {
+      if (!navigator.onLine || !estado.sesion?.token) break;
+      if (await copiaLocal(id)) continue;
+      try { await leerArchivo(id); } catch { /* se intenta al abrirlo */ }
+    }
+  } finally { precargando = false; }
 }
 
 /** Administración de usuarios (solo administradores). */

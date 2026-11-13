@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.31.0 | Comprobantes más rápidos: cada dispositivo guarda una copia de los PDF que abre o sube (el original sigue en Google Drive); la segunda vez salen al instante. El que sube el comprobante lo tiene listo de una vez, y «Aplicados recientemente» precarga en segundo plano los comprobantes de los últimos pagos. Las copias se borran solas a los 30 días sin usarse. |
 | 1.30.0 | «Anular factura» (solo Jonathan): en el detalle de una factura sin pagos, notas de crédito ni programación; pide motivo y deja de contar en saldos, Tablero, Programar pagos y reportes en todos los dispositivos. Configuración → «Facturas anuladas» (solo Jonathan) con motivo, quién y cuándo, y «Restaurar». Sin cambios en Apps Script (usa las anotaciones doc:). |
 | 1.29.1 | Cierre automático: si nadie usa la aplicación durante 1 hora, se sale sola (envía lo pendiente) y al volver pide usuario y PIN, con el aviso de por qué se cerró. |
 | 1.29.0 | Seguridad: cada vez que se abre la aplicación (ventana o pestaña nueva, ícono del celular) hay que elegir usuario y escribir el PIN. Botón rojo «Salir» arriba: envía lo pendiente a Google y vuelve a la pantalla de usuarios con el aviso «Ya puede cerrar la ventana». Los cambios pendientes siguen enviándose aunque nadie esté dentro. |

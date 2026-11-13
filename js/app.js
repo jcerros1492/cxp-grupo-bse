@@ -624,6 +624,16 @@ function dialogoDevolverRevision(id) {
 function vistaAplicar() {
   const lotes = S.lotesPendientes();
   const hechos = S.lotesAplicados().slice(0, 15);
+  // Precarga en segundo plano los comprobantes de estos pagos (para que «Compartir» salga rápido).
+  clearTimeout(ui.tPrecarga);
+  ui.tPrecarga = setTimeout(() => {
+    const ids = [];
+    for (const l of hechos.slice(0, 8)) {
+      ids.push(S.adjLote(l.id)?.id);
+      try { for (const y of JSON.parse(l.detalle || '[]')) ids.push(S.docLinea(l.id, y.codigo)?.archivo?.id); } catch { /* sin detalle */ }
+    }
+    Sync.precargarArchivos(ids);
+  }, 1500);
   return `
   <div class="titulo-vista">
     <div>
@@ -1183,6 +1193,7 @@ async function subirComprobante(file, nombre) {
   const base64 = await archivoBase64(file);
   const ext = file.type === 'image/png' ? '.png' : file.type === 'image/jpeg' ? '.jpg' : '.pdf';
   const r = await Sync.subirArchivo({ nombre: (nombre || file.name.replace(/\.[^.]+$/, '')) + ext, tipo: file.type || 'application/pdf', base64 });
+  Sync.guardarArchivoLocal(r.id, { nombre: r.nombre, tipo: r.tipo || file.type || 'application/pdf', base64 }); // ya está en este dispositivo
   return { id: r.id, nombre: r.nombre, tipo: r.tipo };
 }
 
