@@ -8,6 +8,7 @@ import { crearAvisoPago } from './aviso-pdf.js';
 import { CAMPOS as CAMPOS_IMP, leerFilas, filaEncabezado, sugerirMapeo, prepararFacturas, detectarGTI, CEDULAS_SOCIEDAD, nombreClave, numeroDocumento, cedulasConocidas, nombreLegible, buscarPorNombre } from './importar-facturas.js';
 import { archivoContable, lineaContable } from './contable.js';
 import { construirArchivo } from './banco.js';
+import * as BCT from './bct.js';
 import {
   money, fmtNum, parseNum, parseMonto, formatearMontoEscrito, fechaHora, fmtFecha, hoyISO, esc, errorIBAN, fmtIBAN, sumarDias, round2, MONEDAS,
 } from './util.js';
@@ -689,7 +690,8 @@ function tarjetaLote(l) {
   const nFact = l.lineas.reduce((s, x) => s + x.items.length, 0);
   const id = encodeURIComponent(l.clave);
   const subBanco = S.subLote(l, banco.map((x) => x.codigo));
-  const problemas = banco.length ? S.problemasLote(subBanco) : [];
+  const conBCT = S.esBeneficiadora(l.sociedad), bct = bancoDe(l) === 'BCT';
+  const problemas = banco.length ? (bct ? problemasBCT(subBanco) : S.problemasLote(subBanco)) : [];
   const facts = (ln, conDevolver) => ln.items.map(({ p, f }) => `<div>${esc(f.documento)}: ${money(p.monto, f.moneda)}${p.monto < S.saldo(f) - 0.004 ? ' <span class="tag-abono">abono</span>' : ''}
       ${conDevolver ? `<button class="btn-link" data-act="a-devolver" data-v="${p.id}" title="Devolver a Norman">devolver</button>` : ''}</div>`).join('');
   return `<section class="lote">
@@ -703,7 +705,7 @@ function tarjetaLote(l) {
     </header>
     ${pendientes.length ? `
     <div class="tabla-scroll"><table class="tabla lote-tabla">
-      <thead><tr><th>Proveedor</th><th>Facturas</th><th>IBAN</th><th class="num">Intereses / otros</th><th>Descripción para el banco</th><th class="num">Total</th><th>¿Cómo se paga?</th></tr></thead>
+      <thead><tr><th>Proveedor</th><th>Facturas</th><th>IBAN</th><th class="num">Intereses / otros</th><th>Descripción para el banco</th>${bct ? '<th>Concepto (BCT)</th>' : ''}<th class="num">Total</th><th>¿Cómo se paga?</th></tr></thead>
       <tbody>${pendientes.map((ln) => {
         const k = l.clave + '|' + ln.codigo, ke = encodeURIComponent(k), fm = forma(ln);
         return `<tr class="${fm === 'manual' ? 'fila-manual' : ''}">
@@ -712,6 +714,8 @@ function tarjetaLote(l) {
         <td class="mono">${ln.iban ? `${fmtIBAN(ln.iban)} ${errorIBAN(ln.iban) ? '<span class="malo">inválido</span>' : ''}` : `<button type="button" class="btn-link agregar-iban ${fm === 'banco' ? 'malo' : ''}" data-act="iban-rapido" data-v="${esc(ln.codigo)}" data-mon="${l.moneda}" data-docs="${esc(ln.items.map(({ f }) => f.documento).join(' '))}">Agregar IBAN</button>`}</td>
         <td class="num"><input class="mini" type="text" inputmode="decimal" data-monto value="${ln.extra ? fmtNum(ln.extra) : ''}" placeholder="0,00" data-in="a-extra" data-lote="${id}" data-v="${esc(ln.codigo)}" aria-label="Intereses u otros cargos para ${esc(ln.prov.nombre)}"></td>
         <td><input type="text" value="${esc(ln.descripcion)}" data-in="a-desc" data-lote="${id}" data-v="${esc(ln.codigo)}" aria-label="Descripción para ${esc(ln.prov.nombre)}"></td>
+        ${bct ? `<td><input type="text" value="${esc(ln.concepto)}" data-in="a-concepto" data-lote="${id}" data-v="${esc(ln.codigo)}" aria-label="Concepto BCT para ${esc(ln.prov.nombre)}">
+          ${fm === 'banco' && BCT.faltaBCT(ln).length ? `<div class="malo chico-txt">Falta ${BCT.faltaBCT(ln).join(', ')} · <button type="button" class="btn-link" data-act="pv-abrir" data-v="${esc(ln.codigo)}">completar</button></div>` : ''}</td>` : ''}
         <td class="num"><strong>${money(ln.total, l.moneda)}</strong></td>
         <td class="forma-celda">
           <span class="seg" role="group" aria-label="Cómo se paga ${esc(ln.prov.nombre)}">
@@ -728,11 +732,12 @@ function tarjetaLote(l) {
     <div class="lote-acciones">
       <div class="paso">
         <span class="num-paso">1</span>
+        ${conBCT && banco.length ? `<span class="seg seg-banco" role="group" aria-label="Banco del archivo"><button type="button" class="${bct ? '' : 'on'}" data-act="a-banco" data-v="${id}|BCR">BCR</button><button type="button" class="${bct ? 'on' : ''}" data-act="a-banco" data-v="${id}|BCT">BCT</button></span>` : ''}
         <span class="sub paso-txt">${banco.length ? `El archivo lleva <b>${banco.length} ${banco.length === 1 ? 'proveedor' : 'proveedores'}</b> · ${money(subBanco.total, l.moneda)}${banco.length < pendientes.length ? ' (sin los pagos manuales)' : ''}` : 'Todos los pagos pendientes de este grupo son manuales.'}</span>
-        ${banco.length && !problemas.length ? `<label class="consec">Consecutivo del archivo <input type="text" inputmode="numeric" maxlength="3" id="consec-${id}" value="${S.siguienteConsecutivo(l.sociedad)}" aria-describedby="consec-ayuda-${id}"></label>
+        ${banco.length && !problemas.length && !bct ? `<label class="consec">Consecutivo del archivo <input type="text" inputmode="numeric" maxlength="3" id="consec-${id}" value="${S.siguienteConsecutivo(l.sociedad)}" aria-describedby="consec-ayuda-${id}"></label>
         <span class="sub consec-ayuda" id="consec-ayuda-${id}">Último usado en ${esc(S.nombreSociedad(l.sociedad))}: ${S.bancoSoc(l.sociedad).ultimo ? c3(S.bancoSoc(l.sociedad).ultimo) : '—'}</span>` : ''}
         <button class="btn" data-act="a-ver-txt" data-v="${id}" ${!banco.length || problemas.length ? 'disabled' : ''}>Ver contenido</button>
-        <button class="btn oscuro" data-act="a-txt" data-v="${id}" ${!banco.length || problemas.length ? 'disabled' : ''}>Descargar archivo para el banco (.txt)</button>
+        <button class="btn oscuro" data-act="a-txt" data-v="${id}" ${!banco.length || problemas.length ? 'disabled' : ''}>${bct ? 'Descargar archivo para el BCT (.txt)' : 'Descargar archivo para el banco (.txt)'}</button>
       </div>
     </div>` : ''}
     ${envios.map(({ grupo, e, lineas }) => {
@@ -740,7 +745,7 @@ function tarjetaLote(l) {
       return `
     <div class="enviado">
       <div class="enviado-cab"><span class="estado-envio">Enviado al banco · esperando comprobante</span>
-        <span class="sub">${e.consecutivo ? `Consecutivo <b>${c3(e.consecutivo)}</b> · ` : ''}generado por ${esc(e.por || '—')} · ${fechaHora(Date.parse(e.fecha))} · ${lineas.length} ${lineas.length === 1 ? 'proveedor' : 'proveedores'} · ${money(round2(lineas.reduce((t, x) => t + x.total, 0)), l.moneda)}</span></div>
+        <span class="sub">${e.banco === 'BCT' ? '<b>BCT</b> · ' : e.consecutivo ? `${conBCT ? 'BCR · ' : ''}Consecutivo <b>${c3(e.consecutivo)}</b> · ` : ''}generado por ${esc(e.por || '—')} · ${fechaHora(Date.parse(e.fecha))} · ${lineas.length} ${lineas.length === 1 ? 'proveedor' : 'proveedores'} · ${money(round2(lineas.reduce((t, x) => t + x.total, 0)), l.moneda)}</span></div>
       <ul class="enviado-lista">${lineas.map((ln) => `<li><strong>${esc(ln.prov.nombre)}</strong> <span class="sub">${ln.items.map(({ f }) => esc(f.documento)).join(' · ')}</span> <span class="num">${money(ln.total, l.moneda)}</span></li>`).join('')}</ul>
       <div class="paso aplicar">
         <span class="num-paso">2</span>
@@ -750,7 +755,7 @@ function tarjetaLote(l) {
         <button class="btn primario" data-act="a-aplicar" data-v="${id}" data-g="${g}">Aplicar pago</button>
       </div>
       <div class="enviado-otras">
-        <button class="btn-link" data-act="a-txt-rechazo" data-v="${id}" data-g="${g}">El banco rechazó el consecutivo: generar con otro</button> ·
+        ${e.banco === 'BCT' ? '' : `<button class="btn-link" data-act="a-txt-rechazo" data-v="${id}" data-g="${g}">El banco rechazó el consecutivo: generar con otro</button> ·`}
         <button class="btn-link" data-act="a-txt-otra" data-v="${id}" data-g="${g}">Descargar el archivo otra vez</button> ·
         <button class="btn-link" data-act="a-volver" data-v="${id}" data-g="${g}">Volver a pendiente (si el banco lo rechazó)</button>
       </div>
@@ -878,6 +883,32 @@ function descargarTxt(l, consecutivo, sufijo = '') {
   if (Number(S.bancoSoc(l.sociedad).ultimo) !== Number(consecutivo)) S.guardarBancoSoc(l.sociedad, { ultimo: Number(consecutivo) });
 }
 const c3 = (n) => String(n).padStart(3, '0');
+
+// ---------------------------------------------------------------- Banco BCT (1.32.0)
+/** Banco elegido para el archivo de un grupo de Por aplicar: BCR (siempre) o BCT (solo Santa Eduviges). */
+const bancoDe = (l) => (S.esBeneficiadora(l.sociedad) && (ui.bancoLote || {})[l.clave] === 'BCT' ? 'BCT' : 'BCR');
+const lineasBCT = (l) => l.lineas.map((ln) => ({ tipo: ln.tipo, cedula: ln.cedula, nombre: ln.prov.nombre, iban: ln.iban, monto: ln.total, moneda: l.moneda, descripcion: ln.descripcion, correo: ln.correo, concepto: ln.concepto }));
+function problemasBCT(l) {
+  const out = [];
+  for (const ln of l.lineas) {
+    const f = BCT.faltaBCT({ iban: ln.iban, cedula: ln.cedula, correo: ln.correo });
+    if (f.length) out.push(`${ln.prov.nombre}: falta ${f.join(', ')} para el BCT (Proveedores → abrir el proveedor → «Datos para el banco BCT», o Configuración → «Cargar datos BCT»).`);
+  }
+  return out;
+}
+function descargarBCT(l, sufijo = '') {
+  const { bytes } = BCT.archivoBCT(lineasBCT(l));
+  const soc = S.nombreSociedad(l.sociedad).toUpperCase().replace(/[^A-Z0-9]+/g, '');
+  descargar(`BCT_PROVEEDORES_${soc}_${l.moneda}_${l.fecha.split('-').reverse().join('')}${sufijo}.txt`, new Blob([bytes], { type: 'text/plain' }), 'text/plain');
+}
+/** Selector BCR/BCT y concepto para «Pagar ahora» y «Pagar seleccionadas» (solo Santa Eduviges). */
+function selectorBancoDialogo(soc, concepto) {
+  if (!S.esBeneficiadora(soc)) return '';
+  return `<div class="banco-dlg"><span class="lbl">Banco del archivo</span>
+    <span class="seg" role="radiogroup" aria-label="Banco"><label><input type="radio" name="bancoArchivo" value="BCR" checked data-in="banco-dlg"> BCR</label><label><input type="radio" name="bancoArchivo" value="BCT" data-in="banco-dlg"> BCT</label></span>
+    <label class="solo-bct" hidden>Concepto para el BCT <input type="text" name="concepto" maxlength="80" value="${esc(concepto || '')}"></label>
+    <span class="sub solo-bct" hidden>Con BCT no se usa el consecutivo.</span></div>`;
+}
 function leerConsecutivo(el) {
   const n = Number(String(el?.value || '').trim());
   if (!(Number.isInteger(n) && n >= 1 && n <= 999)) { avisar('El consecutivo del archivo debe ser un número de 1 a 999', 'error'); el?.focus(); return null; }
@@ -993,6 +1024,7 @@ function dialogoPagarVarias() {
           <label class="pa-forma"><input type="radio" name="forma" value="manual" data-in="pn-forma"><span><b>Manual</b>Transferencia hecha a mano. El comprobante se escribe ya.</span></label>
         </div></div>
       <div class="ancho solo-banco pn-banco">
+        ${selectorBancoDialogo(f0.sociedad, ln.concepto)}
         <label>Descripción en el banco <input type="text" name="descripcion" maxlength="60" value="${esc(ln.descripcion)}"></label>
         <label>Consecutivo del archivo <input type="text" name="consecutivo" inputmode="numeric" maxlength="3" value="${S.siguienteConsecutivo(f0.sociedad)}">
           <span class="sub">Último usado en ${esc(S.nombreSociedad(f0.sociedad))}: ${S.bancoSoc(f0.sociedad).ultimo ? c3(S.bancoSoc(f0.sociedad).ultimo) : '—'}</span></label>
@@ -1155,6 +1187,7 @@ function dialogoPagoNorman(id) {
       <label class="solo-banco">Fecha de pago <input type="date" name="fecha" value="${hoyISO()}"></label>
       <label class="ancho">Nota <span class="sub-inline">opcional</span> <input type="text" name="nota" placeholder="Ej. Norman lo pidió por teléfono"></label>
       <div class="ancho solo-banco pn-banco">
+        ${selectorBancoDialogo(f.sociedad, lote.lineas[0].concepto)}
         <label>Descripción en el banco <input type="text" name="descripcion" maxlength="60" value="${esc(lote.lineas[0].descripcion)}"></label>
         <label>Consecutivo del archivo <input type="text" name="consecutivo" inputmode="numeric" maxlength="3" value="${S.siguienteConsecutivo(f.sociedad)}">
           <span class="sub">Último usado en ${esc(S.nombreSociedad(f.sociedad))}: ${S.bancoSoc(f.sociedad).ultimo ? c3(S.bancoSoc(f.sociedad).ultimo) : '—'}</span></label>
@@ -2069,10 +2102,123 @@ function dialogoProveedor(codigo) {
       <label class="ancho">Alias para la descripción del banco <input name="alias" value="${esc(p.alias)}" placeholder="Ej. Resusa, DAC"></label>
       <label class="ancho">IBAN en colones <input name="ibanCRC" class="mono" value="${esc(fmtIBAN(p.ibanCRC))}" placeholder="CR00 0000 0000 0000 0000 00" data-in="iban"><span class="ayuda" data-ayuda></span></label>
       <label class="ancho">IBAN en dólares <input name="ibanUSD" class="mono" value="${esc(fmtIBAN(p.ibanUSD))}" placeholder="CR00 0000 0000 0000 0000 00" data-in="iban"><span class="ayuda" data-ayuda></span></label>
+      ${S.esNorman() ? '' : camposBCT(nuevo ? {} : S.bctProv(p.codigo))}
       ${nuevo ? '' : seccionUnir(p)}
       <div class="ancho"><button class="btn primario" type="submit">Guardar</button></div>
     </form>`);
   $dialog.querySelectorAll('[data-in="iban"]').forEach(validarCampoIBAN);
+}
+
+const TIPOS_ID = [['0', 'Física nacional'], ['1', 'Física residente / DIMEX'], ['2', 'Gobierno'], ['3', 'Jurídica'], ['4', 'Institución autónoma']];
+function seccionCargarBCT() {
+  if (S.esNorman()) return '';
+  const n = S.proveedoresActivos().filter((p) => S.bctProv(p.codigo).cedula).length;
+  return `<section class="bloque">
+    <h2>Banco BCT: cargar datos de proveedores</h2>
+    <p class="sub">Suba los .txt que genera la plantilla del BCT (colones y dólares). La aplicación toma de ahí la cédula, el correo y el concepto de cada proveedor, para no digitarlos. Hoy ${n} ${n === 1 ? 'proveedor tiene' : 'proveedores tienen'} datos BCT.</p>
+    <label class="btn primario">📎 Subir los .txt del BCT<input type="file" accept=".txt,text/plain" multiple data-in="bct-cargar" hidden></label>
+  </section>`;
+}
+
+/** Nombre sin S.A., SRL, LTDA ni palabras cortas: «EL COLONO AGROPECUARIO, S.A.» → {COLONO, AGROPECUARIO}. */
+const PALABRAS_VACIAS = new Set(['S', 'A', 'SA', 'SRL', 'R', 'L', 'LTDA', 'LIMITADA', 'SOCIEDAD', 'ANONIMA', 'EIRL', 'DE', 'DEL', 'LA', 'LAS', 'LOS', 'EL', 'Y', 'E', 'CR', 'C', 'RESP', 'RESPONSABILIDAD', 'INDIVIDUAL', 'INDIVUAL', 'EMPRESA']);
+const palabrasBCT = (t) => new Set(BCT.nombreBCT(t).replace(/[^A-Z0-9 ]+/g, ' ').split(/\s+/).filter((w) => w && !PALABRAS_VACIAS.has(w)));
+function parecidoBCT(nombre, provs) {
+  const a = palabrasBCT(nombre);
+  if (!a.size) return null;
+  const iguales = [], contenidos = [];
+  for (const p of provs) {
+    const b = palabrasBCT(p.nombre);
+    if (!b.size) continue;
+    const comunes = [...a].filter((w) => b.has(w)).length;
+    if (comunes === a.size && comunes === b.size) iguales.push(p);
+    else if (Math.min(a.size, b.size) >= 2 && (comunes === a.size || comunes === b.size)) contenidos.push(p);
+  }
+  if (iguales.length === 1) return iguales[0];
+  if (!iguales.length && contenidos.length === 1) return contenidos[0];
+  return null;
+}
+
+/** Empareja cada línea del .txt con un proveedor: por cuenta (IBAN), después por nombre. */
+async function cargarArchivosBCT(files) {
+  const filas = [];
+  for (const f of files) filas.push(...BCT.leerArchivoBCT(new TextDecoder('windows-1252').decode(await f.arrayBuffer())));
+  if (!filas.length) { avisar('Esos archivos no tienen el formato del BCT', 'error'); return; }
+  const provs = S.proveedoresActivos();
+  const porCuenta = new Map();
+  for (const p of provs) for (const m of ['CRC', 'USD']) { const c = BCT.cuentaCliente(p['iban' + m]); if (c) porCuenta.set(c, p); }
+  let cedProv = {};
+  try { cedProv = contextoRecibidas().cedProv || {}; } catch { /* sin datos de Recibidas */ }
+  const yaBct = new Map(provs.map((p) => [String(S.bctProv(p.codigo).cedula || '').replace(/\D/g, ''), p]).filter(([c]) => c));
+  ui.bct = filas.map((x, i) => {
+    const ced = x.cedula.replace(/\D/g, '');
+    const porCed = yaBct.get(ced) || (cedProv[ced] && S.datos().proveedores[cedProv[ced]] ? S.proveedor(cedProv[ced]) : null);
+    const p = porCuenta.get(x.cuenta) || porCed || parecidoBCT(x.nombre, provs) || buscarPorNombre(x.nombre, provs);
+    return { i, ...x, codigo: p?.codigo || '' };
+  });
+  dialogoCargarBCT();
+}
+function dialogoCargarBCT() {
+  const provs = S.proveedoresActivos().slice().sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const filas = ui.bct || [];
+  const estado = (x) => {
+    if (!x.codigo) return '<span class="malo">? elija el proveedor</span>';
+    const p = S.proveedor(x.codigo), iban = p['iban' + x.moneda], c = BCT.cuentaCliente(iban);
+    if (!c) return '<span class="bien">✓ · se agrega el IBAN</span>';
+    if (c !== x.cuenta) return '<span class="malo">⚠ cuenta distinta al IBAN guardado (no se cambia)</span>';
+    return '<span class="bien">✓</span>';
+  };
+  const ok = filas.filter((x) => x.codigo).length;
+  abrirDialogo(`<header class="dlg-cab"><div><h2>Cargar datos BCT</h2><p class="sub">${filas.length} líneas leídas · ${ok} con proveedor. Revise las que no se encontraron.</p></div><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+    <form class="dlg-cuerpo" data-form="bct-guardar">
+      <div class="tabla-scroll"><table class="tabla"><thead><tr><th>En el .txt</th><th>Mon.</th><th>Correo · concepto</th><th>Proveedor en la aplicación</th><th></th></tr></thead><tbody>
+      ${filas.map((x) => `<tr><td>${esc(x.nombre)}<div class="sub mono">${esc(x.cedula)} · ${esc(x.cuenta)}</div></td><td>${x.moneda === 'USD' ? '$' : '₡'}</td>
+        <td class="sub">${esc(x.correo)}<br>${esc(x.concepto)}</td>
+        <td><select data-in="bct-prov" data-v="${x.i}"><option value="">— No guardar —</option>${provs.map((p) => `<option value="${esc(p.codigo)}" ${p.codigo === x.codigo ? 'selected' : ''}>${esc(p.codigo)} · ${esc(p.nombre)}</option>`).join('')}</select></td>
+        <td>${estado(x)}</td></tr>`).join('')}</tbody></table></div>
+      <div class="acciones-fila"><button class="btn primario" type="submit">Guardar datos de ${ok} ${ok === 1 ? 'línea' : 'líneas'}</button><button class="btn" type="button" data-act="cerrar">Cancelar</button></div>
+    </form>`);
+}
+function guardarCargaBCT() {
+  const porProv = new Map();
+  for (const x of (ui.bct || []).filter((y) => y.codigo)) {
+    const a = porProv.get(x.codigo) || { ...S.bctProv(x.codigo) };
+    a.cedula = BCT.cedulaBCT(x.cedula); a.tipo = x.tipo;
+    if (x.correo) a['correo' + x.moneda] = x.correo;
+    if (x.concepto) a['concepto' + x.moneda] = x.concepto.toUpperCase();
+    porProv.set(x.codigo, a);
+  }
+  let n = 0, ibans = 0, error = '';
+  for (const [codigo, a] of porProv) {
+    const r = S.guardarBctProv(codigo, a);
+    if (r.error) { error = r.error; break; }
+    n++;
+    const p = S.proveedor(codigo), cambios = {};
+    for (const x of ui.bct.filter((y) => y.codigo === codigo)) if (!p['iban' + x.moneda] && !cambios['iban' + x.moneda]) cambios['iban' + x.moneda] = BCT.ibanDeCuenta(x.cuenta);
+    if (Object.keys(cambios).length) {
+      const r2 = S.guardarProveedor(codigo, { nombre: p.nombre, alias: p.alias || '', ibanCRC: p.ibanCRC || '', ibanUSD: p.ibanUSD || '', plazo: p.plazo ?? 30, ...cambios }, false);
+      if (!r2.error) ibans += Object.keys(cambios).length;
+    }
+  }
+  if (error) { avisar(error, 'error'); return; }
+  ui.bct = null;
+  cerrarDialogo(); render();
+  avisar(`Datos BCT guardados en ${n} ${n === 1 ? 'proveedor' : 'proveedores'}${ibans ? ` · ${ibans} IBAN agregados` : ''}`);
+}
+
+function camposBCT(x) {
+  return `<fieldset class="ancho form-grid bct-campos"><legend>Datos para el banco BCT <span class="sub-inline">(solo pagos de Santa Eduviges por BCT)</span></legend>
+    <label>Cédula <input name="bctCedula" value="${esc(x.cedula || '')}" placeholder="3-101-268981" autocomplete="off"></label>
+    <label>Tipo <select name="bctTipo"><option value="">Según la cédula</option>${TIPOS_ID.map(([v, n]) => `<option value="${v}" ${x.tipo === v ? 'selected' : ''}>${v} · ${n}</option>`).join('')}</select></label>
+    <label>Correo (colones) <input name="bctCorreoCRC" type="email" value="${esc(x.correoCRC || '')}" autocomplete="off"></label>
+    <label>Correo (dólares) <input name="bctCorreoUSD" type="email" value="${esc(x.correoUSD || '')}" placeholder="si es otro" autocomplete="off"></label>
+    <label>Concepto habitual (colones) <input name="bctConceptoCRC" value="${esc(x.conceptoCRC || '')}" placeholder="COMPRA DE INSUMOS"></label>
+    <label>Concepto habitual (dólares) <input name="bctConceptoUSD" value="${esc(x.conceptoUSD || '')}" placeholder="si es otro"></label>
+  </fieldset>`;
+}
+function leerCamposBCT(d) {
+  if (!('bctCedula' in d)) return null;
+  return { cedula: BCT.cedulaBCT(d.bctCedula), tipo: d.bctTipo || '', correoCRC: d.bctCorreoCRC.trim(), correoUSD: d.bctCorreoUSD.trim(), conceptoCRC: d.bctConceptoCRC.trim().toUpperCase(), conceptoUSD: d.bctConceptoUSD.trim().toUpperCase() };
 }
 
 /** Banco según el código del IBAN (solo los confirmados con cuentas reales). */
@@ -2724,6 +2870,8 @@ function vistaConfig() {
     </form>
   </section>
 
+  ${seccionCargarBCT()}
+
   <section class="bloque">
     <h2>Sociedades: datos para el archivo del BCR</h2>
     ${socs.length ? socs.map(([k, s]) => `
@@ -2858,7 +3006,7 @@ document.addEventListener('dragend', limpiarArrastre);
  * redibujar la pantalla y cambiar el <input type=file> por otro; el archivo elegido quedaba en el viejo y
  * no pasaba nada (había que subirlo dos veces). Se abre un campo aparte, fuera de la pantalla que se redibuja.
  */
-const ARCHIVO_APARTE = new Set(['rc-subir', 'rc-gti', 'ap-pdf', 'ap-gen', 'imp-archivo', 'importar', 'rc-pdf', 'fact-pdf', 'mov-pdf']);
+const ARCHIVO_APARTE = new Set(['rc-subir', 'rc-gti', 'ap-pdf', 'ap-gen', 'imp-archivo', 'importar', 'rc-pdf', 'fact-pdf', 'mov-pdf', 'bct-cargar']);
 document.addEventListener('click', (e) => {
   const lbl = e.target.closest?.('label');
   const orig = lbl?.querySelector('input[type=file]');
@@ -2993,11 +3141,21 @@ const acciones = {
 
   'a-devolver': (v) => { if (confirm('¿Devolver esta factura a Norman? Saldrá de este lote.')) resultado(S.quitarProgramacion(v, 'Devuelto'), 'Devuelta a Norman'); },
   'a-forma': (v) => { const i = v.lastIndexOf('|'); ui.forma[decodeURIComponent(v.slice(0, i))] = v.slice(i + 1); render(); },
+  'a-banco': (v) => { const i = v.lastIndexOf('|'); ui.bancoLote = { ...(ui.bancoLote || {}), [decodeURIComponent(v.slice(0, i))]: v.slice(i + 1) }; render(); },
   'a-txt': (v) => {
     const l = loteDe(v);
     if (!l) return;
     const { banco } = partesLote(l);
     const sub = { ...l, lineas: banco, total: round2(banco.reduce((t, x) => t + x.total, 0)) };
+    if (bancoDe(l) === 'BCT') {
+      const prob = problemasBCT(sub);
+      if (prob.length) { avisar(prob.join(' '), 'error'); return; }
+      try {
+        descargarBCT(sub);
+        if (resultado(S.marcarEnviado(banco.flatMap((ln) => ln.items.map(({ p }) => p.id)), null, 'BCT'), 'Archivo para el BCT descargado · quedó «Enviado al banco · esperando comprobante»')) render();
+      } catch (err) { avisar(err.message, 'error'); }
+      return;
+    }
     try {
       const prob = S.problemasLote(sub);
       if (prob.length) { avisar(prob.join(' '), 'error'); return; }
@@ -3014,7 +3172,10 @@ const acciones = {
     const { enviadas } = partesLote(l, el.dataset.g), e0 = enviadas[0]?.e;
     if (!enviadas.length) return;
     if (!confirm(`Este archivo ya lo generó ${e0?.por || 'alguien'} (${fechaHora(Date.parse(e0?.fecha))}).\n\nSi ya se subió al banco, subirlo otra vez PAGARÍA DOS VECES.\n\n¿Descargarlo de nuevo de todos modos?`)) return;
-    try { descargarTxt({ ...l, lineas: enviadas.map((x) => x.ln) }, e0?.consecutivo || S.siguienteConsecutivo(l.sociedad)); } catch (err) { avisar(err.message, 'error'); }
+    try {
+      if (e0?.banco === 'BCT') descargarBCT({ ...l, lineas: enviadas.map((x) => x.ln) });
+      else descargarTxt({ ...l, lineas: enviadas.map((x) => x.ln) }, e0?.consecutivo || S.siguienteConsecutivo(l.sociedad));
+    } catch (err) { avisar(err.message, 'error'); }
   },
   'a-txt-rechazo': (v, el) => {
     const l = loteDe(v);
@@ -3039,6 +3200,11 @@ const acciones = {
     const l = loteDe(v);
     try {
       const { banco } = partesLote(l);
+      if (bancoDe(l) === 'BCT') {
+        abrirDialogo(`<header class="dlg-cab"><h2>Contenido del archivo BCT</h2><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
+          <div class="dlg-cuerpo"><pre class="txt">${esc(BCT.archivoBCT(lineasBCT({ ...l, lineas: banco })).texto)}</pre></div>`);
+        return;
+      }
       const txt = textoArchivo({ ...l, lineas: banco }, Number(document.getElementById('consec-' + v)?.value) || S.siguienteConsecutivo(l.sociedad));
       abrirDialogo(`<header class="dlg-cab"><h2>Contenido del archivo</h2><button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
         <div class="dlg-cuerpo"><pre class="txt">${esc(txt.replace(/ +\r\n/g, '\r\n'))}</pre><p class="sub">Los espacios al final de cada línea no se muestran; el archivo descargado sí los lleva (214 caracteres por línea).</p></div>`);
@@ -3360,6 +3526,17 @@ document.addEventListener('change', async (e) => {
     } catch (err) { avisar('No se pudo subir: ' + err.message, 'error'); }
     return;
   }
+  if (k === 'bct-cargar') { const fs = [...el.files]; el.value = ''; if (fs.length) cargarArchivosBCT(fs).catch((err) => avisar('No se pudo leer: ' + err.message, 'error')); return; }
+  if (k === 'bct-prov') { const x = ui.bct?.[Number(el.dataset.v)]; if (x) { x.codigo = el.value; dialogoCargarBCT(); } return; }
+  if (k === 'banco-dlg') {
+    const bct = el.value === 'BCT', fm = el.form;
+    fm.querySelectorAll('.solo-bct').forEach((x) => { x.hidden = !bct; x.style.display = bct ? '' : 'none'; });
+    const cons = fm.querySelector('[name=consecutivo]')?.closest('label');
+    if (cons) cons.style.display = bct ? 'none' : '';
+    fm.querySelectorAll('.pn-banco .aviso').forEach((x) => { x.style.display = bct ? 'none' : ''; });
+    fm.querySelectorAll('button.solo-banco[type=submit]').forEach((b) => { if (bct) { b.dataset.dis = b.disabled ? '1' : ''; b.disabled = false; } else if (b.dataset.dis) b.disabled = true; });
+    return;
+  }
   if (k === 'anular-motivo') { const o = el.form.querySelector('.anular-otro'); o.hidden = el.value !== 'otro'; if (!o.hidden) o.querySelector('input').focus(); return; }
   if (k === 'rc-modo') { const b = el.closest('.rc-nuevo'); if (b) { b.dataset.modo = el.value; if (el.value === 'nuevo') b.querySelector('[data-in="rc-cod"]')?.focus(); } return; }
   if (k === 'rc-subir') { const files = [...el.files]; el.value = ''; if (files.length) await subirXmlRecibidas(files); return; }
@@ -3415,6 +3592,8 @@ document.addEventListener('change', async (e) => {
     try { await cargarArchivoImportar(file); } catch (err) { avisar('No se pudo leer el archivo: ' + err.message, 'error'); }
     return;
   }
+  // Sin redibujar: si se escribe el concepto y enseguida se toca «Descargar», el clic no se pierde.
+  if (k === 'a-concepto') { S.guardarBorrador(decodeURIComponent(el.dataset.lote), el.dataset.v, { concepto: el.value }); return; }
   if (k === 'a-extra' || k === 'a-desc') {
     const clave = decodeURIComponent(el.dataset.lote);
     if (k === 'a-extra') {
@@ -3513,7 +3692,17 @@ document.addEventListener('submit', (e) => {
   } else if (k === 'pago-norman') {
     const f = S.factura(form.dataset.v);
     const x = valoresPagoNorman(form);
-    if (x.forma === 'banco') {
+    if (x.forma === 'banco' && form.bancoArchivo?.value === 'BCT') {
+      const l = S.loteDirecto(f, x.monto, x.fecha, x.descripcion);
+      if (form.concepto?.value.trim()) l.lineas[0].concepto = form.concepto.value.trim();
+      const prob = problemasBCT(l);
+      if (prob.length) { avisar(prob.join(' '), 'error'); return; }
+      const r = S.pagarAhoraBanco(f, { ...x, consecutivo: null, banco: 'BCT', concepto: form.concepto?.value });
+      if (r.error) { avisar(r.error, 'error'); return; }
+      try { descargarBCT(r.lote, '_FACT' + String(f.documento).replace(/[^A-Za-z0-9]+/g, '')); } catch (err) { avisar(err.message, 'error'); }
+      avisar('Archivo para el BCT descargado · el pago quedó en «Por aplicar» esperando el comprobante del banco');
+      cerrarDialogo(); render();
+    } else if (x.forma === 'banco') {
       const l = S.loteDirecto(f, x.monto, x.fecha, x.descripcion);
       const prob = S.problemasLote(l);
       if (prob.length) { avisar(prob.join(' '), 'error'); return; }
@@ -3534,6 +3723,8 @@ document.addEventListener('submit', (e) => {
       cerrarDialogo(); render();
       adjuntarDespues('pn|' + f.id, `${limpioArchivo(S.proveedor(f.codigo).nombre).slice(0, 40)} ${x.comprobante}`, (a) => S.guardarDocLinea(r.loteId, r.codigo, { archivo: a }));
     }
+  } else if (k === 'bct-guardar') {
+    guardarCargaBCT();
   } else if (k === 'anular') {
     const motivo = form.motivo.value === 'otro' ? form.otro.value.trim() : form.motivo.value;
     if (!motivo) { avisar('Escriba el motivo', 'error'); form.otro.focus(); return; }
@@ -3545,7 +3736,18 @@ document.addEventListener('submit', (e) => {
     if (pr) { avisar(pr, 'error'); return; }
     const clave = 'varias|' + fs.map((f) => f.id).join(',');
     const docs = fs.map((f) => f.documento).join(', ');
-    if (form.dataset.forma === 'banco') {
+    if (form.dataset.forma === 'banco' && form.bancoArchivo?.value === 'BCT') {
+      const l = S.loteVarias(fs, hoyISO(), form.descripcion.value);
+      if (form.concepto?.value.trim()) l.lineas[0].concepto = form.concepto.value.trim();
+      const prob = problemasBCT(l);
+      if (prob.length) { avisar(prob.join(' '), 'error'); return; }
+      const r = S.pagarVariasBanco(fs, { fecha: hoyISO(), descripcion: form.descripcion.value, consecutivo: null, banco: 'BCT', concepto: form.concepto?.value });
+      if (r.error) { avisar(r.error, 'error'); return; }
+      try { descargarBCT(r.lote, '_' + limpioArchivo(S.proveedor(fs[0].codigo).nombre).replace(/\s+/g, '').slice(0, 20) + '_' + fs.length + 'FACT'); } catch (err) { avisar(err.message, 'error'); }
+      ui.fact.sel.clear();
+      avisar(`Archivo para el BCT descargado · ${fs.length} ${fs.length === 1 ? 'factura quedó' : 'facturas quedaron'} en «Por aplicar» esperando el comprobante del banco`);
+      cerrarDialogo(); render();
+    } else if (form.dataset.forma === 'banco') {
       const n = leerConsecutivo(form.consecutivo);
       if (!n) return;
       const l = S.loteVarias(fs, hoyISO(), form.descripcion.value);
@@ -3631,7 +3833,11 @@ document.addEventListener('submit', (e) => {
       if (par.length && !form.dataset.confirmado && !confirm(`Se parece a ${par.map((x) => x.codigo + ' · ' + x.nombre).join(', ')}. ¿Crear de todos modos el ${d.codigo.trim()} como proveedor distinto?`)) return;
     }
     const datosProv = { nombre: d.nombre, alias: d.alias, ibanCRC: d.ibanCRC, ibanUSD: d.ibanUSD, plazo: d.plazo };
-    if (resultado(nuevo ? S.crearProveedorConCodigo(d.codigo.trim(), datosProv) : S.guardarProveedor(d.codigo.trim(), datosProv, false), 'Proveedor guardado')) { cerrarDialogo(); render(); }
+    if (resultado(nuevo ? S.crearProveedorConCodigo(d.codigo.trim(), datosProv) : S.guardarProveedor(d.codigo.trim(), datosProv, false), 'Proveedor guardado')) {
+      const bct = leerCamposBCT(d), antes = S.bctProv(d.codigo.trim());
+      if (bct && Object.keys(bct).some((k) => (antes[k] || '') !== bct[k])) S.guardarBctProv(d.codigo.trim(), bct);
+      cerrarDialogo(); render();
+    }
   } else if (k === 'cfg-banco') {
     const ced = d.controlEncabezado.replace(/\D/g, '');
     if (d.controlEncabezado.trim() && (!ced || ced.length > 12)) { avisar('La cédula del empleado debe tener solo números (hasta 12)', 'error'); return; }

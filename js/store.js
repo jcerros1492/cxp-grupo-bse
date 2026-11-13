@@ -96,6 +96,7 @@ function completarLinea(lote, ln) {
     ...ln, prov, extra, facturas, total: round2(facturas + extra),
     descripcion: b.descripcion ?? sugerida, sugerida,
     iban: prov[lote.moneda === 'USD' ? 'ibanUSD' : 'ibanCRC'] || '',
+    ...datosBCTLinea(ln.codigo, lote.moneda, b),
   };
 }
 
@@ -126,15 +127,26 @@ export function nota(clave) {
 
 /** Envío al banco de un pago programado: { por, fecha, grupo } o null. */
 export const envioDe = (progId) => nota('envio:' + progId);
-export function marcarEnviado(progIds, consecutivo) {
+export function marcarEnviado(progIds, consecutivo, banco = 'BCR') {
   const grupo = Sync.nuevoId();
-  const v = { por: usuarioActual()?.nombre || '', fecha: new Date().toISOString(), grupo, consecutivo: consecutivo || null };
+  const v = { por: usuarioActual()?.nombre || '', fecha: new Date().toISOString(), grupo, consecutivo: consecutivo || null, banco };
   for (const id of progIds) { const r = anotar('envio:' + id, v); if (r.error) return r; }
   return { ok: true };
 }
 export function volverPendiente(progIds) {
   for (const id of progIds) { const r = anotar('envio:' + id, ''); if (r.error) return r; }
   return { ok: true };
+}
+
+// ---------------------------------------------------------------- Banco BCT (1.32.0, solo Santa Eduviges)
+/** Datos del proveedor para el .txt del BCT: { tipo, cedula, correoCRC, correoUSD, conceptoCRC, conceptoUSD }. */
+export const bctProv = (codigo) => nota('doc:bct:' + codigo) || {};
+export const guardarBctProv = (codigo, cambios) => anotar('doc:bct:' + codigo, { ...bctProv(codigo), ...cambios });
+export const esBeneficiadora = (soc) => /eduviges/i.test(nombreSociedad(soc) + ' ' + (datos().sociedades[soc]?.nombre || ''));
+function datosBCTLinea(codigo, moneda, b = {}) {
+  const x = bctProv(codigo), otra = moneda === 'USD' ? 'CRC' : 'USD';
+  const concepto = x['concepto' + moneda] || x['concepto' + otra] || 'PAGO A PROVEEDORES';
+  return { tipo: x.tipo || '', cedula: x.cedula || '', correo: x['correo' + moneda] || x['correo' + otra] || '', concepto: b.concepto ?? concepto, conceptoHabitual: concepto };
 }
 
 /** Datos del BCR por sociedad: { cedula (la «Cédula jurídica» de la plantilla), ultimo (último consecutivo usado) }. */
@@ -219,7 +231,7 @@ export function pagarAutorizadoNorman(f, { monto, fecha, comprobante, nota, desc
 }
 
 /** Pagar ahora por banco: se programa para hoy, queda «enviado al banco» y se devuelve el lote para el .txt. */
-export function pagarAhoraBanco(f, { monto, fecha, nota, descripcion, consecutivo }) {
+export function pagarAhoraBanco(f, { monto, fecha, nota, descripcion, consecutivo, banco, concepto }) {
   monto = round2(monto);
   const ya = programacionDe(f);
   if (ya) return { error: `Esta factura ya está programada por ${ya.por}. Aplíquela o devuélvala en «Por aplicar» primero.` };
@@ -228,10 +240,13 @@ export function pagarAhoraBanco(f, { monto, fecha, nota, descripcion, consecutiv
   const progId = Sync.nuevoId();
   const r = Sync.ejecutar({ tipo: 'programar', fechaPago: fecha, nota: NOTA_PAGAR_AHORA + ' · banco' + (nota ? ' · ' + String(nota).trim() : ''), items: [{ progId, facturaId: f.id, monto }] });
   if (r.error) return r;
-  const m = marcarEnviado([progId], consecutivo);
+  const m = marcarEnviado([progId], consecutivo, banco);
   if (m.error) return m;
   if (descripcion != null && String(descripcion).trim()) guardarBorrador([f.sociedad, f.moneda, fecha].join('|'), f.codigo, { descripcion: String(descripcion).trim() });
-  return { ok: true, lote: loteDirecto(f, monto, fecha, descripcion) };
+  if (concepto != null && String(concepto).trim()) guardarBorrador([f.sociedad, f.moneda, fecha].join('|'), f.codigo, { concepto: String(concepto).trim() });
+  const lote = loteDirecto(f, monto, fecha, descripcion);
+  if (concepto != null && String(concepto).trim()) lote.lineas[0].concepto = String(concepto).trim();
+  return { ok: true, lote };
 }
 
 /** Programa y aplica en un solo paso el pago (o abono) de una factura. */
@@ -301,15 +316,16 @@ function programarVarias(fs, fecha, nota) {
 }
 
 /** Banco: se programan para la fecha, quedan «enviado al banco» con un mismo envío y se devuelve el lote para el .txt. */
-export function pagarVariasBanco(fs, { fecha, descripcion, consecutivo }) {
+export function pagarVariasBanco(fs, { fecha, descripcion, consecutivo, banco, concepto }) {
   const pr = problemaVarias(fs);
   if (pr) return { error: pr };
   const lote = loteVarias(fs, fecha, descripcion);
   const r = programarVarias(fs, fecha, NOTA_PAGAR_AHORA + ' · banco · ' + fs.length + ' facturas');
   if (r.error) return r;
-  const m = marcarEnviado(r.items.map((x) => x.progId), consecutivo);
+  const m = marcarEnviado(r.items.map((x) => x.progId), consecutivo, banco);
   if (m.error) return m;
   if (descripcion != null && String(descripcion).trim()) guardarBorrador(lote.clave, fs[0].codigo, { descripcion: String(descripcion).trim() });
+  if (concepto != null && String(concepto).trim()) { guardarBorrador(lote.clave, fs[0].codigo, { concepto: String(concepto).trim() }); lote.lineas[0].concepto = String(concepto).trim(); }
   return { ok: true, lote };
 }
 

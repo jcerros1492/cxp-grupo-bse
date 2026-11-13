@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.32.0 | Banco BCT (solo Santa Eduviges): en Por aplicar, «Pagar ahora» y «Pagar seleccionadas» se elige BCR (igual que antes) o BCT; el .txt del BCT lleva solo los que se pagan, con concepto editable por pago. Ficha del proveedor con «Datos para el banco BCT» (cédula, tipo, correos y conceptos). Configuración → «Cargar datos BCT» lee los .txt de la plantilla del BCT y llena los datos (y los IBAN que falten). Sin cambios en Apps Script. |
 | 1.31.0 | Comprobantes más rápidos: cada dispositivo guarda una copia de los PDF que abre o sube (el original sigue en Google Drive); la segunda vez salen al instante. El que sube el comprobante lo tiene listo de una vez, y «Aplicados recientemente» precarga en segundo plano los comprobantes de los últimos pagos. Las copias se borran solas a los 30 días sin usarse. |
 | 1.30.0 | «Anular factura» (solo Jonathan): en el detalle de una factura sin pagos, notas de crédito ni programación; pide motivo y deja de contar en saldos, Tablero, Programar pagos y reportes en todos los dispositivos. Configuración → «Facturas anuladas» (solo Jonathan) con motivo, quién y cuándo, y «Restaurar». Sin cambios en Apps Script (usa las anotaciones doc:). |
 | 1.29.1 | Cierre automático: si nadie usa la aplicación durante 1 hora, se sale sola (envía lo pendiente) y al volver pide usuario y PIN, con el aviso de por qué se cerró. |
