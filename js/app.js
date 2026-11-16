@@ -902,8 +902,11 @@ function descargarBCT(l, sufijo = '') {
   descargar(`BCT_PROVEEDORES_${soc}_${l.moneda}_${l.fecha.split('-').reverse().join('')}${sufijo}.txt`, new Blob([bytes], { type: 'text/plain' }), 'text/plain');
 }
 /** Selector BCR/BCT y concepto para «Pagar ahora» y «Pagar seleccionadas» (solo Santa Eduviges). */
-function selectorBancoDialogo(soc, concepto) {
+function selectorBancoDialogo(soc, concepto, sinConcepto = false) {
   if (!S.esBeneficiadora(soc)) return '';
+  if (sinConcepto) return `<div class="banco-dlg"><span class="lbl">Banco del archivo</span>
+    <span class="seg" role="radiogroup" aria-label="Banco"><label><input type="radio" name="bancoArchivo" value="BCR" checked data-in="banco-dlg"> BCR</label><label><input type="radio" name="bancoArchivo" value="BCT" data-in="banco-dlg"> BCT</label></span>
+    <span class="sub solo-bct" hidden style="display:none">Con BCT no se usa el consecutivo.</span></div>`;
   return `<div class="banco-dlg"><span class="lbl">Banco del archivo</span>
     <span class="seg" role="radiogroup" aria-label="Banco"><label><input type="radio" name="bancoArchivo" value="BCR" checked data-in="banco-dlg"> BCR</label><label><input type="radio" name="bancoArchivo" value="BCT" data-in="banco-dlg"> BCT</label></span>
     <label class="solo-bct" hidden>Concepto para el BCT <input type="text" name="concepto" maxlength="80" value="${esc(concepto || '')}"></label>
@@ -996,9 +999,9 @@ const facturasMarcadas = () => [...ui.fact.sel].map((id) => S.factura(id)).filte
 function barraVarias() {
   const fs = facturasMarcadas();
   if (!fs.length) return '';
-  const f0 = fs[0], total = round2(fs.reduce((t, f) => t + S.saldo(f), 0));
+  const f0 = fs[0], total = round2(fs.reduce((t, f) => t + S.saldo(f), 0)), nProv = S.codigosDe(fs).length;
   return `<div class="barra-envio barra-varias"><div class="barra-interior">
-    <div class="resumen-sel"><b>${fs.length} ${fs.length === 1 ? 'factura marcada' : 'facturas marcadas'}</b> · ${esc(S.proveedor(f0.codigo).nombre)} · ${esc(S.nombreSociedad(f0.sociedad))} · ${MONEDAS[f0.moneda].nombre} · <b>${money(total, f0.moneda)}</b></div>
+    <div class="resumen-sel"><b>${fs.length} ${fs.length === 1 ? 'factura marcada' : 'facturas marcadas'}</b> · ${nProv === 1 ? esc(S.proveedor(f0.codigo).nombre) : `<b>${nProv} proveedores</b>`} · ${esc(S.nombreSociedad(f0.sociedad))} · ${MONEDAS[f0.moneda].nombre} · <b>${money(total, f0.moneda)}</b></div>
     <button class="btn" data-act="f-sel-quitar">Quitar marcas</button>
     <button class="btn primario" data-act="f-pagar-varias">Pagar seleccionadas</button>
   </div></div>`;
@@ -1010,25 +1013,31 @@ function dialogoPagarVarias() {
   if (pr) { avisar(pr, 'error'); return; }
   const f0 = fs[0], prov = S.proveedor(f0.codigo);
   const lote = S.loteVarias(fs, hoyISO());
-  const ln = lote.lineas[0], prob = S.problemasLote(lote);
+  const ln = lote.lineas[0], prob = S.problemasLote(lote), varios = lote.lineas.length > 1;
   const clave = 'varias|' + fs.map((f) => f.id).join(',');
+  const lista = lote.lineas.map((l) => `<div class="pv-prov"><div class="pv-prov-cab"><b>${esc(l.prov.nombre)}</b>${varios ? `<span>${money(l.total, f0.moneda)}</span>` : ''}</div>
+      ${l.items.map(({ f }) => `<div class="pv-li"><span>Fact. ${esc(f.documento)} <span class="sub">${f.fechaVence ? fmtFecha(f.fechaVence) : ''}</span></span><span>${money(S.saldo(f), f.moneda)}</span></div>`).join('')}</div>`).join('');
+  const lineasBanco = varios ? `<div class="pv-lineas"><span class="lbl">Una línea del archivo por proveedor</span>
+      ${lote.lineas.map((l) => `<div class="pv-linea"><div><b>${esc(l.prov.nombre)}</b> <span class="mono sub">${l.iban ? fmtIBAN(l.iban) : 'sin IBAN'}</span></div>
+        <label>Descripción en el banco <input type="text" name="desc_${esc(l.codigo)}" maxlength="60" value="${esc(l.descripcion)}"></label>
+        ${S.esBeneficiadora(f0.sociedad) ? `<label class="solo-bct" hidden style="display:none">Concepto para el BCT <input type="text" name="conc_${esc(l.codigo)}" maxlength="80" value="${esc(l.concepto || '')}"></label>` : ''}</div>`).join('')}</div>` : '';
   abrirDialogo(`<header class="dlg-cab"><div><h2>Pagar ${fs.length} ${fs.length === 1 ? 'factura' : 'facturas'}</h2>
-      <p class="sub">${esc(prov.nombre)} · ${esc(S.nombreSociedad(f0.sociedad))} · ${MONEDAS[f0.moneda].nombre}</p></div>
+      <p class="sub">${varios ? `${lote.lineas.length} proveedores` : esc(prov.nombre)} · ${esc(S.nombreSociedad(f0.sociedad))} · ${MONEDAS[f0.moneda].nombre}</p></div>
       <button class="btn-cerrar" data-act="cerrar" aria-label="Cerrar">×</button></header>
     <form class="dlg-cuerpo form-grid pagar-ahora" data-form="pagar-varias" data-forma="banco">
-      <div class="ancho pv-lista">${fs.map((f) => `<div class="pv-li"><span>Fact. ${esc(f.documento)} <span class="sub">${f.fechaVence ? fmtFecha(f.fechaVence) : ''}</span></span><span>${money(S.saldo(f), f.moneda)}</span></div>`).join('')}
+      <div class="ancho pv-lista">${lista}
         <div class="pv-tot"><span>Total</span><span>${money(lote.total, f0.moneda)}</span></div></div>
       <div class="ancho"><span class="lbl">¿Cómo se paga?</span>
         <div class="pa-formas">
-          <label class="pa-forma"><input type="radio" name="forma" value="banco" checked data-in="pn-forma"><span><b>Banco (.txt)</b>Una sola transferencia por el total. El comprobante se escribe en «Por aplicar» cuando el banco aplique.</span></label>
-          <label class="pa-forma"><input type="radio" name="forma" value="manual" data-in="pn-forma"><span><b>Manual</b>Transferencia hecha a mano. El comprobante se escribe ya.</span></label>
+          <label class="pa-forma"><input type="radio" name="forma" value="banco" checked data-in="pn-forma"><span><b>Banco (.txt)</b>${varios ? 'Un solo archivo, con una transferencia por proveedor.' : 'Una sola transferencia por el total.'} El comprobante se escribe en «Por aplicar» cuando el banco aplique.</span></label>
+          <label class="pa-forma ${varios ? 'desactivada' : ''}"><input type="radio" name="forma" value="manual" data-in="pn-forma" ${varios ? 'disabled' : ''}><span><b>Manual</b>${varios ? 'Manual se paga proveedor por proveedor: deje marcadas solo las facturas de uno.' : 'Transferencia hecha a mano. El comprobante se escribe ya.'}</span></label>
         </div></div>
       <div class="ancho solo-banco pn-banco">
-        ${selectorBancoDialogo(f0.sociedad, ln.concepto)}
-        <label>Descripción en el banco <input type="text" name="descripcion" maxlength="60" value="${esc(ln.descripcion)}"></label>
+        ${selectorBancoDialogo(f0.sociedad, ln.concepto, varios)}
+        ${varios ? lineasBanco : `<label>Descripción en el banco <input type="text" name="descripcion" maxlength="60" value="${esc(ln.descripcion)}"></label>`}
         <label>Consecutivo del archivo <input type="text" name="consecutivo" inputmode="numeric" maxlength="3" value="${S.siguienteConsecutivo(f0.sociedad)}">
           <span class="sub">Último usado en ${esc(S.nombreSociedad(f0.sociedad))}: ${S.bancoSoc(f0.sociedad).ultimo ? c3(S.bancoSoc(f0.sociedad).ultimo) : '—'}</span></label>
-        <p class="sub">Cuenta del proveedor: <span class="mono">${ln.iban ? fmtIBAN(ln.iban) : '—'}</span></p>
+        ${varios ? '' : `<p class="sub">Cuenta del proveedor: <span class="mono">${ln.iban ? fmtIBAN(ln.iban) : '—'}</span></p>`}
         ${prob.length ? `<div class="aviso"><strong>Para generar el archivo falta:</strong><ul>${prob.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
         <p class="sub">Al tocar el botón se descarga el .txt y el pago queda «Enviado al banco · esperando comprobante» en Por aplicar.</p>
       </div>
@@ -3570,7 +3579,7 @@ document.addEventListener('change', async (e) => {
     const pr = S.problemaVarias([...facturasMarcadas(), ...nuevas]);
     if (pr) {
       el.checked = false;
-      avisar(k === 'f-todas' ? 'Las facturas que se ven son de varios proveedores, sociedades o monedas: filtre por proveedor, sociedad y moneda, o márquelas una por una' : pr + (F.sel.size ? '. Quite las marcas para empezar con otra' : ''), 'error');
+      avisar(k === 'f-todas' ? 'Las facturas que se ven son de varias sociedades o monedas: filtre por sociedad y moneda, o márquelas una por una' : pr + (F.sel.size ? '. Quite las marcas para empezar con otra' : ''), 'error');
       return;
     }
     for (const f of nuevas) F.sel.add(f.id);
@@ -3736,27 +3745,33 @@ document.addEventListener('submit', (e) => {
     if (pr) { avisar(pr, 'error'); return; }
     const clave = 'varias|' + fs.map((f) => f.id).join(',');
     const docs = fs.map((f) => f.documento).join(', ');
+    // Descripción y concepto de cada proveedor (con un solo proveedor vienen de los campos únicos).
+    const cods = S.codigosDe(fs), descs = {}, conceptos = {};
+    for (const c of cods) {
+      descs[c] = form.elements['desc_' + c]?.value ?? (cods.length === 1 ? form.descripcion?.value : '');
+      conceptos[c] = form.elements['conc_' + c]?.value ?? (cods.length === 1 ? form.concepto?.value : '');
+    }
+    const sufijo = '_' + (cods.length === 1 ? limpioArchivo(S.proveedor(fs[0].codigo).nombre).replace(/\s+/g, '').slice(0, 20) : cods.length + 'PROV') + '_' + fs.length + 'FACT';
     if (form.dataset.forma === 'banco' && form.bancoArchivo?.value === 'BCT') {
-      const l = S.loteVarias(fs, hoyISO(), form.descripcion.value);
-      if (form.concepto?.value.trim()) l.lineas[0].concepto = form.concepto.value.trim();
+      const l = S.loteVarias(fs, hoyISO(), descs, conceptos);
       const prob = problemasBCT(l);
       if (prob.length) { avisar(prob.join(' '), 'error'); return; }
-      const r = S.pagarVariasBanco(fs, { fecha: hoyISO(), descripcion: form.descripcion.value, consecutivo: null, banco: 'BCT', concepto: form.concepto?.value });
+      const r = S.pagarVariasBanco(fs, { fecha: hoyISO(), descs, conceptos, consecutivo: null, banco: 'BCT' });
       if (r.error) { avisar(r.error, 'error'); return; }
-      try { descargarBCT(r.lote, '_' + limpioArchivo(S.proveedor(fs[0].codigo).nombre).replace(/\s+/g, '').slice(0, 20) + '_' + fs.length + 'FACT'); } catch (err) { avisar(err.message, 'error'); }
+      try { descargarBCT(r.lote, sufijo); } catch (err) { avisar(err.message, 'error'); }
       ui.fact.sel.clear();
       avisar(`Archivo para el BCT descargado · ${fs.length} ${fs.length === 1 ? 'factura quedó' : 'facturas quedaron'} en «Por aplicar» esperando el comprobante del banco`);
       cerrarDialogo(); render();
     } else if (form.dataset.forma === 'banco') {
       const n = leerConsecutivo(form.consecutivo);
       if (!n) return;
-      const l = S.loteVarias(fs, hoyISO(), form.descripcion.value);
+      const l = S.loteVarias(fs, hoyISO(), descs);
       const prob = S.problemasLote(l);
       if (prob.length) { avisar(prob.join(' '), 'error'); return; }
       try { textoArchivo(l, n); } catch (err) { avisar(err.message, 'error'); return; }
-      const r = S.pagarVariasBanco(fs, { fecha: hoyISO(), descripcion: form.descripcion.value, consecutivo: n });
+      const r = S.pagarVariasBanco(fs, { fecha: hoyISO(), descs, consecutivo: n });
       if (r.error) { avisar(r.error, 'error'); return; }
-      try { descargarTxt(r.lote, n, '_' + limpioArchivo(S.proveedor(fs[0].codigo).nombre).replace(/\s+/g, '').slice(0, 20) + '_' + fs.length + 'FACT'); } catch (err) { avisar(err.message, 'error'); }
+      try { descargarTxt(r.lote, n, sufijo); } catch (err) { avisar(err.message, 'error'); }
       ui.fact.sel.clear();
       avisar(`Archivo descargado (consecutivo ${c3(n)}) · ${fs.length} ${fs.length === 1 ? 'factura quedó' : 'facturas quedaron'} en «Por aplicar» esperando el comprobante del banco`);
       cerrarDialogo(); render();

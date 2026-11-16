@@ -1049,3 +1049,10 @@ label.soltar-aqui::after { content: 'Suelte aquí'; position: absolute; left: 50
 .banco-dlg .seg input { margin: 0; }
 .banco-dlg > label.solo-bct { flex: 1 1 260px; }
 .chico-txt { font-size: 12px; margin-top: 3px; }
+
+/* Pagar seleccionadas con varios proveedores (1.33.0) */
+.pv-prov + .pv-prov { margin-top: 6px; border-top: 1px solid var(--borde); padding-top: 4px; }
+.pv-prov-cab { display: flex; justify-content: space-between; font-size: 13.5px; padding: 4px 0 2px; }
+.pv-lineas { display: flex; flex-direction: column; gap: 8px; margin: 6px 0; }
+.pv-linea { border: 1px solid var(--borde); border-radius: 8px; padding: 8px 10px; display: grid; gap: 6px; }
+.pa-forma.desactivada { opacity: .55; cursor: not-allowed; }

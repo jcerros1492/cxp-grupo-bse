@@ -284,7 +284,8 @@ function pagoDirecto(f, { monto, fecha, comprobante, descripcion, notaProg }) {
 export function problemaVarias(fs) {
   if (!fs.length) return 'No hay facturas marcadas';
   const f0 = fs[0];
-  if (fs.some((f) => String(f.codigo) !== String(f0.codigo) || f.sociedad !== f0.sociedad || f.moneda !== f0.moneda)) return 'Solo se pueden pagar juntas facturas del mismo proveedor, sociedad y moneda';
+  // 1.33.0: pueden ser de varios proveedores (una línea del .txt por proveedor), pero de la misma sociedad y moneda.
+  if (fs.some((f) => f.sociedad !== f0.sociedad || f.moneda !== f0.moneda)) return 'Solo se pueden pagar juntas facturas de la misma sociedad y moneda (el archivo sale de una sola cuenta)';
   const prog = fs.find((f) => programacionDe(f));
   if (prog) return `La factura ${prog.documento} ya está programada: se aplica en «Por aplicar»`;
   const sin = fs.find((f) => !(saldo(f) > 0.004));
@@ -292,14 +293,24 @@ export function problemaVarias(fs) {
   return '';
 }
 
-/** Lote de varias facturas del mismo proveedor (una sola línea del .txt), cada una por su saldo. */
-export function loteVarias(fs, fecha, descripcion) {
+/** Proveedores (códigos) de las facturas marcadas, en el orden en que aparecen. */
+export const codigosDe = (fs) => [...new Set(fs.map((f) => String(f.codigo)))];
+
+/**
+ * Lote de facturas de una sociedad y moneda: una línea del .txt por proveedor, cada factura por su saldo.
+ * `descs` y `conceptos`: { codigo: texto } para cambiar la descripción del banco o el concepto BCT de cada proveedor.
+ */
+export function loteVarias(fs, fecha, descs = {}, conceptos = {}) {
   const f0 = fs[0];
   const lote = { clave: [f0.sociedad, f0.moneda, fecha].join('|'), sociedad: f0.sociedad, moneda: f0.moneda, fecha };
-  const ln = completarLinea({ ...lote, clave: 'varias|' + fs.map((f) => f.id).join(',') }, { codigo: f0.codigo, items: fs.map((f) => ({ p: { id: null, monto: round2(saldo(f)) }, f })) });
-  if (descripcion != null && String(descripcion).trim()) ln.descripcion = String(descripcion).trim();
-  lote.lineas = [ln];
-  lote.total = ln.total;
+  lote.lineas = codigosDe(fs).map((cod) => {
+    const suyas = fs.filter((f) => String(f.codigo) === cod);
+    const ln = completarLinea({ ...lote, clave: 'varias|' + suyas.map((f) => f.id).join(',') }, { codigo: suyas[0].codigo, items: suyas.map((f) => ({ p: { id: null, monto: round2(saldo(f)) }, f })) });
+    if (String(descs[cod] ?? '').trim()) ln.descripcion = String(descs[cod]).trim();
+    if (String(conceptos[cod] ?? '').trim()) ln.concepto = String(conceptos[cod]).trim();
+    return ln;
+  });
+  lote.total = round2(lote.lineas.reduce((t, ln) => t + ln.total, 0));
   lote.cuentaDebito = datos().sociedades[f0.sociedad]?.[f0.moneda === 'USD' ? 'cuentaUSD' : 'cuentaCRC'] || '';
   return lote;
 }
@@ -316,26 +327,32 @@ function programarVarias(fs, fecha, nota) {
 }
 
 /** Banco: se programan para la fecha, quedan «enviado al banco» con un mismo envío y se devuelve el lote para el .txt. */
-export function pagarVariasBanco(fs, { fecha, descripcion, consecutivo, banco, concepto }) {
+export function pagarVariasBanco(fs, { fecha, descs = {}, conceptos = {}, consecutivo, banco }) {
   const pr = problemaVarias(fs);
   if (pr) return { error: pr };
-  const lote = loteVarias(fs, fecha, descripcion);
+  const lote = loteVarias(fs, fecha, descs, conceptos);
   const r = programarVarias(fs, fecha, NOTA_PAGAR_AHORA + ' · banco · ' + fs.length + ' facturas');
   if (r.error) return r;
   const m = marcarEnviado(r.items.map((x) => x.progId), consecutivo, banco);
   if (m.error) return m;
-  if (descripcion != null && String(descripcion).trim()) guardarBorrador(lote.clave, fs[0].codigo, { descripcion: String(descripcion).trim() });
-  if (concepto != null && String(concepto).trim()) { guardarBorrador(lote.clave, fs[0].codigo, { concepto: String(concepto).trim() }); lote.lineas[0].concepto = String(concepto).trim(); }
+  // Lo escrito en la ventana queda para «Descargar archivo otra vez» en Por aplicar.
+  for (const ln of lote.lineas) {
+    const b = {};
+    if (String(descs[ln.codigo] ?? '').trim()) b.descripcion = ln.descripcion;
+    if (String(conceptos[ln.codigo] ?? '').trim()) b.concepto = ln.concepto;
+    if (Object.keys(b).length) guardarBorrador(lote.clave, ln.codigo, b);
+  }
   return { ok: true, lote };
 }
 
 /** Manual: se programan y se aplican en un paso, con un solo comprobante y fecha. */
-export function pagarVariasManual(fs, { fecha, comprobante, descripcion }) {
+export function pagarVariasManual(fs, { fecha, comprobante }) {
   const pr = problemaVarias(fs);
   if (pr) return { error: pr };
+  if (codigosDe(fs).length > 1) return { error: 'Manual se paga proveedor por proveedor: deje marcadas solo las facturas de uno' };
   if (!fecha) return { error: 'Falta la fecha del comprobante' };
   if (!String(comprobante || '').trim()) return { error: 'Falta el número de comprobante' };
-  const lote = loteVarias(fs, fecha, descripcion);
+  const lote = loteVarias(fs, fecha);
   const ln = lote.lineas[0];
   const r = programarVarias(fs, fecha, NOTA_PAGAR_AHORA + ' · manual · ' + fs.length + ' facturas');
   if (r.error) return r;
