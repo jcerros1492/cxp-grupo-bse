@@ -1,5 +1,5 @@
 // ============================================================================
-// Cuentas por Pagar · Grupo BSE · LECTOR DE FACTURAS (versión 1.21)
+// Cuentas por Pagar · Grupo BSE · LECTOR DE FACTURAS (versión 1.33.1)
 //
 // Va en la cuenta cxp.grupobse@gmail.com (NO en la hoja de cuentas por pagar):
 //   1. Entre a https://script.google.com con cxp.grupobse@gmail.com → «Nuevo proyecto».
@@ -16,6 +16,7 @@ var URL_SERVICIO = 'PEGUE-AQUI-LA-DIRECCION-DEL-SERVICIO';   // https://script.g
 var CLAVE_SERVICIO = 'PEGUE-AQUI-LA-CONTRASEÑA-DEL-SERVICIO';
 var ETIQUETA_REVISAR = 'CxP-revisar';
 var CORREOS_POR_VUELTA = 40;
+var PAUSA_ENTRE_CORREOS = 1500;   // 1.33.1: milisegundos de pausa entre correo y correo, para dejar libre la hoja a la aplicación
 
 /** Ejecutar UNA vez: revisa la conexión, programa la lectura cada hora y lee lo que ya hay. */
 function instalar() {
@@ -47,6 +48,8 @@ function procesar() {
       try { docs = documentosDelCorreo_(m.getRawContent()); } catch (e) { revisar = true; continue; }
       if (!docs.length) { resumen.sinFactura++; m.moveToTrash(); continue; }
       var r = llamarServicio_({ accion: 'recibirFacturas', documentos: docs });
+      if (r && !r.ok && /bloqueo|lock/i.test(r.error || '')) { Utilities.sleep(10000); r = llamarServicio_({ accion: 'recibirFacturas', documentos: docs }); } // hoja ocupada: un reintento
+      Utilities.sleep(PAUSA_ENTRE_CORREOS);
       if (!r || !r.ok) { Logger.log('La aplicación no respondió; se intentará en la próxima vuelta. ' + ((r && r.error) || '')); return resumen; }
       var conError = false;
       (r.resultados || []).forEach(function (x) {

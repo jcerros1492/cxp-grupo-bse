@@ -76,6 +76,7 @@ function indicadorConexion() {
   const e = Sync.estado, n = e.pendientes.filter((op) => !op.hechoPor || op.hechoPor === e.sesion?.usuario).length;
   const pend = n ? ` · ${n} ${n === 1 ? 'cambio por enviar' : 'cambios por enviar'}` : '';
   if (e.red === 'offline') return `<span class="red off" title="Los cambios se guardan aquí y se envían al volver la conexión">Sin internet${pend}</span>`;
+  if (e.ocupado) return `<span class="red sync" title="Otro proceso (el lector de correos) está escribiendo en la hoja">El servicio está ocupado, reintentando…${pend}</span>`;
   if (e.red === 'sync') return `<span class="red sync">Sincronizando…${pend}</span>`;
   if (e.red === 'error') return `<button class="red err" data-act="sync-ahora" title="${esc(e.error)}">No se pudo sincronizar${pend} · reintentar</button>`;
   return `<button class="red ok" data-act="sync-ahora" title="Sincronizar ahora">Sincronizado${e.ultimoSync ? ' ' + fechaHora(e.ultimoSync) : ''}${pend}</button>`;

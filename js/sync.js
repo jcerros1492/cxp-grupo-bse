@@ -44,6 +44,7 @@ export const estado = {
   ultimoSync: null,
   red: navigator.onLine ? 'ok' : 'offline', // ok | sync | offline | error
   error: '',
+  ocupado: false,     // 1.33.1: la hoja está ocupada y se está reintentando
   cargado: false,
 };
 
@@ -415,7 +416,32 @@ export async function adminUsuarios(datos) {
 /** Confirma que quien quiere cambiar la conexión conoce la contraseña del servicio. */
 export const verificarClaveServicio = (clave) => conexion()?.clave === String(clave || '').trim();
 
+/** 1.33.1: la hoja estaba ocupada (otro proceso, casi siempre el lector de correos, tenía el bloqueo). */
+const esOcupado = (t) => /bloqueo|lock timeout|lock wait|tiempo de espera para la solicitud/i.test(String(t || ''));
+const MSG_OCUPADO = 'El servicio está ocupado (probablemente el lector de correos está subiendo facturas). No se perdió nada: se vuelve a intentar solo en un momento.';
+const ESPERAS_OCUPADO = [5000, 15000];
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Llama al servicio; si la hoja está ocupada, espera y reintenta sola antes de dar error. */
 async function api(payload, c = conexion()) {
+  for (let intento = 0; ; intento++) {
+    let r, err = null;
+    try { r = await api1(payload, c); } catch (e) { err = e; }
+    const ocupado = err ? esOcupado(err.message) : r && r.ok === false && esOcupado(r.error);
+    if (!ocupado) { if (estado.ocupado) { estado.ocupado = false; notificar(); } if (err) throw err; return r; }
+    if (intento >= ESPERAS_OCUPADO.length) {
+      estado.ocupado = false;
+      notificar();
+      if (err) throw new Error(MSG_OCUPADO);
+      return { ...r, error: MSG_OCUPADO };
+    }
+    estado.ocupado = true;
+    notificar();
+    await dormir(ESPERAS_OCUPADO[intento]);
+  }
+}
+
+async function api1(payload, c) {
   if (!c) throw new Error('Esta computadora no tiene configurada la conexión con Google Sheets');
   payload = { ...payload, servicio: c.clave };
   const url = c.url;
@@ -506,6 +532,7 @@ export async function sincronizar() {
   } catch (e) {
     estado.red = navigator.onLine ? 'error' : 'offline';
     estado.error = e.name === 'AbortError' ? 'El servicio tardó demasiado en responder' : e.message;
+    if (e.message === MSG_OCUPADO) programarSync(60000); // la hoja sigue ocupada: otro intento en un minuto
   } finally {
     sincronizando = false;
     if (estado.sesion && !misma()) programarSync(100); // se cambió de usuario mientras tanto: sincronizar ya con el nuevo
