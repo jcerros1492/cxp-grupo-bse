@@ -2322,6 +2322,13 @@ function vistaTablero() {
 
 // ---------------------------------------------------------------- Reportes
 
+/** 1.33.2: orden de las sociedades en los reportes: Santa Eduviges, Nosavar, Loma Bonita, La Hilda (las demás al final). */
+const ORDEN_SOCIEDADES = [/eduviges|beneficiadora/i, /nosavar/i, /loma\s*bonita/i, /hilda/i];
+function sociedadesOrdenadas() {
+  const pos = (k) => { const i = ORDEN_SOCIEDADES.findIndex((re) => re.test(k + ' ' + S.nombreSociedad(k))); return i < 0 ? 99 : i; };
+  return Object.keys(S.sociedades()).sort((a, b) => pos(a) - pos(b));
+}
+
 /** "SOC, AGRICOLA COMERCIAL LA HILDA S,A" → "SOC. AGRICOLA COMERCIAL LA HILDA S.A." */
 function nombreLegalSociedad(clave) {
   let n = String(clave).replace(/,/g, '.').replace(/\s+/g, ' ').trim();
@@ -2332,7 +2339,7 @@ function nombreLegalSociedad(clave) {
 /** Facturas con saldo cuyo vencimiento está en el rango, agrupadas por sociedad y proveedor. */
 function datosReporte() {
   const R = ui.rep;
-  const socs = R.soc ? [R.soc] : Object.keys(S.sociedades());
+  const socs = R.soc ? [R.soc] : sociedadesOrdenadas();
   const lista = S.conSaldo().filter((f) => f.moneda === R.mon && socs.includes(f.sociedad) && (!R.prov || f.codigo === R.prov)
     && (!R.desde || (f.fechaVence || '') >= R.desde) && (!R.hasta || (f.fechaVence || '') <= R.hasta));
   return socs.map((soc) => {
@@ -2450,7 +2457,7 @@ function botonesSalida(prefijo, hay, extrasExcel) {
 
 function vistaCxp() {
   const R = ui.rep;
-  const socs = Object.keys(S.sociedades());
+  const socs = sociedadesOrdenadas();
   const grupos = datosReporte();
   const emitido = new Date();
   const mon = MONEDAS[R.mon];
@@ -2480,7 +2487,7 @@ function vistaCxp() {
       ${R.prov && i > 0 ? `<header class="rep-cab rep-cab-corta"><h2 class="rep-soc">${esc(nombreLegalSociedad(g.soc))}</h2></header>` : `<header class="rep-cab">
         <div><h2 class="rep-soc">${esc(nombreLegalSociedad(g.soc))}</h2>
           <p class="rep-titulo">Reporte de Cuentas por Pagar</p>
-          <p class="rep-rango">${textoRango()} · ${mon.nombre}</p>
+          <p class="rep-rango">${textoRango()} · <strong class="rep-moneda">${mon.nombre}</strong></p>
           <p class="rep-leyenda">Días: <span class="d-venc">−</span> vencida hace esos días · <span class="d-porv">+</span> faltan esos días para vencer</p></div>
         <div class="rep-emitido">Emitido<br><strong>${fmtFecha(hoy)}</strong><br>${String(emitido.getHours()).padStart(2, '0')}:${String(emitido.getMinutes()).padStart(2, '0')}</div>
       </header>`}
@@ -2625,7 +2632,7 @@ function proveedoresEstado() {
 function datosEstadoCuenta() {
   const E = ui.ec;
   if (!E.prov) return [];
-  const socs = E.soc ? [E.soc] : Object.keys(S.sociedades());
+  const socs = E.soc ? [E.soc] : sociedadesOrdenadas();
   const facts = S.listaFacturas().filter((f) => f.codigo === E.prov && f.moneda === E.mon && socs.includes(f.sociedad)
     && (E.alcance !== 'saldo' || S.saldo(f) > 0.004)
     && (!E.desde || (f.fechaFactura || '') >= E.desde) && (!E.hasta || (f.fechaFactura || '') <= E.hasta));

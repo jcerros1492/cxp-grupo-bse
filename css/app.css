@@ -1056,3 +1056,7 @@ label.soltar-aqui::after { content: 'Suelte aquí'; position: absolute; left: 50
 .pv-lineas { display: flex; flex-direction: column; gap: 8px; margin: 6px 0; }
 .pv-linea { border: 1px solid var(--borde); border-radius: 8px; padding: 8px 10px; display: grid; gap: 6px; }
 .pa-forma.desactivada { opacity: .55; cursor: not-allowed; }
+
+/* 1.33.2: la moneda del reporte, más grande y en negrita */
+.rep-rango .rep-moneda { font-size: 17px; font-weight: 800; color: #111; }
+@media print { .rep-prov { break-inside: avoid; page-break-inside: avoid; } }

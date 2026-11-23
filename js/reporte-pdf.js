@@ -43,9 +43,15 @@ export function crearPdfReporte(d) {
     y += 11;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...NEGRO);
     doc.text('Reporte de Cuentas por Pagar', MM.izq, y); y += 5;
+    // 1.33.2: la moneda va más grande y en negrita
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...GRIS);
-    doc.text(`${d.rango} · ${d.moneda}`, MM.izq, y); y += 4.5;
-    doc.setFontSize(7.5);
+    const pre = `${d.rango} · `;
+    doc.text(pre, MM.izq, y + 0.5);
+    const anchoPre = doc.getTextWidth(pre);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(...NEGRO);
+    doc.text(d.moneda, MM.izq + anchoPre, y + 0.5);
+    y += 5.5;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
     doc.setTextColor(...ROJO); doc.text('-', MM.izq + 8, y);
     doc.setTextColor(...GRIS); doc.text('Días:', MM.izq, y); doc.text('vencida hace esos días ·', MM.izq + 11, y);
     doc.setTextColor(...VERDE); doc.text('+', MM.izq + 41, y);
@@ -76,10 +82,19 @@ export function crearPdfReporte(d) {
     if (i > 0 && !d.porProveedor) { doc.addPage(); y = MM.arriba; }
     if (i === 0 || !d.porProveedor) encabezado(g.soc); else encabezadoCorto(g.soc);
     for (const x of g.proveedores) {
+      // 1.33.2: un proveedor no se parte entre dos hojas. Si no cabe completo en lo que queda de la hoja, empieza en la siguiente.
+      // Solo si es más largo que una hoja entera se parte, y en la hoja siguiente se repite su nombre.
+      const alto = 2 + 9.5 + x.facturas.length * 6 + (d.porProveedor ? 0 : 7.5) + 2;
+      const cabe = ALTO - MM.abajo - MM.arriba;
+      if (alto <= cabe && y + alto > ALTO - MM.abajo) { doc.addPage(); y = MM.arriba; }
       espacio(22);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...NEGRO);
-      doc.text(x.prov.nombre, MM.izq, y);
-      doc.setLineWidth(0.25); doc.line(MM.izq, y + 0.8, MM.izq + doc.getTextWidth(x.prov.nombre), y + 0.8);
+      const nombreProv = (txt, yy) => {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...NEGRO);
+        doc.text(txt, MM.izq, yy);
+        doc.setDrawColor(...NEGRO); doc.setLineWidth(0.25); doc.line(MM.izq, yy + 0.8, MM.izq + doc.getTextWidth(txt), yy + 0.8);
+      };
+      nombreProv(x.prov.nombre, y);
+      const paginaInicio = doc.getNumberOfPages();
       y += 2;
       const cuerpo = x.facturas.map((f) => {
         const dd = d.dias(f);
@@ -91,8 +106,9 @@ export function crearPdfReporte(d) {
         { content: tot(x.saldo), styles: { halign: 'right' } }, '',
       ]];
       doc.autoTable({
-        startY: y, margin: { left: MM.izq, right: MM.der, top: MM.arriba, bottom: MM.abajo },
+        startY: y, margin: { left: MM.izq, right: MM.der, top: MM.arriba + 6, bottom: MM.abajo },
         head: [['N° Factura', 'Fecha de\nfactura', 'Fecha de\nvencimiento', 'Días', 'Saldo', 'Moneda']],
+        didDrawPage: () => { if (doc.getNumberOfPages() > paginaInicio) nombreProv(`${x.prov.nombre} (continuación)`, MM.arriba + 3); },
         body: cuerpo, foot: pie, theme: 'plain', showFoot: 'lastPage', rowPageBreak: 'avoid',
         styles: { font: 'helvetica', fontSize: 8.5, cellPadding: { top: 1.4, bottom: 1.4, left: 1.5, right: 1.5 }, textColor: NEGRO, halign: 'center', valign: 'middle', lineColor: [227, 227, 227], lineWidth: { bottom: 0.2 } },
         headStyles: { fontStyle: 'bold', fontSize: 7.5, textColor: [68, 68, 68], halign: 'center', valign: 'bottom', lineColor: [150, 150, 150], lineWidth: { bottom: 0.3 } },

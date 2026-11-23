@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.33.2 | Reportes: un proveedor ya no queda partido entre dos hojas del PDF (si no cabe, empieza en la hoja siguiente; si es más largo que una hoja, se repite su nombre con «(continuación)»). Orden de sociedades: Santa Eduviges, Nosavar, Loma Bonita, La Hilda. La moneda del encabezado (Colones/Dólares) más grande y en negrita. |
 | 1.33.1 | Hoja ocupada («tiempo de espera para la solicitud de bloqueo»): la aplicación muestra «El servicio está ocupado, reintentando…» y reintenta sola (a los 5 y 20 s); si sigue ocupada, avisa sin texto técnico y vuelve a sincronizar en un minuto. Lector 1.33.1: pausa de 1,5 s entre correos y un reintento si la hoja está ocupada (cambiar en el Lector; la hoja no cambia). |
 | 1.33.0 | «Pagar seleccionadas» con varios proveedores (misma sociedad y moneda): un solo archivo de banco (BCR o BCT) con una línea por proveedor, cada uno con su descripción (y concepto BCT). Manual sigue siendo de un proveedor a la vez. |
 | 1.32.0 | Banco BCT (solo Santa Eduviges): en Por aplicar, «Pagar ahora» y «Pagar seleccionadas» se elige BCR (igual que antes) o BCT; el .txt del BCT lleva solo los que se pagan, con concepto editable por pago. Ficha del proveedor con «Datos para el banco BCT» (cédula, tipo, correos y conceptos). Configuración → «Cargar datos BCT» lee los .txt de la plantilla del BCT y llena los datos (y los IBAN que falten). Sin cambios en Apps Script. |
