@@ -81,12 +81,15 @@ export function crearPdfReporte(d) {
   d.grupos.forEach((g, i) => {
     if (i > 0 && !d.porProveedor) { doc.addPage(); y = MM.arriba; }
     if (i === 0 || !d.porProveedor) encabezado(g.soc); else encabezadoCorto(g.soc);
-    for (const x of g.proveedores) {
+    g.proveedores.forEach((x, ip) => {
+      // 1.33.4: el último proveedor de la sociedad va en la misma hoja que el total de la sociedad (y que el total general, si es la última).
+      const extra = ip === g.proveedores.length - 1 ? 6 + (i === d.grupos.length - 1 && d.total ? 33 : 15) : 0;
       // 1.33.2: un proveedor no se parte entre dos hojas. Si no cabe completo en lo que queda de la hoja, empieza en la siguiente.
       // Solo si es más largo que una hoja entera se parte, y en la hoja siguiente se repite su nombre.
-      const alto = 2 + 9.5 + x.facturas.length * 6 + (d.porProveedor ? 0 : 7.5) + 2;
+      const alto = 2 + 10.5 + x.facturas.length * 6.4 + (d.porProveedor ? 0 : 8) + 2; // con holgura: mejor un poco de blanco que partir
       const cabe = ALTO - MM.abajo - MM.arriba;
-      if (alto <= cabe && y + alto > ALTO - MM.abajo) { doc.addPage(); y = MM.arriba; }
+      if (alto + extra <= cabe && y + alto + extra > ALTO - MM.abajo) { doc.addPage(); y = MM.arriba; }
+      else if (alto <= cabe && y + alto > ALTO - MM.abajo) { doc.addPage(); y = MM.arriba; }
       espacio(22);
       const nombreProv = (txt, yy) => {
         doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...NEGRO);
@@ -123,7 +126,7 @@ export function crearPdfReporte(d) {
         },
       });
       y = doc.lastAutoTable.finalY + 6;
-    }
+    });
     // 1.33.3: el total general no queda solo en una hoja: si no cabe junto al total de la última sociedad, pasan los dos a la hoja siguiente.
     if (i === d.grupos.length - 1 && d.total) espacio(12 + 3 + 16);
     filaTotal(`Total ${d.nombreCorto(g.soc)} · ${g.cantidad} ${g.cantidad === 1 ? 'factura' : 'facturas'}`, tot(g.saldo), true);
