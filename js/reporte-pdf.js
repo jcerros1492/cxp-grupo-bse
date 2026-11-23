@@ -124,6 +124,8 @@ export function crearPdfReporte(d) {
       });
       y = doc.lastAutoTable.finalY + 6;
     }
+    // 1.33.3: el total general no queda solo en una hoja: si no cabe junto al total de la última sociedad, pasan los dos a la hoja siguiente.
+    if (i === d.grupos.length - 1 && d.total) espacio(12 + 3 + 16);
     filaTotal(`Total ${d.nombreCorto(g.soc)} · ${g.cantidad} ${g.cantidad === 1 ? 'factura' : 'facturas'}`, tot(g.saldo), true);
     y += 3;
   });
@@ -148,6 +150,48 @@ function numerarPaginas(doc) {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...GRIS);
     doc.text(`Página ${i} de ${paginas}`, ANCHO / 2, ALTO - 7, { align: 'center' });
   }
+}
+
+// ---------------------------------------------------------------- Resumen por sociedad (1.33.3)
+/**
+ * @param d { titulo, rango, emitido, filas: [{nombre, crc, usd}], total: {CRC, USD}, fmtNum }
+ */
+export function crearPdfResumen(d) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'letter', orientation: 'portrait' });
+  doc.setProperties({ title: d.titulo, creator: 'Cuentas por Pagar · Grupo BSE' });
+  let y = MM.arriba;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(...NEGRO);
+  doc.text('GRUPO BSE', MM.izq, y + 5);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...GRIS);
+  doc.text('Emitido', ANCHO - MM.der, y + 1.5, { align: 'right' });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...NEGRO);
+  doc.text(d.emitido.fecha, ANCHO - MM.der, y + 5.5, { align: 'right' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...GRIS);
+  doc.text(d.emitido.hora, ANCHO - MM.der, y + 9, { align: 'right' });
+  y += 11;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...NEGRO);
+  doc.text('Resumen de Cuentas por Pagar por sociedad', MM.izq, y); y += 5;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...GRIS);
+  doc.text(d.rango, MM.izq, y); y += 3;
+  doc.setDrawColor(...NEGRO); doc.setLineWidth(0.6); doc.line(MM.izq, y, ANCHO - MM.der, y);
+  y += 6;
+  const m = (n, s) => (n ? s + d.fmtNum(n) : '—');
+  const anchos = [0.52, 0.24, 0.24].map((p) => p * UTIL);
+  doc.autoTable({
+    startY: y, margin: { left: MM.izq, right: MM.der },
+    head: [['Sociedad', 'Colones', 'Dólares']],
+    body: d.filas.map((x) => [x.nombre, m(x.crc, '¢'), m(x.usd, '$')]),
+    foot: [['Total Grupo BSE', '¢' + d.fmtNum(d.total.CRC), '$' + d.fmtNum(d.total.USD)]],
+    theme: 'plain',
+    styles: { font: 'helvetica', fontSize: 10.5, cellPadding: { top: 3, bottom: 3, left: 2, right: 3 }, textColor: NEGRO, valign: 'middle', lineColor: [220, 220, 220], lineWidth: { bottom: 0.2 } },
+    headStyles: { fontStyle: 'bold', fontSize: 9, textColor: [68, 68, 68], lineColor: [120, 120, 120], lineWidth: { bottom: 0.4 } },
+    footStyles: { fontStyle: 'bold', fontSize: 11.5, textColor: NEGRO, lineColor: NEGRO, lineWidth: { top: 0.6 } },
+    columnStyles: { 0: { cellWidth: anchos[0], fontStyle: 'bold' }, 1: { cellWidth: anchos[1], halign: 'right' }, 2: { cellWidth: anchos[2], halign: 'right' } },
+    didParseCell: (h) => { if (h.column.index > 0 && h.section !== 'body') h.cell.styles.halign = 'right'; },
+  });
+  numerarPaginas(doc);
+  return doc;
 }
 
 // ---------------------------------------------------------------- Estado de cuenta

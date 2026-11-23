@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.33.3 | Reportes → nueva pestaña «Resumen por sociedad»: lo que debe cada sociedad en colones y en dólares, con total del grupo; filtros de vencimiento (Vencidas a hoy, Todo, etc.); PDF, Excel e Imprimir. En el PDF del reporte, el «Total todas las sociedades» ya no queda solo en una hoja. |
 | 1.33.2 | Reportes: un proveedor ya no queda partido entre dos hojas del PDF (si no cabe, empieza en la hoja siguiente; si es más largo que una hoja, se repite su nombre con «(continuación)»). Orden de sociedades: Santa Eduviges, Nosavar, Loma Bonita, La Hilda. La moneda del encabezado (Colones/Dólares) más grande y en negrita. |
 | 1.33.1 | Hoja ocupada («tiempo de espera para la solicitud de bloqueo»): la aplicación muestra «El servicio está ocupado, reintentando…» y reintenta sola (a los 5 y 20 s); si sigue ocupada, avisa sin texto técnico y vuelve a sincronizar en un minuto. Lector 1.33.1: pausa de 1,5 s entre correos y un reintento si la hoja está ocupada (cambiar en el Lector; la hoja no cambia). |
 | 1.33.0 | «Pagar seleccionadas» con varios proveedores (misma sociedad y moneda): un solo archivo de banco (BCR o BCT) con una línea por proveedor, cada uno con su descripción (y concepto BCT). Manual sigue siendo de un proveedor a la vez. |

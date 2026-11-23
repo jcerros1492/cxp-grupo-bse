@@ -1060,3 +1060,14 @@ label.soltar-aqui::after { content: 'Suelte aquí'; position: absolute; left: 50
 /* 1.33.2: la moneda del reporte, más grande y en negrita */
 .rep-rango .rep-moneda { font-size: 17px; font-weight: 800; color: #111; }
 @media print { .rep-prov { break-inside: avoid; page-break-inside: avoid; } }
+
+/* 1.33.3: resumen por sociedad */
+.rep-resumen .res-tabla { width: 100%; table-layout: auto; }
+.rep-resumen .res-tabla th, .rep-resumen .res-tabla td { padding: 10px 12px; font-size: 15px; }
+.rep-resumen .res-tabla .res-soc { text-align: left; font-weight: 700; }
+.rep-resumen .res-tabla th.num, .rep-resumen .res-tabla td.num { text-align: right; }
+.rep-resumen .res-tabla tfoot td { border-top: 2px solid #111; font-weight: 800; font-size: 16px; }
+.rep-resumen .res-tabla .cifra { width: auto; }
+.reporte-hojas .rep-resumen .res-tabla th.res-soc, .reporte-hojas .rep-resumen .res-tabla td.res-soc { text-align: left !important; }
+.reporte-hojas .rep-resumen .res-tabla th.num, .reporte-hojas .rep-resumen .res-tabla td.num { text-align: right !important; padding-right: 16px; }
+.reporte-hojas .rep-resumen .res-tabla .cifra { display: inline; width: auto !important; }

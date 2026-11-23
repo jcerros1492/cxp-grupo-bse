@@ -3,7 +3,7 @@ import * as S from './store.js';
 import * as Sync from './sync.js';
 import { VERSION, USUARIOS, API_URL, PINES } from './config.js';
 import { importarExcel } from './importer.js';
-import { crearPdfReporte, crearPdfEstadoCuenta } from './reporte-pdf.js';
+import { crearPdfReporte, crearPdfEstadoCuenta, crearPdfResumen } from './reporte-pdf.js';
 import { crearAvisoPago } from './aviso-pdf.js';
 import { CAMPOS as CAMPOS_IMP, leerFilas, filaEncabezado, sugerirMapeo, prepararFacturas, detectarGTI, CEDULAS_SOCIEDAD, nombreClave, numeroDocumento, cedulasConocidas, nombreLegible, buscarPorNombre } from './importar-facturas.js';
 import { archivoContable, lineaContable } from './contable.js';
@@ -2406,6 +2406,7 @@ function pestanasReportes() {
   return `<div class="rep-pestanas no-imprimir" role="tablist">
     <button class="rep-pestana ${t === 'cxp' ? 'on' : ''}" data-act="r-tipo" data-v="cxp" role="tab" aria-selected="${t === 'cxp'}">Reportes</button>
     <button class="rep-pestana ${t === 'ec' ? 'on' : ''}" data-act="r-tipo" data-v="ec" role="tab" aria-selected="${t === 'ec'}">Estado de cuenta</button>
+    <button class="rep-pestana ${t === 'res' ? 'on' : ''}" data-act="r-tipo" data-v="res" role="tab" aria-selected="${t === 'res'}">Resumen por sociedad</button>
   </div>`;
 }
 
@@ -2429,7 +2430,7 @@ window.addEventListener('resize', () => { clearTimeout(tCifras); tCifras = setTi
 /** Total con el signo de la moneda (₡ o $). */
 const cifraM = (n, mon) => `<span class="cifra cifra-total">${money(n, mon)}</span>`;
 
-function vistaReportes() { return pestanasReportes() + (ui.rep.tipo === 'ec' ? vistaEstadoCuenta() : vistaCxp()); }
+function vistaReportes() { return pestanasReportes() + (ui.rep.tipo === 'ec' ? vistaEstadoCuenta() : ui.rep.tipo === 'res' ? vistaResumen() : vistaCxp()); }
 
 /** Íconos de los botones de salida (en el celular se ven sobre el texto corto). */
 const ICO = {
@@ -2613,6 +2614,87 @@ function excelReporte() {
   XLSX.utils.book_append_sheet(wb, ws, 'Reporte');
   const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
   descargar(nombreArchivoReporte() + '.xlsx', new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+}
+
+// ---------------------------------------------------------------- Resumen por sociedad (1.33.3)
+
+/** Lo que debe cada sociedad en colones y en dólares (facturas con saldo, con los mismos filtros de vencimiento del reporte). */
+function datosResumen() {
+  const R = ui.rep;
+  const lista = S.conSaldo().filter((f) => (!R.desde || (f.fechaVence || '') >= R.desde) && (!R.hasta || (f.fechaVence || '') <= R.hasta));
+  const filas = sociedadesOrdenadas().map((soc) => {
+    const x = { soc, CRC: 0, USD: 0, nCRC: 0, nUSD: 0 };
+    for (const f of lista) if (f.sociedad === soc && (f.moneda === 'CRC' || f.moneda === 'USD')) { x[f.moneda] += S.saldo(f); x['n' + f.moneda]++; }
+    x.CRC = round2(x.CRC); x.USD = round2(x.USD);
+    return x;
+  });
+  const total = { CRC: round2(filas.reduce((t, x) => t + x.CRC, 0)), USD: round2(filas.reduce((t, x) => t + x.USD, 0)), n: filas.reduce((t, x) => t + x.nCRC + x.nUSD, 0) };
+  return { filas, total };
+}
+
+function nombreArchivoResumen() {
+  const R = ui.rep;
+  return 'Resumen CxP por sociedad' + (R.desde || R.hasta ? ' - ' + limpioArchivo(textoRango().replace(/^Facturas con vencimiento /, 'vence ')) : '');
+}
+
+function vistaResumen() {
+  const R = ui.rep;
+  const { filas, total } = datosResumen();
+  const hoy = hoyISO(), ahora = new Date();
+  const preset = (n, d, h) => `<button class="chip ${R.desde === d && R.hasta === h ? 'on' : ''}" data-act="r-preset" data-v="${d}|${h}">${n}</button>`;
+  const monto = (n, mon) => (n ? cifraM(n, mon) : '<span class="tenue">—</span>');
+  return `
+  <div class="titulo-vista no-imprimir"><div><h1>Resumen por sociedad</h1><p class="sub">Lo que debe cada sociedad, en colones y en dólares.</p></div>
+    ${botonesSalida('rs', total.n, botonSalida('rs-excel', 'Excel', 'Excel', 'excel', total.n))}</div>
+  <section class="filtros no-imprimir">
+    <div class="form-grid rep-filtros">
+      ${campoFecha('r-desde', R.desde, 'Vence desde')}
+      ${campoFecha('r-hasta', R.hasta, 'Vence hasta')}
+    </div>
+    <div class="chips rep-presets"><span class="lbl">Rápido:</span>
+      ${preset('Vencidas a hoy', '', hoy)}${preset('Próximos 7 días', hoy, sumarDias(hoy, 7))}${preset('Próximos 30 días', hoy, sumarDias(hoy, 30))}${preset('Todo', '', '')}</div>
+  </section>
+  <div class="reporte-hojas"><article class="reporte rep-resumen">
+    <header class="rep-cab">
+      <div><h2 class="rep-soc">GRUPO BSE</h2>
+        <p class="rep-titulo">Resumen de Cuentas por Pagar por sociedad</p>
+        <p class="rep-rango">${textoRango()}</p></div>
+      <div class="rep-emitido">Emitido<br><strong>${fmtFecha(hoy)}</strong><br>${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}</div>
+    </header>
+    <table class="rep-tabla res-tabla">
+      <thead><tr><th class="res-soc">Sociedad</th><th class="num">Colones</th><th class="num">Dólares</th></tr></thead>
+      <tbody>${filas.map((x) => `<tr><td class="res-soc">${esc(nombreLegalSociedad(x.soc))}</td><td class="num">${monto(x.CRC, 'CRC')}</td><td class="num">${monto(x.USD, 'USD')}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td class="res-soc">Total Grupo BSE</td><td class="num">${cifraM(total.CRC, 'CRC')}</td><td class="num">${cifraM(total.USD, 'USD')}</td></tr></tfoot>
+    </table>
+  </article></div>`;
+}
+
+function pdfResumen() {
+  const { filas, total } = datosResumen();
+  const ahora = new Date();
+  const doc = crearPdfResumen({
+    titulo: nombreArchivoResumen(), rango: textoRango(),
+    emitido: { fecha: fmtFecha(hoyISO()), hora: `${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}` },
+    filas: filas.map((x) => ({ nombre: nombreLegalSociedad(x.soc), crc: x.CRC, usd: x.USD })), total, fmtNum,
+  });
+  return new File([doc.output('blob')], nombreArchivoResumen() + '.pdf', { type: 'application/pdf' });
+}
+
+function excelResumen() {
+  const { filas, total } = datosResumen();
+  const datos = [['GRUPO BSE'], ['Resumen de Cuentas por Pagar por sociedad'], [textoRango()], [`Emitido: ${fmtFecha(hoyISO())}`], [],
+    ['Sociedad', 'Colones', 'Dólares'], ...filas.map((x) => [nombreLegalSociedad(x.soc), x.CRC, x.USD]), ['Total Grupo BSE', total.CRC, total.USD]];
+  const XLSX = window.XLSX;
+  const ws = XLSX.utils.aoa_to_sheet(datos);
+  ws['!cols'] = [{ wch: 44 }, { wch: 20 }, { wch: 18 }];
+  for (let r = 6; r < datos.length; r++) {
+    const ult = r === datos.length - 1;
+    for (const [c, sim] of [[1, '₡'], [2, '$']]) { const celda = ws[XLSX.utils.encode_cell({ r, c })]; if (celda) celda.z = ult ? `"${sim}"#,##0.00` : '#,##0.00'; }
+  }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Resumen');
+  const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+  descargar(nombreArchivoResumen() + '.xlsx', new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
 }
 
 // ---------------------------------------------------------------- Estado de cuenta
@@ -3306,12 +3388,15 @@ const acciones = {
   'r-excel-lista': () => { try { excelListaReporte(); } catch (err) { avisar('No se pudo crear el Excel: ' + err.message, 'error'); } },
   'r-imprimir': (v) => {
     const antes = document.title;
-    document.title = v === 'ec' ? nombreArchivoEstado() : nombreArchivoReporte(); // nombre sugerido al guardar como PDF
+    document.title = v === 'ec' ? nombreArchivoEstado() : v === 'rs' ? nombreArchivoResumen() : nombreArchivoReporte(); // nombre sugerido al guardar como PDF
     window.print();
     setTimeout(() => { document.title = antes; }, 1000);
   },
   'r-pdf': () => { try { const f = pdfReporte(); descargar(f.name, f); } catch (err) { avisar('No se pudo crear el PDF: ' + err.message, 'error'); } },
   'r-compartir': () => compartirArchivo(pdfReporte),
+  'rs-pdf': () => { try { const f = pdfResumen(); descargar(f.name, f); } catch (err) { avisar('No se pudo crear el PDF: ' + err.message, 'error'); } },
+  'rs-compartir': () => compartirArchivo(pdfResumen),
+  'rs-excel': () => { try { excelResumen(); } catch (err) { avisar('No se pudo crear el Excel: ' + err.message, 'error'); } },
   'r-excel': () => { try { excelReporte(); } catch (err) { avisar('No se pudo crear el Excel: ' + err.message, 'error'); } },
   'pn-abrir': (v) => dialogoPagoNorman(v),
   'f-nueva': () => dialogoNuevaFactura(),
