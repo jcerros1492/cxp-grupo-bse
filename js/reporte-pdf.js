@@ -78,27 +78,48 @@ export function crearPdfReporte(d) {
     y += grande ? 7 : 5;
   };
 
+  const nombreProv = (txt, yy) => {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...NEGRO);
+    doc.text(txt, MM.izq, yy);
+    doc.setDrawColor(...NEGRO); doc.setLineWidth(0.25); doc.line(MM.izq, yy + 0.8, MM.izq + doc.getTextWidth(txt), yy + 0.8);
+  };
+  const opcionesTabla = (body, foot) => ({
+    margin: { left: MM.izq, right: MM.der, top: MM.arriba, bottom: MM.abajo },
+    head: [['N° Factura', 'Fecha de\nfactura', 'Fecha de\nvencimiento', 'Días', 'Saldo', 'Moneda']],
+    body, foot, theme: 'plain', showFoot: 'lastPage', rowPageBreak: 'avoid',
+    styles: { font: 'helvetica', fontSize: 8.5, cellPadding: { top: 1.4, bottom: 1.4, left: 1.5, right: 1.5 }, textColor: NEGRO, halign: 'center', valign: 'middle', lineColor: [227, 227, 227], lineWidth: { bottom: 0.2 } },
+    headStyles: { fontStyle: 'bold', fontSize: 7.5, textColor: [68, 68, 68], halign: 'center', valign: 'bottom', lineColor: [150, 150, 150], lineWidth: { bottom: 0.3 } },
+    footStyles: { fontStyle: 'bold', fontSize: 9.5, textColor: NEGRO, lineWidth: 0 },
+    columnStyles: { 0: { cellWidth: COLS[0] }, 1: { cellWidth: COLS[1] }, 2: { cellWidth: COLS[2] }, 3: { cellWidth: COLS[3], fontStyle: 'bold' }, 4: { cellWidth: COLS[4], halign: 'right', cellPadding: { top: 1.4, bottom: 1.4, left: 1.5, right: PAD } }, 5: { cellWidth: COLS[5] } },
+    didParseCell: (h) => {
+      if (h.section === 'body' && h.column.index === 3) {
+        const t = String(h.cell.raw);
+        h.cell.styles.textColor = t === 'Hoy' ? AMBAR : t.startsWith('-') ? ROJO : VERDE;
+      }
+      if (h.section === 'foot' && h.column.index === 4) h.cell.styles.cellPadding = { top: 1.4, bottom: 1.4, left: 1.5, right: 9 };
+    },
+  });
+  const tablaProv = (body, foot, startY) => doc.autoTable({ ...opcionesTabla(body, foot), startY });
+  // Mide el alto real de cada renglón dibujando la tabla en una hoja de borrador muy larga.
+  const borrador = new jsPDF({ unit: 'mm', format: [ANCHO, 5000], orientation: 'portrait' });
+  const medir = (body, foot) => {
+    borrador.autoTable({ ...opcionesTabla(body, foot), startY: 10, margin: { left: MM.izq, right: MM.der, top: 10, bottom: 10 } });
+    const t = borrador.lastAutoTable;
+    return { head: t.head.reduce((a, r) => a + r.height, 0), filas: t.body.map((r) => r.height), foot: t.foot.reduce((a, r) => a + r.height, 0) };
+  };
+
   d.grupos.forEach((g, i) => {
     if (i > 0 && !d.porProveedor) { doc.addPage(); y = MM.arriba; }
     if (i === 0 || !d.porProveedor) encabezado(g.soc); else encabezadoCorto(g.soc);
     g.proveedores.forEach((x, ip) => {
-      // 1.33.4: el último proveedor de la sociedad va en la misma hoja que el total de la sociedad (y que el total general, si es la última).
-      const extra = ip === g.proveedores.length - 1 ? 6 + (i === d.grupos.length - 1 && d.total ? 33 : 15) : 0;
-      // 1.33.2: un proveedor no se parte entre dos hojas. Si no cabe completo en lo que queda de la hoja, empieza en la siguiente.
-      // Solo si es más largo que una hoja entera se parte, y en la hoja siguiente se repite su nombre.
-      const alto = 2 + 10.5 + x.facturas.length * 6.4 + (d.porProveedor ? 0 : 8) + 2; // con holgura: mejor un poco de blanco que partir
-      const cabe = ALTO - MM.abajo - MM.arriba;
-      if (alto + extra <= cabe && y + alto + extra > ALTO - MM.abajo) { doc.addPage(); y = MM.arriba; }
-      else if (alto <= cabe && y + alto > ALTO - MM.abajo) { doc.addPage(); y = MM.arriba; }
-      espacio(22);
-      const nombreProv = (txt, yy) => {
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...NEGRO);
-        doc.text(txt, MM.izq, yy);
-        doc.setDrawColor(...NEGRO); doc.setLineWidth(0.25); doc.line(MM.izq, yy + 0.8, MM.izq + doc.getTextWidth(txt), yy + 0.8);
-      };
-      nombreProv(x.prov.nombre, y);
-      const paginaInicio = doc.getNumberOfPages();
-      y += 2;
+      // 1.33.5: se llena cada hoja sin dejar espacios grandes en blanco.
+      //  · Si el proveedor cabe en lo que queda de la hoja, va ahí.
+      //  · Si no cabe y queda poco espacio (menos de ~9 renglones), empieza en la hoja siguiente.
+      //  · Si queda bastante espacio, empieza ahí y sigue en la hoja siguiente con «NOMBRE (continuación)»;
+      //    nunca queda un pedazo con menos de 3 facturas.
+      //  · El último proveedor de la sociedad termina en la misma hoja que el total de la sociedad (y el total general).
+      const ultimo = ip === g.proveedores.length - 1;
+      const cola = 6 + (ultimo ? (i === d.grupos.length - 1 && d.total ? 33 : 15) : 0);
       const cuerpo = x.facturas.map((f) => {
         const dd = d.dias(f);
         return [String(f.documento), d.fmtFecha(f.fechaFactura), d.fmtFecha(f.fechaVence),
@@ -108,24 +129,35 @@ export function crearPdfReporte(d) {
         { content: `Total Cliente · ${x.facturas.length} ${x.facturas.length === 1 ? 'factura' : 'facturas'}`, colSpan: 4, styles: { halign: 'right' } },
         { content: tot(x.saldo), styles: { halign: 'right' } }, '',
       ]];
-      doc.autoTable({
-        startY: y, margin: { left: MM.izq, right: MM.der, top: MM.arriba + 6, bottom: MM.abajo },
-        head: [['N° Factura', 'Fecha de\nfactura', 'Fecha de\nvencimiento', 'Días', 'Saldo', 'Moneda']],
-        didDrawPage: () => { if (doc.getNumberOfPages() > paginaInicio) nombreProv(`${x.prov.nombre} (continuación)`, MM.arriba + 3); },
-        body: cuerpo, foot: pie, theme: 'plain', showFoot: 'lastPage', rowPageBreak: 'avoid',
-        styles: { font: 'helvetica', fontSize: 8.5, cellPadding: { top: 1.4, bottom: 1.4, left: 1.5, right: 1.5 }, textColor: NEGRO, halign: 'center', valign: 'middle', lineColor: [227, 227, 227], lineWidth: { bottom: 0.2 } },
-        headStyles: { fontStyle: 'bold', fontSize: 7.5, textColor: [68, 68, 68], halign: 'center', valign: 'bottom', lineColor: [150, 150, 150], lineWidth: { bottom: 0.3 } },
-        footStyles: { fontStyle: 'bold', fontSize: 9.5, textColor: NEGRO, lineWidth: 0 },
-        columnStyles: { 0: { cellWidth: COLS[0] }, 1: { cellWidth: COLS[1] }, 2: { cellWidth: COLS[2] }, 3: { cellWidth: COLS[3], fontStyle: 'bold' }, 4: { cellWidth: COLS[4], halign: 'right', cellPadding: { top: 1.4, bottom: 1.4, left: 1.5, right: PAD } }, 5: { cellWidth: COLS[5] } },
-        didParseCell: (h) => {
-          if (h.section === 'body' && h.column.index === 3) {
-            const t = String(h.cell.raw);
-            h.cell.styles.textColor = t === 'Hoy' ? AMBAR : t.startsWith('-') ? ROJO : VERDE;
-          }
-          if (h.section === 'foot' && h.column.index === 4) h.cell.styles.cellPadding = { top: 1.4, bottom: 1.4, left: 1.5, right: 9 };
-        },
-      });
-      y = doc.lastAutoTable.finalY + 6;
+      const m = medir(cuerpo, pie);
+      const limite = ALTO - MM.abajo;
+      const NOMBRE = 2, MIN_HOJA = 3, POCO = 58; // mm: si queda menos, mejor empezar en la hoja siguiente
+      const suma = (a, b) => m.filas.slice(a, b).reduce((t, h) => t + h, 0);
+      let desde = 0, primera = true;
+      while (desde < cuerpo.length || (desde === 0 && !cuerpo.length)) {
+        const resto = cuerpo.length - desde;
+        const todo = NOMBRE + m.head + suma(desde, cuerpo.length) + m.foot + cola;
+        let hasta = cuerpo.length;
+        if (y + todo > limite) {
+          const hojaEntera = limite - MM.arriba - 6;
+          const libre = limite - y;
+          if (todo <= hojaEntera && libre < POCO) { doc.addPage(); y = MM.arriba; continue; }
+          // ¿Cuántas facturas caben aquí, dejando al menos MIN_HOJA para la hoja siguiente?
+          let k = 0, alto = NOMBRE + m.head;
+          while (desde + k < cuerpo.length && y + alto + m.filas[desde + k] <= limite - 2) { alto += m.filas[desde + k]; k++; }
+          k = Math.min(k, resto - MIN_HOJA);
+          if (k < MIN_HOJA) { if (y > MM.arriba + 6) { doc.addPage(); y = MM.arriba; continue; } k = Math.max(1, Math.min(resto, k)); }
+          hasta = desde + k;
+        }
+        nombreProv(primera ? x.prov.nombre : `${x.prov.nombre} (continuación)`, y);
+        y += NOMBRE;
+        tablaProv(cuerpo.slice(desde, hasta), hasta === cuerpo.length ? pie : [], y);
+        y = doc.lastAutoTable.finalY + 6;
+        primera = false;
+        desde = hasta;
+        if (desde < cuerpo.length) { doc.addPage(); y = MM.arriba + 4; }
+        if (!cuerpo.length) break;
+      }
     });
     // 1.33.3: el total general no queda solo en una hoja: si no cabe junto al total de la última sociedad, pasan los dos a la hoja siguiente.
     if (i === d.grupos.length - 1 && d.total) espacio(12 + 3 + 16);

@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.33.5 | PDF del reporte: las hojas se llenan sin espacios grandes en blanco. Un proveedor que no cabe empieza en la misma hoja y sigue en la siguiente con «NOMBRE (continuación)» (nunca un pedazo de menos de 3 facturas); solo pasa entero a la hoja siguiente si queda poco espacio. Los totales finales quedan en la misma hoja que las últimas facturas. |
 | 1.33.4 | PDF del reporte: el último proveedor de cada sociedad va en la misma hoja que el total de la sociedad (y que el total general), para que los totales nunca queden solos en una hoja. |
 | 1.33.3 | Reportes → nueva pestaña «Resumen por sociedad»: lo que debe cada sociedad en colones y en dólares, con total del grupo; filtros de vencimiento (Vencidas a hoy, Todo, etc.); PDF, Excel e Imprimir. En el PDF del reporte, el «Total todas las sociedades» ya no queda solo en una hoja. |
 | 1.33.2 | Reportes: un proveedor ya no queda partido entre dos hojas del PDF (si no cabe, empieza en la hoja siguiente; si es más largo que una hoja, se repite su nombre con «(continuación)»). Orden de sociedades: Santa Eduviges, Nosavar, Loma Bonita, La Hilda. La moneda del encabezado (Colones/Dólares) más grande y en negrita. |
