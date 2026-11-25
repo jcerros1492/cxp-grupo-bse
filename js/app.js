@@ -1598,7 +1598,7 @@ function avisoUnificacion() {
 
 // ---------------------------------------------------------------- Facturas recibidas por correo (1.21)
 
-const REC = { filas: [], inicio: '2026-10-26', ultima: null, cargado: false, cargando: false, error: '', tab: 'credito', sel: new Set(), q: '', cargadoEn: 0, archivos: [], provsPend: null };
+const REC = { filas: [], inicio: '2026-10-26', ultima: null, cargado: false, cargando: false, error: '', tab: 'credito', sel: new Set(), q: '', cargadoEn: 0, archivos: [], provsPend: null, pasadas: 'todas', pasadasFecha: '', bloques: new Map() };
 const TIPO_REC = { FE: 'Factura', TE: 'Tiquete', NC: 'Nota de crédito', ND: 'Nota de débito', FEC: 'Factura de compra' };
 
 async function cargarRecibidas(forzar) {
@@ -1726,7 +1726,7 @@ function vistaRecibidas() {
   const todas = buscarRecibidas(listaRecibidas());
   const tabs = [['credito', 'Crédito'], ['contado', 'Contado'], ['nc', 'Notas de crédito'], ['cxp', 'Ya en cuentas por pagar'], ['descartadas', 'Descartadas'], ['otras', 'Otras empresas']];
   const cuenta = (k) => todas.filter((x) => x.tab === k).length;
-  const lista = todas.filter((x) => x.tab === REC.tab);
+  const lista = todas.filter((x) => x.tab === REC.tab && (REC.tab !== 'cxp' || pasaFiltroPasadas(x)));
   const u = REC.ultima;
   const info = REC.error ? `<span class="malo">${esc(REC.error)}</span>`
     : u ? `📥 Última lectura del correo: ${fechaHora(Date.parse(u.fecha))}${u.dia === hoyISO() ? ` · hoy llegaron ${u.nuevasHoy || 0} ${Number(u.nuevasHoy) === 1 ? 'factura nueva' : 'facturas nuevas'}` : ''}`
@@ -1740,9 +1740,10 @@ function vistaRecibidas() {
   <div class="rc-info"><span>${info}</span><button class="btn chico" data-act="rc-actualizar" ${REC.cargando ? 'disabled' : ''}>${REC.cargando ? 'Actualizando…' : 'Actualizar'}</button></div>
   <label class="buscar rc-buscar"><span class="vh">Buscar</span><input type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Buscar proveedor, cédula o número de factura" value="${esc(REC.q)}" data-in="rc-q"></label>
   <div class="rc-tabs" role="tablist">${tabs.map(([k, n]) => `<button role="tab" class="${REC.tab === k ? 'on' : ''}" aria-selected="${REC.tab === k}" data-act="rc-tab" data-v="${k}">${n} <i>${cuenta(k)}</i></button>`).join('')}</div>
+  ${REC.tab === 'cxp' ? chipsPasadas() : ''}
   ${lista.length ? tablaRecibidas(lista) : `<p class="vacio">${REC.cargando && !REC.cargado ? 'Cargando…' : REC.q.trim() ? `Nada coincide con «${esc(REC.q.trim())}» en esta pestaña.` : {
     credito: 'No hay facturas de crédito por revisar.', contado: 'No hay facturas de contado.', nc: 'No hay notas de crédito.',
-    cxp: 'Todavía no se ha pasado ninguna factura recibida.', descartadas: 'No hay facturas descartadas.', otras: 'No llegaron facturas a nombre de otras empresas.' }[REC.tab]}</p>`}
+    cxp: REC.pasadas !== 'todas' ? 'No se pasó ninguna factura a cuentas por pagar en ese periodo.' : 'Todavía no se ha pasado ninguna factura recibida.', descartadas: 'No hay facturas descartadas.', otras: 'No llegaron facturas a nombre de otras empresas.' }[REC.tab]}</p>`}
   ${REC.tab === 'otras' && lista.length ? '<p class="sub rc-nota">Facturas que los proveedores mandaron a facturacion@bse.cr a nombre de empresas que no son Santa Eduviges, La Hilda, Nosavar ni Loma Bonita. Solo se guardan aquí: no van a cuentas por pagar.</p>' : ''}
   ${REC.tab === 'credito' || REC.tab === 'cxp' ? pieRecibidas(lista) : ''}`;
 }
@@ -1754,7 +1755,10 @@ function tablaRecibidas(lista) {
   return `<div class="tabla-scroll"><table class="tabla rc-tabla">
     <thead><tr>${conSel ? `<th class="rc-ck"><input type="checkbox" data-in="rc-todas" aria-label="Marcar todas" ${todas ? 'checked' : ''} ${marcables.length ? '' : 'disabled'}></th>` : ''}
       <th>Recibida</th><th>Sociedad</th><th>Proveedor</th><th>Factura</th><th>Fecha</th><th>Condición</th><th>Vence</th><th class="num">Monto</th><th></th></tr></thead>
-    <tbody>${lista.map((x) => {
+    <tbody>${REC.tab === 'cxp' ? cuerpoBloques(lista, conSel) : lista.map((x) => filaRecibida(x, conSel)).join('')}</tbody></table></div>`;
+}
+
+function filaRecibida(x, conSel) {
       const r = x.r, k = esc(r.clave);
       const cond = x.cond === 'credito' ? `<span class="tg rc-verde">Crédito${x.plazo ? ` ${x.plazo} d` : ''}</span>` : x.cond === 'contado' ? '<span class="tg rc-amb">Contado</span>' : `<span class="tg rc-gris">${esc(r.condicion || '—')}</span>`;
       let acc = '';
@@ -1772,7 +1776,86 @@ function tablaRecibidas(lista) {
         <td class="num">${MONEDAS[x.moneda] ? money(x.total, x.moneda) : esc(x.moneda + ' ' + fmtNum(x.total))}</td>
         <td class="rc-acc">${pdfDeRecibida(r) ? `<button class="btn-link" data-act="ver-arch" data-v="${esc(pdfDeRecibida(r).id)}">PDF</button> `
           : `<label class="btn-link subir-pdf" title="Esta factura llegó sin PDF: súbalo a mano">📎 subir PDF<input type="file" accept="application/pdf,image/jpeg,image/png" data-in="rc-pdf" data-k="${k}" hidden></label> `}${acc}</td></tr>`;
-    }).join('')}</tbody></table></div>`;
+}
+
+// ---------------------------------------------------------------- «Ya en cuentas por pagar» por bloques (1.34.0)
+// Cada vez que se pasan facturas a cuentas por pagar, la hoja «Recibidas» anota la fecha y quién (columnas cambiado y cambiadoPor).
+// Las facturas pasadas en el mismo momento forman un bloque.
+
+/** Fecha local (AAAA-MM-DD) del momento en que se pasó; '' si no se sabe. */
+function diaPasada(x) {
+  const t = Date.parse(x.r.cambiado || '');
+  if (!t || x.r.estado !== 'cxp') return '';
+  const d = new Date(t);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function pasaFiltroPasadas(x) {
+  const f = REC.pasadas;
+  if (f === 'todas') return true;
+  const dia = diaPasada(x), hoy = hoyISO();
+  if (!dia) return false;
+  if (f === 'hoy') return dia === hoy;
+  if (f === 'ayer') return dia === sumarDias(hoy, -1);
+  if (f === 'semana') return dia >= sumarDias(hoy, -6);
+  if (f === 'mes') return dia.slice(0, 7) === hoy.slice(0, 7);
+  if (f === 'fecha') return !REC.pasadasFecha || dia === REC.pasadasFecha;
+  return true;
+}
+
+function chipsPasadas() {
+  const c = (k, n) => `<button class="chip ${REC.pasadas === k ? 'on' : ''}" data-act="rc-pasadas" data-v="${k}">${n}</button>`;
+  return `<div class="chips rc-pasadas"><span class="lbl">Pasadas a CxP:</span>
+    ${c('hoy', 'Hoy')}${c('ayer', 'Ayer')}${c('semana', 'Esta semana')}${c('mes', 'Este mes')}
+    <label class="chip ${REC.pasadas === 'fecha' ? 'on' : ''} rc-chip-fecha">📅 <input type="date" value="${esc(REC.pasadasFecha)}" max="${hoyISO()}" data-in="rc-pasadas-fecha" aria-label="Elegir fecha"></label>
+    ${c('todas', 'Todas')}</div>`;
+}
+
+function marcarBloque(i, marcar) {
+  const claves = REC.bloques.get(String(i)) || [];
+  if (marcar == null) marcar = !claves.every((c) => REC.sel.has(c));
+  for (const c of claves) { if (marcar) REC.sel.add(c); else REC.sel.delete(c); }
+  render();
+}
+
+const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+function tituloBloque(iso) {
+  const t = Date.parse(iso || '');
+  if (!t) return 'Sin fecha de paso';
+  const d = new Date(t), dia = diaPasada({ r: { cambiado: iso, estado: 'cxp' } }), hoy = hoyISO();
+  const hh = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const quien = dia === hoy ? 'Hoy' : dia === sumarDias(hoy, -1) ? 'Ayer' : DIAS_SEMANA[d.getDay()];
+  return `${quien} ${fmtFecha(dia).slice(0, dia.slice(0, 4) === hoy.slice(0, 4) ? 5 : 10)} · ${hh}`;
+}
+
+function cuerpoBloques(lista, conSel) {
+  const grupos = new Map();
+  for (const x of lista) {
+    const k = x.r.estado === 'cxp' && Date.parse(x.r.cambiado || '') ? `${x.r.cambiado}|${x.r.cambiadoPor || ''}` : 'sin';
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(x);
+  }
+  const orden = [...grupos.keys()].sort((a, b) => (a === 'sin') - (b === 'sin') || b.localeCompare(a));
+  REC.bloques = new Map();
+  const cols = conSel ? 10 : 9;
+  return orden.map((k, i) => {
+    const xs = grupos.get(k);
+    REC.bloques.set(String(i), xs.map((x) => x.r.clave));
+    const t = { CRC: 0, USD: 0 };
+    for (const x of xs) if (t[x.moneda] != null) t[x.moneda] = round2(t[x.moneda] + x.total);
+    const tot = [t.CRC ? money(t.CRC, 'CRC') : '', t.USD ? money(t.USD, 'USD') : ''].filter(Boolean).join(' · ');
+    const [iso, por] = k === 'sin' ? ['', ''] : k.split('|');
+    const titulo = k === 'sin' ? 'Ya estaban en cuentas por pagar' : tituloBloque(iso);
+    const quien = por ? String(por).split(/\s+/)[0] : '';
+    const marcadas = xs.every((x) => REC.sel.has(x.r.clave));
+    return `<tr class="rc-bloque"><td colspan="${cols}"><div class="rc-bloque-cab">
+        ${conSel ? `<input type="checkbox" data-in="rc-bloque-ck" data-v="${i}" ${marcadas ? 'checked' : ''} aria-label="Marcar el bloque">` : ''}
+        <span class="rc-bloque-t">${esc(titulo)}</span>
+        <span class="rc-bloque-d">${quien ? esc(quien) + ' · ' : ''}${xs.length} ${xs.length === 1 ? 'factura' : 'facturas'}${tot ? ` · <b>${tot}</b>` : ''}</span>
+        <span class="rc-bloque-btns"><button class="btn chico" data-act="rc-bloque-marcar" data-v="${i}">${marcadas ? 'Desmarcar el bloque' : 'Marcar el bloque'}</button>
+        <button class="btn primario chico" data-act="rc-bloque-csv" data-v="${i}">Descargar archivo contable</button></span>
+      </div></td></tr>${xs.map((x) => filaRecibida(x, conSel)).join('')}`;
+  }).join('');
 }
 
 function ncAccion(x) {
@@ -1805,9 +1888,10 @@ function pieRecibidas(lista) {
 /** Cambia el estado en la hoja «Recibidas» y lo refleja aquí. */
 async function cambiarRecibidas(claves, cambios, porClave) {
   await Sync.recibidas('recibidasCambiar', { claves, cambios, porClave: porClave || {} });
+  const ahora = new Date().toISOString(), por = S.usuarioActual()?.nombre || '';
   for (const r of REC.filas) {
     if (!claves.includes(r.clave)) continue;
-    Object.assign(r, cambios, porClave?.[r.clave] || {});
+    Object.assign(r, cambios, porClave?.[r.clave] || {}, { cambiado: ahora, cambiadoPor: por });
   }
   for (const c of claves) REC.sel.delete(c);
   render();
@@ -3407,6 +3491,13 @@ const acciones = {
   'pv-abrir': (v) => dialogoProveedor(v),
   'pv-nuevo': () => dialogoProveedor(null),
   'rc-tab': (v) => { REC.tab = v; REC.sel.clear(); render(); },
+  'rc-pasadas': (v) => { REC.pasadas = v; if (v !== 'fecha') REC.pasadasFecha = ''; REC.sel.clear(); render(); },
+  'rc-bloque-marcar': (v) => marcarBloque(v),
+  'rc-bloque-csv': (v) => {
+    const claves = new Set(REC.bloques.get(String(v)) || []);
+    const filas = REC.filas.filter((r) => claves.has(r.clave));
+    if (filas.length) dialogoArchivosContables(filas, 'Archivo contable del bloque');
+  },
   'rc-actualizar': () => cargarRecibidas(true),
   'rc-credito': (v) => dialogoCreditoRecibida(v),
   'rc-descartar': async (v) => { try { await cambiarRecibidas([v], { estado: 'descartada' }); avisar('Descartada: quedó en «Descartadas»'); } catch (e) { avisar(e.message, 'error'); } },
@@ -3585,6 +3676,8 @@ document.addEventListener('change', async (e) => {
     return;
   }
   if (k === 'r-soc') { ui.rep.soc = el.value; render(); return; }
+  if (k === 'rc-bloque-ck') { marcarBloque(el.dataset.v, el.checked); return; }
+  if (k === 'rc-pasadas-fecha') { REC.pasadasFecha = el.value; REC.pasadas = el.value ? 'fecha' : 'todas'; REC.sel.clear(); render(); return; }
   if (k === 'rc-sel') { if (el.checked) REC.sel.add(el.dataset.v); else REC.sel.delete(el.dataset.v); render(); return; }
   if (k === 'rc-todas') {
     const lista = buscarRecibidas(listaRecibidas()).filter((x) => x.tab === REC.tab && (REC.tab === 'cxp' || seleccionable(x)));

@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.34.0 | Recibidas → «Ya en cuentas por pagar» agrupado por bloque: cada vez que se pasan facturas queda un bloque con fecha, hora, quién, cantidad y total, con «Marcar el bloque» y «Descargar archivo contable» (vuelve a bajar los archivos de esa tanda). Filtro «Pasadas a CxP»: Hoy, Ayer, Esta semana, Este mes, una fecha o Todas. Usa la fecha que la hoja ya guardaba (no cambia el Apps Script). |
 | 1.33.5 | PDF del reporte: las hojas se llenan sin espacios grandes en blanco. Un proveedor que no cabe empieza en la misma hoja y sigue en la siguiente con «NOMBRE (continuación)» (nunca un pedazo de menos de 3 facturas); solo pasa entero a la hoja siguiente si queda poco espacio. Los totales finales quedan en la misma hoja que las últimas facturas. |
 | 1.33.4 | PDF del reporte: el último proveedor de cada sociedad va en la misma hoja que el total de la sociedad (y que el total general), para que los totales nunca queden solos en una hoja. |
 | 1.33.3 | Reportes → nueva pestaña «Resumen por sociedad»: lo que debe cada sociedad en colones y en dólares, con total del grupo; filtros de vencimiento (Vencidas a hoy, Todo, etc.); PDF, Excel e Imprimir. En el PDF del reporte, el «Total todas las sociedades» ya no queda solo en una hoja. |

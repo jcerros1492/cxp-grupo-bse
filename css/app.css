@@ -1071,3 +1071,15 @@ label.soltar-aqui::after { content: 'Suelte aquí'; position: absolute; left: 50
 .reporte-hojas .rep-resumen .res-tabla th.res-soc, .reporte-hojas .rep-resumen .res-tabla td.res-soc { text-align: left !important; }
 .reporte-hojas .rep-resumen .res-tabla th.num, .reporte-hojas .rep-resumen .res-tabla td.num { text-align: right !important; padding-right: 16px; }
 .reporte-hojas .rep-resumen .res-tabla .cifra { display: inline; width: auto !important; }
+
+/* 1.34.0: «Ya en cuentas por pagar» por bloques */
+.rc-pasadas { margin: 4px 0 10px; flex-wrap: wrap; }
+.rc-chip-fecha { display: inline-flex; align-items: center; gap: 4px; padding-top: 2px; padding-bottom: 2px; }
+.rc-chip-fecha input { border: 0; background: transparent; font: inherit; color: inherit; padding: 2px 0; }
+.rc-tabla tr.rc-bloque td { background: #eef2ff; border-top: 2px solid #c7d2fe; padding: 9px 10px; }
+.rc-bloque-cab { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.rc-bloque-t { font-weight: 800; font-size: 14px; }
+.rc-bloque-d { color: #374151; font-size: 13.5px; }
+.rc-bloque-btns { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.chips label.rc-chip-fecha { flex-direction: row !important; display: inline-flex !important; margin: 0; font-weight: 500; height: auto; }
+.chips label.rc-chip-fecha input { width: 128px; min-height: 0; height: 24px; box-shadow: none; }
