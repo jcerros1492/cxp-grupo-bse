@@ -1110,3 +1110,27 @@ label.soltar-aqui::after { content: 'Suelte aquí'; position: absolute; left: 50
   .lote-b .sub-campo input, .lote-b .sub-campo input.mini, .lote-b .sub-campo .fecha-comp { width: 60%; }
 }
 .lote-b .sub-ancho:has(input[data-in="a-desc"]) { flex: 2 1 320px; }
+
+/* 1.36.0: total programado pendiente de aplicar (Programar pagos y Por aplicar) */
+.tot-prog { background: var(--superficie, #fff); border: 2px solid #2563EB; border-radius: 12px; padding: 12px 16px; margin: 0 0 16px; }
+.tp-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
+.tp-tit { font-weight: 800; font-size: 14px; max-width: 190px; line-height: 1.25; }
+.tp-caja { display: flex; flex-direction: column; border: 1px solid #E5E7EB; border-radius: 8px; padding: 6px 12px; min-width: 150px; }
+.tp-l { font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--tenue); }
+.tp-v { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.tp-s { font-size: 11.5px; color: var(--tenue); }
+.tp-btn { margin-left: auto; }
+.tp-tabla-scroll { overflow-x: auto; }
+.tp-tabla { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
+.tp-tabla th { text-align: left; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--tenue); padding: 6px 8px; border-bottom: 1px solid #E5E7EB; }
+.tp-tabla td { padding: 8px; border-bottom: 1px solid #F1F1F1; }
+.tp-tabla td:first-child { font-weight: 700; }
+.tp-tabla .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tp-tabla tfoot td { font-weight: 800; border-top: 2px solid #111; border-bottom: 0; font-size: 15px; }
+@media (max-width: 760px) {
+  .tp-tit { max-width: none; width: 100%; }
+  .tp-caja { flex: 1 1 130px; min-width: 0; }
+  .tp-v { font-size: 17px; }
+  .tp-btn { margin-left: 0; width: 100%; }
+}
+.tp-rev { color: #B45309; font-weight: 700; }

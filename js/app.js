@@ -452,6 +452,7 @@ function vistaProgramar() {
       <p class="sub">Marque las facturas, escriba cuánto pagar de cada una (si es menos del saldo, queda como abono) y elija la fecha.</p>
     </div>
   </div>
+  ${totalesProgramado('Ya enviado a pagar, pendiente de aplicar')}
 
   <div class="filtros">
     <div class="fila-chips" role="group" aria-label="Sociedad">${chipsSociedad('p-soc', P.soc)}</div>
@@ -643,6 +644,7 @@ function vistaAplicar() {
       <p class="sub">Lo que Norman programó, agrupado por sociedad, moneda y fecha. Cada grupo genera un archivo para el banco.</p>
     </div>
   </div>
+  ${totalesProgramado('Total por aplicar')}
   ${seccionRevisar()}
   ${lotes.length ? lotes.map(tarjetaLote).join('') : `<p class="vacio grande">No hay pagos programados pendientes. Cuando Norman programe pagos, aparecerán aquí.</p>`}
 
@@ -651,6 +653,40 @@ function vistaAplicar() {
     <p class="sub">Toque un pago para adjuntar los comprobantes y compartir el aviso de pago con cada proveedor.</p>
     ${hechos.map(tarjetaAplicado).join('')}
   </section>` : ''}`;
+}
+
+// 1.36.0: lo que Norman ya programó y todavía no se ha aplicado (incluye lo enviado al banco esperando comprobante),
+// en colones y en dólares, con el detalle por sociedad. Sale arriba de «Programar pagos» y de «Por aplicar».
+function totalesProgramado(titulo) {
+  let nRev = 0;
+  const t = { CRC: 0, USD: 0 }, n = { CRC: 0, USD: 0 }, provs = { CRC: new Set(), USD: new Set() }, porSoc = new Map();
+  for (const p of S.programacionesPendientes()) {
+    const f = S.factura(p.facturaId);
+    if (!f || t[f.moneda] == null) continue;
+    if (f.revision) nRev++; // pedidas a revisión: también cuentan (siguen programadas)
+    t[f.moneda] += p.monto; n[f.moneda]++; provs[f.moneda].add(f.codigo);
+    if (!porSoc.has(f.sociedad)) porSoc.set(f.sociedad, { CRC: 0, USD: 0 });
+    porSoc.get(f.sociedad)[f.moneda] += p.monto;
+  }
+  const nTot = n.CRC + n.USD;
+  if (!nTot) return '';
+  const nProv = new Set([...provs.CRC, ...provs.USD]).size;
+  const abierto = !!ui.totProgAbierto;
+  const caja = (mon, nombre) => `<div class="tp-caja"><span class="tp-l">${nombre}</span><strong class="tp-v">${t[mon] ? money(round2(t[mon]), mon) : '—'}</strong>
+      <span class="tp-s">${n[mon]} ${n[mon] === 1 ? 'factura' : 'facturas'}</span></div>`;
+  const socs = sociedadesOrdenadas().filter((k) => porSoc.has(k));
+  const m = (v, mon) => (v ? money(round2(v), mon) : '<span class="tenue">—</span>');
+  return `<section class="tot-prog">
+    <div class="tp-fila">
+      <span class="tp-tit">${esc(titulo)}</span>
+      ${caja('CRC', 'Colones')}${caja('USD', 'Dólares')}
+      <span class="sub">${nTot} ${nTot === 1 ? 'factura' : 'facturas'} · ${nProv} ${nProv === 1 ? 'proveedor' : 'proveedores'}${nRev ? ` · <span class="tp-rev">${nRev} en revisión</span>` : ''}</span>
+      <button type="button" class="btn chico tp-btn" data-act="tot-prog" aria-expanded="${abierto}">${abierto ? 'Ocultar ▴' : 'Ver por sociedad ▾'}</button>
+    </div>
+    ${abierto ? `<div class="tp-tabla-scroll"><table class="tp-tabla"><thead><tr><th>Sociedad</th><th class="num">Colones</th><th class="num">Dólares</th></tr></thead>
+      <tbody>${socs.map((k) => `<tr><td>${esc(nombreLegalSociedad(k))}</td><td class="num">${m(porSoc.get(k).CRC, 'CRC')}</td><td class="num">${m(porSoc.get(k).USD, 'USD')}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td>Total Grupo BSE</td><td class="num">${m(t.CRC, 'CRC')}</td><td class="num">${m(t.USD, 'USD')}</td></tr></tfoot></table></div>` : ''}
+  </section>`;
 }
 
 /** Proveedores de un lote pendiente: los que ya se enviaron al banco y los que no. */
@@ -3493,6 +3529,7 @@ const acciones = {
   'pv-filtro': (v) => { ui.prov.filtro = v; render(); },
   'pv-abrir': (v) => dialogoProveedor(v),
   'pv-nuevo': () => dialogoProveedor(null),
+  'tot-prog': () => { ui.totProgAbierto = !ui.totProgAbierto; render(); },
   'rc-tab': (v) => { REC.tab = v; REC.sel.clear(); render(); },
   'rc-pasadas': (v) => { REC.pasadas = v; if (v !== 'fecha') REC.pasadasFecha = ''; REC.sel.clear(); render(); },
   'rc-bloque-marcar': (v) => marcarBloque(v),
