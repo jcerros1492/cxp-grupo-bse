@@ -4197,6 +4197,15 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 (() => {
   const cab = document.querySelector('.cabecera');
   if (!cab) return;
+  // 1.37.1: espacio con el alto de la barra completa (la barra está fija, fuera del flujo).
+  const espacio = document.createElement('div');
+  espacio.className = 'cab-espacio';
+  espacio.setAttribute('aria-hidden', 'true');
+  cab.after(espacio);
+  const medir = () => { if (!cab.classList.contains('compacta')) espacio.style.height = cab.offsetHeight + 'px'; };
+  medir();
+  if (window.ResizeObserver) new ResizeObserver(medir).observe(cab);
+  window.addEventListener('resize', medir);
   let compacta = false, pendiente = false;
   const revisar = () => {
     pendiente = false;

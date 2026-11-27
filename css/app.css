@@ -1145,7 +1145,7 @@ label.soltar-aqui::after { content: 'Suelte aquí'; position: absolute; left: 50
 .cabecera.compacta #usuario > :not(.btn-salir) { display: none !important; }
 .cabecera.compacta #usuario { margin-left: auto; }
 @media screen and (max-width: 760px) {
-  .cabecera { position: sticky !important; top: 0; z-index: 20; }
+  .cabecera { position: fixed !important; top: 0; z-index: 20; }
   .cabecera.compacta { padding-bottom: 6px; }
   .cabecera.compacta .cabecera-interior { display: block; padding-top: 6px; min-height: 0; }
   .cabecera.compacta .marca, .cabecera.compacta #usuario { display: none !important; }
@@ -1154,3 +1154,10 @@ label.soltar-aqui::after { content: 'Suelte aquí'; position: absolute; left: 50
   .cabecera.compacta #nav a { flex: none; min-height: 34px; padding: 6px 12px; white-space: nowrap; }
 }
 @media print { .cabecera { position: static !important; } }
+
+/* 1.37.1: la barra va «fija» (fuera del flujo) y un espacio guarda su alto completo; así, al achicarse,
+   el contenido no se mueve y la barra no parpadea en el iPhone (Safari no compensa el salto como Chrome). */
+.cabecera { position: fixed !important; top: 0; left: 0; right: 0; z-index: 20; }
+.cab-espacio { display: block; }
+html { scroll-padding-top: 64px; }
+@media print { .cabecera { position: static !important; } .cab-espacio { display: none; } }

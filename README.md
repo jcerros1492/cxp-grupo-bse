@@ -12,6 +12,7 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.37.1 | Corrige el parpadeo de la barra de arriba en el iPhone al bajar: la barra va fija y un espacio guarda su alto, así el contenido no salta cuando se achica. |
 | 1.37.0 | La barra de arriba queda fija al bajar (se había desactivado sin querer en 1.25.1) y se achica a una sola línea: logo, menú y Salir en computadora; en el celular, el menú en una fila que se desliza. Al volver arriba se ve completa. |
 | 1.36.0 | Total de lo programado pendiente de aplicar, en colones y en dólares (con facturas y proveedores), y «Ver por sociedad» con el Total Grupo BSE. Sale arriba de «Programar pagos» (Norman) y de «Por aplicar» (los demás). Incluye lo enviado al banco esperando comprobante y lo pedido a revisión. El resto de la pantalla de Norman no cambia. |
 | 1.35.0 | Por aplicar en dos renglones por proveedor (opción B): arriba proveedor, facturas, total y Banco/Manual; abajo IBAN, intereses y descripción (y concepto si es BCT), o en Manual: intereses, comprobante, fecha, PDF y Aplicar. Ya no hace falta la barra para desplazar a los lados. Solo cambia cómo se ve; los datos y los archivos del banco son los mismos. |
