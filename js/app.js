@@ -4192,3 +4192,19 @@ render();
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Sin modo sin internet:', e));
 }
+
+// 1.37.0: al bajar, la barra de arriba se achica a una sola línea; al volver arriba, se ve completa.
+(() => {
+  const cab = document.querySelector('.cabecera');
+  if (!cab) return;
+  let compacta = false, pendiente = false;
+  const revisar = () => {
+    pendiente = false;
+    const y = window.scrollY || document.documentElement.scrollTop || 0;
+    const debe = compacta ? y > 20 : y > 90; // margen para que no parpadee
+    if (debe !== compacta) { compacta = debe; cab.classList.toggle('compacta', compacta); }
+  };
+  window.addEventListener('scroll', () => { if (!pendiente) { pendiente = true; requestAnimationFrame(revisar); } }, { passive: true });
+  revisar();
+})();
+
