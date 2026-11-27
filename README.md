@@ -12,6 +12,8 @@ La versión publicada se ve al pie de cada pantalla. Si no coincide con la últi
 
 | Versión | Cambios |
 |---|---|
+| 1.38.0 | Aplicados recientemente: ordenados del más nuevo al más viejo (por fecha del pago) y control «En contabilidad»: cada pago muestra «Falta en contabilidad» con «✓ Ya lo registré» (queda en verde con fecha y quién, se puede deshacer). Aviso con cuántos faltan y su total; filtros Faltan en contabilidad · Ya registrados · Todos («Ver más» de 15 en 15). Lo aplicado antes del 27/11/2026 cuenta como ya registrado. No cambia el Apps Script. |
+| 1.37.2 | Imprimir reporte: ya no sale la primera hoja en blanco. Un proveedor con muchas facturas (más de 14) puede seguir en la hoja siguiente, repitiendo el encabezado de la tabla; los cortos siguen sin partirse y el total del proveedor no se repite. |
 | 1.37.1 | Corrige el parpadeo de la barra de arriba en el iPhone al bajar: la barra va fija y un espacio guarda su alto, así el contenido no salta cuando se achica. |
 | 1.37.0 | La barra de arriba queda fija al bajar (se había desactivado sin querer en 1.25.1) y se achica a una sola línea: logo, menú y Salir en computadora; en el celular, el menú en una fila que se desliza. Al volver arriba se ve completa. |
 | 1.36.0 | Total de lo programado pendiente de aplicar, en colones y en dólares (con facturas y proveedores), y «Ver por sociedad» con el Total Grupo BSE. Sale arriba de «Programar pagos» (Norman) y de «Por aplicar» (los demás). Incluye lo enviado al banco esperando comprobante y lo pedido a revisión. El resto de la pantalla de Norman no cambia. |

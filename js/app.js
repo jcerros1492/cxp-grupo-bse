@@ -626,7 +626,12 @@ function dialogoDevolverRevision(id) {
 
 function vistaAplicar() {
   const lotes = S.lotesPendientes();
-  const hechos = S.lotesAplicados().slice(0, 15);
+  const todosAplicados = S.lotesAplicados();
+  const faltan = todosAplicados.filter((l) => !S.contaDe(l));
+  const filtro = ui.apFiltro || 'faltan';
+  const lista = filtro === 'faltan' ? faltan : filtro === 'registrados' ? todosAplicados.filter((l) => S.contaDe(l)) : todosAplicados;
+  const limite = ui.apLimite || 15;
+  const hechos = filtro === 'faltan' ? lista : lista.slice(0, limite);
   // Precarga en segundo plano los comprobantes de estos pagos (para que «Compartir» salga rápido).
   clearTimeout(ui.tPrecarga);
   ui.tPrecarga = setTimeout(() => {
@@ -648,10 +653,17 @@ function vistaAplicar() {
   ${seccionRevisar()}
   ${lotes.length ? lotes.map(tarjetaLote).join('') : `<p class="vacio grande">No hay pagos programados pendientes. Cuando Norman programe pagos, aparecerán aquí.</p>`}
 
-  ${hechos.length ? `<section class="bloque aplicados">
+  ${todosAplicados.length ? `<section class="bloque aplicados">
     <h2>Aplicados recientemente</h2>
     <p class="sub">Toque un pago para adjuntar los comprobantes y compartir el aviso de pago con cada proveedor.</p>
-    ${hechos.map(tarjetaAplicado).join('')}
+    ${faltan.length ? `<div class="ap-conta-aviso">⚠ <b>${faltan.length} ${faltan.length === 1 ? 'pago aplicado falta' : 'pagos aplicados faltan'} en el sistema contable</b> · ${['CRC', 'USD'].map((m) => { const t = round2(faltan.filter((l) => l.moneda === m).reduce((a, l) => a + Number(l.total || 0), 0)); return t ? money(t, m) : ''; }).filter(Boolean).join(' · ')}</div>` : ''}
+    <div class="chips ap-filtros">
+      <button class="chip ${filtro === 'faltan' ? 'on' : ''}" data-act="ap-filtro" data-v="faltan">Faltan en contabilidad <span class="n">${faltan.length}</span></button>
+      <button class="chip ${filtro === 'registrados' ? 'on' : ''}" data-act="ap-filtro" data-v="registrados">Ya registrados</button>
+      <button class="chip ${filtro === 'todos' ? 'on' : ''}" data-act="ap-filtro" data-v="todos">Todos</button>
+    </div>
+    ${hechos.length ? hechos.map(tarjetaAplicado).join('') : `<p class="vacio">${filtro === 'faltan' ? '✓ Todo lo aplicado ya está registrado en el sistema contable.' : 'No hay pagos aplicados.'}</p>`}
+    ${filtro !== 'faltan' && lista.length > hechos.length ? `<button class="btn" data-act="ap-mas">Ver más (${lista.length - hechos.length} más)</button>` : ''}
   </section>` : ''}`;
 }
 
@@ -819,6 +831,17 @@ function lineasAplicado(l) {
   return [...porProv.values()].sort((a, b) => a.prov.nombre.localeCompare(b.prov.nombre));
 }
 
+/** 1.38.0: «Falta en contabilidad» + «Ya lo registré», o la marca verde de registrado. */
+function marcaConta(l) {
+  const c = S.contaDe(l);
+  if (!c) return `<span class="ap-conta"><span class="ap-falta">Falta en contabilidad</span><span class="btn chico ap-ya" role="button" tabindex="0" data-act="ap-conta" data-v="${esc(l.id)}">✓ Ya lo registré</span></span>`;
+  if (c.anterior) return '<span class="ap-conta"><span class="ap-ok ap-ok-ant" title="Aplicado antes de empezar este control (27/11/2026)">✓ En contabilidad</span></span>';
+  const d = new Date(c.fecha);
+  const ini = String(c.por || '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+  return `<span class="ap-conta"><span class="ap-ok" title="Registrado por ${esc(c.por)}">✓ En contabilidad ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}${ini ? ' · ' + esc(ini) : ''}</span>
+    <span class="btn-link ap-deshacer" role="button" tabindex="0" data-act="ap-conta-no" data-v="${esc(l.id)}" title="Volver a «Falta en contabilidad»">deshacer</span></span>`;
+}
+
 function tarjetaAplicado(l) {
   const abierto = !!ui.apAbierto[l.id];
   const gen = S.adjLote(l.id);
@@ -829,7 +852,7 @@ function tarjetaAplicado(l) {
     <button class="aplicado-cab" data-act="ap-toggle" data-v="${esc(l.id)}" aria-expanded="${abierto}">
       <span>${fmtFecha(l.fecha)}</span><span>${esc(S.nombreSociedad(l.sociedad))} · ${MONEDAS[l.moneda]?.nombre || ''}</span>
       <span class="mono">${esc(l.comprobante)}</span><span class="num">${money(l.total, l.moneda)}</span>
-      <span class="sub">${nLineas(l)} ${nLineas(l) === 1 ? 'proveedor' : 'proveedores'} · ${esc(l.aplicadoPor)}</span><span aria-hidden="true">${abierto ? '▴' : '▾'}</span></button>
+      <span class="sub">${nLineas(l)} ${nLineas(l) === 1 ? 'proveedor' : 'proveedores'} · ${esc(l.aplicadoPor)}</span>${marcaConta(l)}<span aria-hidden="true">${abierto ? '▴' : '▾'}</span></button>
     ${abierto ? `<div class="aplicado-cuerpo">
       <div class="ap-general">📎 <b>Comprobante general del débito</b>
         ${gen?.id ? `<button class="btn-link" data-act="ver-arch" data-v="${esc(gen.id)}">Ver ${esc(gen.nombre)}</button>` : `<label class="adjuntar">Adjuntar PDF<input type="file" accept="application/pdf,image/jpeg,image/png" data-in="ap-gen" data-v="${esc(l.id)}" hidden></label>`}
@@ -2616,7 +2639,7 @@ function vistaCxp() {
         <div class="rep-emitido">Emitido<br><strong>${fmtFecha(hoy)}</strong><br>${String(emitido.getHours()).padStart(2, '0')}:${String(emitido.getMinutes()).padStart(2, '0')}</div>
       </header>`}
       ${g.proveedores.map((x) => `
-      <section class="rep-prov">
+      <section class="rep-prov ${x.facturas.length > 14 ? 'rep-prov-largo' : ''}">
         <h3 class="rep-prov-nombre">${esc(x.prov.nombre)}</h3>
         <table class="rep-tabla">
           <thead><tr><th class="w-doc">N°<span class="larga"> Factura</span></th><th class="c-ff w-ff">Fecha de<br>factura</th><th class="w-fv"><span class="larga">Fecha de<br>vencimiento</span><span class="corta">Vence</span></th><th class="w-dias">Días</th><th class="num w-saldo">Saldo</th><th class="c-mon w-mon">Moneda</th></tr></thead>
@@ -3530,6 +3553,10 @@ const acciones = {
   'pv-abrir': (v) => dialogoProveedor(v),
   'pv-nuevo': () => dialogoProveedor(null),
   'tot-prog': () => { ui.totProgAbierto = !ui.totProgAbierto; render(); },
+  'ap-filtro': (v) => { ui.apFiltro = v; ui.apLimite = 15; render(); },
+  'ap-mas': () => { ui.apLimite = (ui.apLimite || 15) + 15; render(); },
+  'ap-conta': (v) => { const r = S.marcarConta(v); if (r?.error) avisar(r.error, 'error'); else { avisar('Marcado como registrado en el sistema contable'); render(); } },
+  'ap-conta-no': (v) => { const r = S.desmarcarConta(v); if (r?.error) avisar(r.error, 'error'); else render(); },
   'rc-tab': (v) => { REC.tab = v; REC.sel.clear(); render(); },
   'rc-pasadas': (v) => { REC.pasadas = v; if (v !== 'fecha') REC.pasadasFecha = ''; REC.sel.clear(); render(); },
   'rc-bloque-marcar': (v) => marcarBloque(v),

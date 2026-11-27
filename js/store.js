@@ -33,7 +33,22 @@ export const diasVencida = (f) => (f.fechaVence ? diasDesde(f.fechaVence) : null
 export const conSaldo = () => listaFacturas().filter((f) => saldo(f) > 0.004);
 
 export const programacionesPendientes = () => Object.values(datos().programaciones).filter((p) => p.estado === 'programado');
-export const lotesAplicados = () => Object.values(datos().lotes).sort((a, b) => String(b.aplicado).localeCompare(String(a.aplicado)));
+// 1.38.0: del más nuevo al más viejo por la fecha del pago (y, el mismo día, por la hora en que se aplicó).
+const msAplicado = (l) => Date.parse(l.aplicado || '') || 0;
+export const lotesAplicados = () => Object.values(datos().lotes)
+  .sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')) || msAplicado(b) - msAplicado(a));
+
+// 1.38.0: control de lo que ya se registró en el sistema contable (nota doc:conta:<loteId>).
+// Lo aplicado antes del 27/11/2026 cuenta como ya registrado (el control empieza ese día).
+export const INICIO_CONTA = Date.parse('2026-11-27T00:00:00-06:00');
+export function contaDe(l) {
+  const n = nota('doc:conta:' + l.id);
+  if (n && n.fecha) return n;
+  const t = msAplicado(l);
+  return !t || t < INICIO_CONTA ? { anterior: true } : null;
+}
+export const marcarConta = (loteId) => anotar('doc:conta:' + loteId, { por: usuarioActual()?.nombre || '', fecha: new Date().toISOString() });
+export const desmarcarConta = (loteId) => anotar('doc:conta:' + loteId, '');
 
 export function totales(lista) {
   const t = { CRC: 0, USD: 0, n: lista.length };

@@ -1161,3 +1161,27 @@ label.soltar-aqui::after { content: 'Suelte aquí'; position: absolute; left: 50
 .cab-espacio { display: block; }
 html { scroll-padding-top: 64px; }
 @media print { .cabecera { position: static !important; } .cab-espacio { display: none; } }
+
+/* 1.37.2: al imprimir, un proveedor con muchas facturas puede seguir en la hoja siguiente (antes se iba
+   entero a la hoja siguiente y dejaba la primera en blanco). Los cortos siguen sin partirse. */
+@media print {
+  .rep-prov.rep-prov-largo { break-inside: auto; }
+  .rep-prov .rep-tabla tr { break-inside: avoid; }
+  .rep-prov .rep-tabla thead { display: table-header-group; }
+  .rep-prov .rep-tabla tfoot { display: table-row-group; break-inside: avoid; } /* no repetir el total en cada hoja */
+  .cab-espacio { display: none !important; }
+}
+
+/* 1.38.0: control «En contabilidad» en Aplicados recientemente */
+.ap-conta-aviso { background: #FFFBEB; border: 1px solid #FCD34D; border-radius: 10px; padding: 10px 14px; margin: 8px 0 10px; color: #78350F; }
+.ap-filtros { margin: 6px 0 10px; }
+.ap-filtros .n { margin-left: 4px; font-weight: 800; }
+.ap-conta { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; white-space: nowrap; }
+.ap-falta { background: #FEF3C7; color: #92400E; border-radius: 12px; padding: 3px 9px; font-size: 11.5px; font-weight: 700; }
+.ap-ok { background: #DCFCE7; color: #166534; border-radius: 12px; padding: 3px 9px; font-size: 11.5px; font-weight: 700; }
+.ap-ok-ant { background: #F1F5F9; color: #475569; }
+.ap-ya { border: 1px solid #1E3A5F !important; color: #1E3A5F; background: #fff; font-weight: 700; padding: 4px 10px; border-radius: 7px; font-size: 12px; cursor: pointer; }
+.ap-deshacer { font-size: 11.5px; }
+@media (max-width: 760px) { .ap-conta { margin-left: 0; flex-wrap: wrap; white-space: normal; } }
+.aplicado-cab { grid-template-columns: 90px minmax(140px, 1.3fr) minmax(90px, .9fr) 130px minmax(120px, 1.1fr) auto 18px; }
+@media (max-width: 760px) { .aplicado-cab { grid-template-columns: 1fr auto; } .aplicado-cab .ap-conta { grid-column: 1 / -1; } }
