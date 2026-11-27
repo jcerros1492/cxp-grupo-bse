@@ -705,28 +705,31 @@ function tarjetaLote(l) {
       <div class="lote-total">${money(l.total, l.moneda)}</div>
     </header>
     ${pendientes.length ? `
-    <div class="tabla-scroll"><table class="tabla lote-tabla">
-      <thead><tr><th>Proveedor</th><th>Facturas</th><th>IBAN</th><th class="num">Intereses / otros</th><th>Descripción para el banco</th>${bct ? '<th>Concepto (BCT)</th>' : ''}<th class="num">Total</th><th>¿Cómo se paga?</th></tr></thead>
+    <div class="tabla-scroll"><table class="tabla lote-tabla lote-b">
+      <thead><tr><th>Proveedor</th><th>Facturas</th><th class="num">Total</th><th>¿Cómo se paga?</th></tr></thead>
       <tbody>${pendientes.map((ln) => {
+        // 1.35.0: dos renglones por proveedor. Arriba lo que se revisa; abajo lo que se escribe (banco) o el registro del pago (manual).
         const k = l.clave + '|' + ln.codigo, ke = encodeURIComponent(k), fm = forma(ln);
-        return `<tr class="${fm === 'manual' ? 'fila-manual' : ''}">
-        <td><strong>${esc(ln.prov.nombre)}</strong></td>
-        <td class="facts">${facts(ln, true)}</td>
-        <td class="mono">${ln.iban ? `${fmtIBAN(ln.iban)} ${errorIBAN(ln.iban) ? '<span class="malo">inválido</span>' : ''}` : `<button type="button" class="btn-link agregar-iban ${fm === 'banco' ? 'malo' : ''}" data-act="iban-rapido" data-v="${esc(ln.codigo)}" data-mon="${l.moneda}" data-docs="${esc(ln.items.map(({ f }) => f.documento).join(' '))}">Agregar IBAN</button>`}</td>
-        <td class="num"><input class="mini" type="text" inputmode="decimal" data-monto value="${ln.extra ? fmtNum(ln.extra) : ''}" placeholder="0,00" data-in="a-extra" data-lote="${id}" data-v="${esc(ln.codigo)}" aria-label="Intereses u otros cargos para ${esc(ln.prov.nombre)}"></td>
-        <td><input type="text" value="${esc(ln.descripcion)}" data-in="a-desc" data-lote="${id}" data-v="${esc(ln.codigo)}" aria-label="Descripción para ${esc(ln.prov.nombre)}"></td>
-        ${bct ? `<td><input type="text" value="${esc(ln.concepto)}" data-in="a-concepto" data-lote="${id}" data-v="${esc(ln.codigo)}" aria-label="Concepto BCT para ${esc(ln.prov.nombre)}">
-          ${fm === 'banco' && BCT.faltaBCT(ln).length ? `<div class="malo chico-txt">Falta ${BCT.faltaBCT(ln).join(', ')} · <button type="button" class="btn-link" data-act="pv-abrir" data-v="${esc(ln.codigo)}">completar</button></div>` : ''}</td>` : ''}
-        <td class="num"><strong>${money(ln.total, l.moneda)}</strong></td>
-        <td class="forma-celda">
+        const extra = `<label class="sub-campo"><span class="lb">Intereses / otros</span><input class="mini" type="text" inputmode="decimal" data-monto value="${ln.extra ? fmtNum(ln.extra) : ''}" placeholder="0,00" data-in="a-extra" data-lote="${id}" data-v="${esc(ln.codigo)}" aria-label="Intereses u otros cargos para ${esc(ln.prov.nombre)}"></label>`;
+        const abajo = fm === 'manual' ? `${extra}
+            <label class="sub-campo"><span class="lb">N° comprobante</span><input type="text" id="mc-${ke}" placeholder="Del banco o SINPE" aria-label="Comprobante del pago manual a ${esc(ln.prov.nombre)}" autocomplete="off"></label>
+            <span class="sub-campo"><span class="lb">Fecha</span>${inputFechaComp(`id="mf-${ke}" class="fecha-comp"`, 'Fecha del comprobante')}</span>
+            ${campoArchivo('man|' + k, 'PDF (opcional)')}
+            <button class="btn primario chico" data-act="a-aplicar-manual" data-v="${ke}">Aplicar</button>`
+          : `<span class="sub-campo sub-iban"><span class="lb">IBAN</span>${ln.iban ? `<span class="mono">${fmtIBAN(ln.iban)}</span> ${errorIBAN(ln.iban) ? '<span class="malo">inválido</span>' : ''}` : `<button type="button" class="btn-link agregar-iban malo" data-act="iban-rapido" data-v="${esc(ln.codigo)}" data-mon="${l.moneda}" data-docs="${esc(ln.items.map(({ f }) => f.documento).join(' '))}">Agregar IBAN</button>`}</span>
+            ${extra}
+            <label class="sub-campo sub-ancho"><span class="lb">Descripción</span><input type="text" value="${esc(ln.descripcion)}" data-in="a-desc" data-lote="${id}" data-v="${esc(ln.codigo)}" aria-label="Descripción para ${esc(ln.prov.nombre)}"></label>
+            ${bct ? `<label class="sub-campo sub-ancho"><span class="lb">Concepto</span><input type="text" value="${esc(ln.concepto)}" data-in="a-concepto" data-lote="${id}" data-v="${esc(ln.codigo)}" aria-label="Concepto BCT para ${esc(ln.prov.nombre)}"></label>
+              ${BCT.faltaBCT(ln).length ? `<span class="malo chico-txt">Falta ${BCT.faltaBCT(ln).join(', ')} · <button type="button" class="btn-link" data-act="pv-abrir" data-v="${esc(ln.codigo)}">completar</button></span>` : ''}` : ''}`;
+        return `<tr class="fila-prov ${fm === 'manual' ? 'fila-manual' : ''}">
+        <td data-label="Proveedor"><strong>${esc(ln.prov.nombre)}</strong></td>
+        <td class="facts" data-label="Facturas">${facts(ln, true)}</td>
+        <td class="num" data-label="Total"><strong>${money(ln.total, l.moneda)}</strong></td>
+        <td class="forma-celda" data-label="¿Cómo se paga?">
           <span class="seg" role="group" aria-label="Cómo se paga ${esc(ln.prov.nombre)}">
             <button type="button" class="${fm === 'banco' ? 'on' : ''}" data-act="a-forma" data-v="${ke}|banco">Banco (.txt)</button><button type="button" class="${fm === 'manual' ? 'on' : ''}" data-act="a-forma" data-v="${ke}|manual">Manual</button></span>
-          ${fm === 'manual' ? `<div class="manual-aplicar">
-            <input type="text" id="mc-${ke}" placeholder="N° comprobante" aria-label="Comprobante del pago manual a ${esc(ln.prov.nombre)}" autocomplete="off">
-            ${inputFechaComp(`id="mf-${ke}" class="fecha-comp"`, 'Fecha del comprobante')}
-            ${campoArchivo('man|' + k, 'PDF (opcional)')}
-            <button class="btn primario chico" data-act="a-aplicar-manual" data-v="${ke}">Aplicar</button></div>` : ''}
-        </td></tr>`;
+        </td></tr>
+        <tr class="fila-sub ${fm === 'manual' ? 'fila-manual' : ''}"><td colspan="4" data-label=""><div class="sub-fila">${abajo}</div></td></tr>`;
       }).join('')}</tbody>
     </table></div>
     ${problemas.length ? `<div class="aviso"><strong>Antes de generar el archivo:</strong><ul>${problemas.map((p) => `<li>${esc(p)}</li>`).join('')}</ul></div>` : ''}

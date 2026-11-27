@@ -1083,3 +1083,30 @@ label.soltar-aqui::after { content: 'Suelte aquí'; position: absolute; left: 50
 .rc-bloque-btns { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 .chips label.rc-chip-fecha { flex-direction: row !important; display: inline-flex !important; margin: 0; font-weight: 500; height: auto; }
 .chips label.rc-chip-fecha input { width: 128px; min-height: 0; height: 24px; box-shadow: none; }
+
+/* 1.35.0: Por aplicar en dos renglones por proveedor (sin barra para desplazar) */
+.lote-b { table-layout: auto; }
+.lote-b tr.fila-prov td { border-bottom: 0; padding-top: 12px; padding-bottom: 6px; }
+.lote-b tr.fila-prov td:first-child { width: 32%; }
+.lote-b .forma-celda { min-width: 0; width: 1%; white-space: nowrap; }
+.lote-b tr.fila-sub td { background: #F7F8FA; border-top: 0; padding: 6px 10px 10px; }
+.lote-b tr.fila-manual td { background: #FFF7ED; }
+.lote-b .sub-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
+.lote-b .sub-campo { display: inline-flex !important; flex-direction: row !important; align-items: center; gap: 8px; margin: 0; font-weight: 400; }
+.lote-b .sub-campo .lb { font-size: 10.5px; font-weight: 700; color: var(--tenue); text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+.lote-b .sub-ancho { flex: 1 1 260px; }
+.lote-b .sub-ancho input { min-width: 0; width: 100%; }
+.lote-b .sub-campo input { min-width: 0; }
+.lote-b .sub-campo input.mini { width: 100px; }
+.lote-b .sub-campo input[id^="mc-"] { width: 170px; }
+.lote-b .sub-campo .fecha-comp { width: 150px; }
+@media (max-width: 760px) {
+  .lote-b tr.fila-prov { border-bottom-left-radius: 0; border-bottom-right-radius: 0; margin-bottom: 0; border-bottom: 0; }
+  .lote-b tr.fila-sub { border-top-left-radius: 0; border-top-right-radius: 0; border-top: 0; padding-top: 0; background: #F7F8FA; }
+  .lote-b tr.fila-sub td { padding: 8px 0; text-align: left; }
+  .lote-b tr.fila-prov td:first-child { width: 100%; }
+  .lote-b .forma-celda { width: 100%; }
+  .lote-b .sub-campo { width: 100%; justify-content: space-between; }
+  .lote-b .sub-campo input, .lote-b .sub-campo input.mini, .lote-b .sub-campo .fecha-comp { width: 60%; }
+}
+.lote-b .sub-ancho:has(input[data-in="a-desc"]) { flex: 2 1 320px; }
